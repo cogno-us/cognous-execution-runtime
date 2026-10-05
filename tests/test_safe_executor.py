@@ -160,6 +160,42 @@ def test_lost_ack_restart_preserves_attempt_history(tmp_path):
     assert restarted.effect_count(op.grant_id) == 1
 
 
+
+def test_legacy_attempt_schema_migrates_without_losing_outcome(tmp_path):
+    import sqlite3
+
+    root = tmp_path / "state"
+    root.mkdir()
+    db = root / "refunds.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE effects (
+                effect_id TEXT PRIMARY KEY,
+                operation_digest TEXT NOT NULL,
+                grant_id TEXT NOT NULL,
+                target TEXT NOT NULL,
+                amount REAL NOT NULL,
+                unit TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                state TEXT NOT NULL
+            );
+            CREATE TABLE attempts (
+                attempt_id TEXT PRIMARY KEY,
+                effect_id TEXT NOT NULL,
+                decision_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT
+            );
+            INSERT INTO attempts(attempt_id,effect_id,decision_id,status,error)
+            VALUES('legacy-attempt','legacy-effect','legacy-decision','executed',NULL);
+            """
+        )
+
+    destination = DurableRefundDestination(root)
+    history = destination.attempt_history("legacy-attempt")
+    assert [event["status"] for event in history] == ["executed"]
+
 def _mp_commit(root: str, effect_id: str, target: str, queue):
     op = make_operation(
         proposal_commitment="sha256:" + effect_id[-1] * 64,
