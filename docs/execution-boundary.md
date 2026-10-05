@@ -98,3 +98,12 @@ Implemented:
 These controls do not constitute host confinement. There remains a filesystem check/use race without OS facilities such as directory file descriptors/openat-style confinement or an external sandbox. A different host process with sufficient permissions can bypass this Python module.
 
 No claim is made for whole-upstream Moltbot bypass resistance, container isolation, seccomp/AppArmor, network namespace isolation or production credential confinement.
+
+
+## Migration from PR #4 envelope 0.1.0
+
+The revised branch upgrades the envelope to 0.2.0 and replaces the first pilot attempt table with immutable attempt identities plus append-only attempt events.
+
+When an existing pilot SQLite file contains the earlier `attempts(status,error)` schema, Moltbot Safe migrates those rows on open. Each historical row is preserved with operation digest `legacy:unknown` and its prior outcome is retained as an attempt event. The migration does not infer missing authorization or operation content from those legacy rows.
+
+No production-state migration is claimed because PR #4 has not been merged or deployed as a production interface.
