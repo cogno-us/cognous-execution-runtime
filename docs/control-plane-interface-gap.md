@@ -1,28 +1,47 @@
-# Proposed Control Plane interface extension
+# Proposed Control Plane executor-binding extension
 
-This repository does not modify the Agent Control Plane. The following is a Governor-review proposal derived from the pinned integration at `283500652d47a692fb0b99a1172a6d5faffbd9a7`.
+This repository does not modify the Agent Control Plane. This is a Governor-review proposal based on pinned commit `283500652d47a692fb0b99a1172a6d5faffbd9a7`.
 
-## Gap
+## Current integration
 
-The Control Plane checks institution and authority domain while resolving the Alvorada Authority Context, but its persisted `AuthorizationBinding` does not carry `institution_id` or `authority_domain`.
+Moltbot Safe now executes only through `BoundedAuthorizationWorkflow.execute()`, so the pinned Control Plane performs its current authorization revalidation immediately before the destination adapter is invoked.
 
-A downstream executor can therefore verify actor, principal, manifest/proposal commitments, action, adapter, target, payload commitment, grant, requirement and limits against the issued decision, but cannot independently prove from that decision object which institution/domain was bound upstream.
+For institution/domain, the executor currently derives both values from the trusted Authority Context resolver used by that same workflow and compares them against the frozen Moltbot Safe request.
 
-## Proposed additive fields
+That keeps caller-supplied labels from creating authority, but the values still are not present in the persisted `AuthorizationBinding`.
 
-Add to `AuthorizationBinding` in a backward-compatible schema revision:
+## Required additive upstream fields
+
+Add these fields to `AuthorizationBinding` in a backward-compatible schema revision:
 
 ```text
 institution_id: str
 authority_domain: str
 ```
 
-Populate both from the already validated Authority Context and include them in the persisted decision binding. Downstream executors should compare them exactly before effect.
+Populate them from the already validated Authority Context before the decision is persisted. They should participate in equality/revalidation of the binding and be exposed to downstream executors.
 
-No new authority semantics are proposed. These fields expose an already-checked binding to downstream enforcement.
+## Preferred executor-facing contract
 
-## Optional executor-facing export
+A future version should export a versioned, immutable executor-facing binding that contains, or unambiguously commits to:
 
-A future executor-facing record could also package the authoritative `RuntimeDecision` plus the frozen `RuntimeProposal` or an equivalent canonical operation record, allowing the executor to recompute the proposal commitment from one canonical operation representation.
+- decision ID and stable effect ID;
+- actor and principal;
+- institution ID and authority domain;
+- manifest ID/version/digest;
+- complete proposal commitment;
+- action and adapter IDs;
+- target;
+- exact payload commitment;
+- requested permissions;
+- amount/unit/effect count;
+- Authority Context and requirement IDs;
+- grant ID/revision;
+- effective limits;
+- applicable policy versions and other revalidation-critical binding fields already held by the Control Plane.
 
-If introduced, it should be versioned and should not treat copied JSON as authenticated transport.
+The executor-facing object must remain a record of what was authorized, not a transport-authentication mechanism. Execution still requires the Control Plane's current revalidation or an equivalent trusted revalidation interface.
+
+## Explicit non-proposal
+
+Moltbot Safe does **not** propose treating a copied decision document, matching digest, caller-supplied institution, or historical `authorized` state as sufficient authority for effect.
