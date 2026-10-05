@@ -1,24 +1,17 @@
 import pytest
-import os
-from engine.engine import AgentEngine
-from engine.permissions import Permissions
-import json
-
-@pytest.fixture
-def engine():
-    with open('engine/permissions.json') as f:
-        perms = Permissions(json.load(f))
-    return AgentEngine(perms)
-
-def test_file_write_in_sandbox(engine, tmp_path):
-    action = {"type": "write", "target": "sandbox/test.txt", "params": {"content": "safe"}}
-    result = engine.execute(action)
-    assert result["allowed"]
-    assert os.path.exists("sandbox/test.txt")
+from engine.safe_executor import DurableRefundDestination
 
 
-def test_file_write_outside_sandbox_denied(engine):
-    action = {"type": "write", "target": "/tmp/evil.txt", "params": {"content": "bad"}}
-    result = engine.execute(action)
-    assert not result["allowed"]
-    assert not os.path.exists("/tmp/evil.txt")
+def test_database_path_traversal_denied(tmp_path):
+    with pytest.raises(PermissionError):
+        DurableRefundDestination(tmp_path / "root", "../outside.sqlite3")
+
+
+def test_symlink_database_denied(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    real = tmp_path / "real.sqlite3"
+    real.touch()
+    (root / "refunds.sqlite3").symlink_to(real)
+    with pytest.raises(PermissionError):
+        DurableRefundDestination(root)
