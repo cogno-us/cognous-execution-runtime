@@ -1,0 +1,31 @@
+name: Python safety boundary
+
+on:
+  push:
+    paths:
+      - "engine/**"
+      - "tests/**"
+      - "docs/execution-boundary.md"
+      - "docs/control-plane-interface-gap.md"
+      - ".github/workflows/python-safety.yml"
+  pull_request:
+    paths:
+      - "engine/**"
+      - "tests/**"
+      - "docs/execution-boundary.md"
+      - "docs/control-plane-interface-gap.md"
+      - ".github/workflows/python-safety.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  safety-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest==8.3.5
+      - run: PYTHONPATH=. pytest -q tests
