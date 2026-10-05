@@ -23,9 +23,38 @@ jobs:
   safety-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Moltbot Safe
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Control Plane
+        uses: actions/checkout@v4
+        with:
+          repository: cogno-us/cognous-agent-control-plane
+          ref: 283500652d47a692fb0b99a1172a6d5faffbd9a7
+          path: pinned/control-plane
+
+      - name: Checkout pinned Action Manifest
+        uses: actions/checkout@v4
+        with:
+          repository: cogno-us/cognous-agent-action-manifest
+          ref: 46c950bed37fe3812000895430bc0312d29e37ce
+          path: pinned/action-manifest
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install pytest==8.3.5
-      - run: PYTHONPATH=. pytest -q tests
+
+      - name: Install focused test dependencies
+        run: python -m pip install pytest==8.3.5 pydantic==2.11.9
+
+      - name: Verify pinned revisions
+        run: |
+          test "$(git -C pinned/control-plane rev-parse HEAD)" = "283500652d47a692fb0b99a1172a6d5faffbd9a7"
+          test "$(git -C pinned/action-manifest rev-parse HEAD)" = "46c950bed37fe3812000895430bc0312d29e37ce"
+
+      - name: Run Python safety and pinned integration tests
+        env:
+          PYTHONPATH: ".:pinned/control-plane/src"
+          MOLTBOT_SAFE_CONTROL_PLANE_ROOT: "pinned/control-plane"
+          MOLTBOT_SAFE_MANIFEST_FIXTURE: "pinned/action-manifest/examples/refund_integration_v1_1.manifest.json"
+        run: pytest -q tests
