@@ -1,24 +1,28 @@
-import pytest
-import os
-from engine.engine import AgentEngine
-from engine.permissions import Permissions
-from engine.action_schema import validate_action
 import json
+import pytest
+from engine.engine import AgentEngine
 
-@pytest.fixture
-def engine():
-    with open('engine/permissions.json') as f:
-        perms = Permissions(json.load(f))
-    return AgentEngine(perms)
 
-def test_execution_allowed(engine, tmp_path):
-    action = {"type": "echo", "target": "", "params": {"message": "hi"}}
-    result = engine.execute(action)
-    assert result["allowed"]
-    assert result["status"] == "success"
+def make_engine(tmp_path):
+    permissions = tmp_path / "permissions.json"
+    permissions.write_text(json.dumps({"agent1": ["write"]}), encoding="utf-8")
+    return AgentEngine(tmp_path / "sandbox", permissions, tmp_path / "audit.log")
 
-def test_execution_denied(engine):
-    action = {"type": "delete", "target": "/etc/passwd", "params": {}}
-    result = engine.execute(action)
-    assert not result["allowed"]
-    assert result["status"] == "denied"
+
+def test_legacy_allowed_path_cannot_report_success(tmp_path):
+    result = make_engine(tmp_path).execute_action(
+        "agent1", {"type": "write", "target": "x", "params": {}}
+    )
+    assert result == {
+        "status": "unsupported",
+        "executed": False,
+        "action": "write",
+        "error": "legacy AgentEngine has no execution adapter",
+    }
+
+
+def test_legacy_denied_path_raises(tmp_path):
+    with pytest.raises(PermissionError):
+        make_engine(tmp_path).execute_action(
+            "agent1", {"type": "delete", "target": "x", "params": {}}
+        )
