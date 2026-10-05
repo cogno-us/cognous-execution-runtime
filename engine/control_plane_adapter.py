@@ -56,6 +56,7 @@ class ControlPlaneRefundDestinationAdapter:
         if effect_id != self.snapshot.effect_id:
             raise PermissionError("effect identifier mismatch")
         self._check_trusted_context()
+        self.executor.policy.check(self.snapshot.operation)
         observed = self.destination.observe_bound(self.snapshot)
 
         # Construct the pinned Control Plane EffectObservation lazily so this
@@ -210,10 +211,22 @@ class PinnedControlPlaneExecutor:
             trusted_institution_id=trusted_institution,
             trusted_authority_domain=trusted_domain,
         )
-        original = self.workflow.destination
-        self.workflow.destination = adapter
-        try:
-            kwargs = {
+        # Build a fresh workflow view with the same trusted resolver, manifest,
+        # durable Control Plane record store and revalidation settings. Do not
+        # mutate the caller's workflow destination, which would create a
+        # cross-request race.
+        workflow = self.workflow.__class__(
+            manifest=self.workflow.manifest,
+            resolver=self.workflow.resolver,
+            destination=adapter,
+            records=self.workflow.records,
+            status_max_age_seconds=self.workflow.status_max_age_seconds,
+            identity_max_age_seconds=self.workflow.identity_max_age_seconds,
+            mandate_max_age_seconds=self.workflow.mandate_max_age_seconds,
+            approval_max_age_seconds=self.workflow.approval_max_age_seconds,
+            clock_tolerance_seconds=self.workflow.clock_tolerance_seconds,
+        )
+        kwargs = {
                 "proposal": proposal,
                 "decision": decision,
                 "adapter_id": snapshot.operation.adapter_id,
@@ -224,12 +237,10 @@ class PinnedControlPlaneExecutor:
                 kwargs["lose_ack"] = True
             elif simulate == "partial":
                 kwargs["partial"] = True
-            try:
-                cp_attempt, cp_observation = self.workflow.execute(**kwargs)
-            except PermissionError as exc:
-                return self._denied(snapshot, str(exc))
-        finally:
-            self.workflow.destination = original
+        try:
+            cp_attempt, cp_observation = workflow.execute(**kwargs)
+        except PermissionError as exc:
+            return self._denied(snapshot, str(exc))
 
         local = adapter.outcome.result
         if local is not None:
