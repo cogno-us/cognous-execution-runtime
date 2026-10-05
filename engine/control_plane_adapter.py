@@ -227,16 +227,16 @@ class PinnedControlPlaneExecutor:
             clock_tolerance_seconds=self.workflow.clock_tolerance_seconds,
         )
         kwargs = {
-                "proposal": proposal,
-                "decision": decision,
-                "adapter_id": snapshot.operation.adapter_id,
-            }
-            if now is not None:
-                kwargs["now"] = now
-            if simulate == "lost_ack":
-                kwargs["lose_ack"] = True
-            elif simulate == "partial":
-                kwargs["partial"] = True
+            "proposal": proposal,
+            "decision": decision,
+            "adapter_id": snapshot.operation.adapter_id,
+        }
+        if now is not None:
+            kwargs["now"] = now
+        if simulate == "lost_ack":
+            kwargs["lose_ack"] = True
+        elif simulate == "partial":
+            kwargs["partial"] = True
         try:
             cp_attempt, cp_observation = workflow.execute(**kwargs)
         except PermissionError as exc:
