@@ -1,20 +1,49 @@
 # Architecture
 
-moltbot-safe is a minimal, permissioned, sandboxed execution engine for AI agents.
+Moltbot Safe provides one supported constrained execution boundary for the current Cognous synthetic pilot.
 
-## Components
-- **Engine**: Orchestrates validation, permission checks, sandboxed execution, and audit logging.
-- **Permission System**: Loads and enforces least-privilege JSON policy per agent.
-- **Action Schema**: Strictly validates agent actions.
-- **Audit Log**: Logs every action attempt with timestamp and result.
-- **Sandbox**: All agent actions occur in an isolated directory.
+## Supported path
 
-## Execution Flow
-1. Agent submits an action request.
-2. Action is validated against the schema.
-3. Permission system checks if the action is allowed.
-4. If allowed, the action is executed in the sandbox; otherwise, it is denied.
-5. All attempts are logged in the audit log.
+```text
+Control Plane canonical issued decision
+        |
+        v
+ExecutionEnvelope 0.1.0
+        |
+        v
+SafeExecutor
+  |-- exact decision/binding validation
+  |-- stricter local execution policy
+  |-- frozen operation
+        |
+        v
+DurableRefundDestination (SQLite)
+  |-- transactional effect-id binding
+  |-- local cumulative effect limit
+  |-- authoritative local observation
+        |
+        v
+reconciliation / hold / observed applied
+```
 
-## Extensibility
-The system is modular and can be extended for new action types, permission models, or sandboxing strategies without compromising safety.
+The execution caller does not provide an authoritative decision body. `InProcessDecisionSource` retrieves the canonical issued decision by ID from a configured trusted callable.
+
+## Runtime boundary
+
+The supported safety layer is the Python `engine/` package, specifically `SafeExecutor`.
+
+The retained TypeScript Moltbot application is not inside this reviewed execution boundary. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
+
+## Consistency boundary
+
+The synthetic destination uses SQLite `BEGIN IMMEDIATE` to serialize writers sharing one database file. Effect identity, operation content and cumulative grant effect count are checked and committed within that local transactional boundary.
+
+This does not provide a distributed transaction, remote exactly-once delivery or a distributed budget.
+
+## Isolation boundary
+
+The supported executor makes no subprocess or network calls and uses no production credentials. Its filesystem capability is limited by application logic to the configured SQLite state root, with traversal and symlink checks.
+
+These are application-level restrictions, not operating-system isolation. A directory is not a sandbox. Host/container isolation and protection against alternate host-process invocation remain deployment responsibilities.
+
+See [execution-boundary.md](execution-boundary.md) for the complete contract.
