@@ -425,6 +425,43 @@ def test_mutation_during_trusted_context_lookup_cannot_change_snapshot(tmp_path)
     assert observed["destination_state"]["payload"]["refund_reason"] == "duplicate"
 
 
+
+def test_mutation_during_lookup_of_shared_proposal_payload_fails_closed(tmp_path):
+    h, p, resolver, workflow, decision, destination, executor, request = _integrated(
+        tmp_path
+    )
+    # Rebuild the request so the caller operation and RuntimeProposal share the
+    # same nested payload object, matching the reproduced mutation class.
+    shared = p.payload
+    shared_operation = ExecutionOperation(
+        **{
+            **request.operation.__dict__,
+            "payload": shared,
+            "payload_commitment": h.commitment(shared),
+        }
+    )
+    shared_request = ExecutionEnvelope(
+        request.version,
+        request.decision_id,
+        request.effect_id,
+        shared_operation,
+    )
+    original_lookup = resolver.authority_context
+
+    def mutating_lookup(ref):
+        shared["refund_reason"] = "mutated-during-lookup"
+        return original_lookup(ref)
+
+    resolver.authority_context = mutating_lookup
+    result = executor.execute(
+        envelope=shared_request,
+        proposal=p,
+        decision=decision,
+        now=h.NOW,
+    )
+    assert result.status == "denied"
+    assert destination.observe(decision.effect_id)["state"] == "absent"
+
 def test_caller_institution_label_cannot_satisfy_trusted_boundary(tmp_path):
     h, p, resolver, workflow, decision, destination, executor, request = _integrated(
         tmp_path
