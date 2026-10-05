@@ -97,6 +97,24 @@ def test_amount_must_be_strict_finite_number(amount):
         snapshot_envelope(envelope(make_operation(amount=amount)))
 
 
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"actor": 123},
+        {"unit": 123},
+        {"requested_permissions": ("refund.issue", "")},
+    ],
+)
+def test_malformed_identifier_unit_and_permission_types_fail_closed(overrides):
+    with pytest.raises(ValueError):
+        snapshot_envelope(envelope(make_operation(**overrides)))
+
+
+def test_malformed_attempt_id_is_rejected():
+    with pytest.raises(ValueError):
+        snapshot_envelope(envelope(make_operation(), attempt_id=123))
+
 def test_attempt_id_reuse_never_overwrites_success(tmp_path):
     op = make_operation()
     destination = DurableRefundDestination(tmp_path / "state")
