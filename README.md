@@ -4,26 +4,22 @@ Moltbot Safe is the **single-agent constrained execution boundary** in the Cogno
 
 ## Supported runtime
 
-The supported safety-layer runtime is the small Python package under `engine/`. The repository also retains a substantial upstream TypeScript Moltbot application and its history. That TypeScript application is **not** part of the supported execution boundary described here, and this work does not claim to audit or harden the whole upstream application.
+The supported safety-layer runtime is the Python package under `engine/`. The repository also retains a substantial upstream TypeScript Moltbot application and its history. That application is **not** part of this reviewed execution boundary, and this work does not claim to audit or harden the whole upstream application.
 
-The legacy `engine.AgentEngine` is compatibility-only. It may validate, permission-check and log an action, but it performs no effect and therefore returns `status: unsupported` with `executed: false` for allowed actions.
+The legacy `engine.AgentEngine` is compatibility-only. It validates, permission-checks and logs, but performs no effect and therefore cannot report successful execution.
 
-The supported execution path is `engine.safe_executor.SafeExecutor`.
+The supported path is:
 
-## What the supported path does
+```text
+Pinned Control Plane BoundedAuthorizationWorkflow.execute()
+        -> current grant / approval / policy / evidence revalidation
+        -> Moltbot Safe ControlPlaneRefundDestinationAdapter
+        -> strict local execution policy
+        -> durable synthetic SQLite refund
+        -> destination observation / reconciliation
+```
 
-`SafeExecutor` consumes a versioned execution envelope derived from the pinned Agent Control Plane bounded-authorization pilot. It:
-
-1. resolves the canonical issued decision through a configured trusted **in-process** decision lookup;
-2. rejects caller-supplied authorization claims as authority;
-3. verifies the decision is `authorized` and that its bound actor, principal, manifest/proposal commitments, action, adapter, target, payload commitment, amount/unit, grant, requirement and effect limit match the requested operation;
-4. applies stricter local execution policy without widening upstream authority;
-5. freezes the validated operation and performs one synthetic local refund effect;
-6. records the effect durably in SQLite with a stable effect identity and separate attempt identity;
-7. observes destination state independently of the execution acknowledgement; and
-8. reconciles lost acknowledgements, duplicates, restart recovery, partial delivery and concurrent local attempts.
-
-An allow/authorized decision is not an executed effect. An execution acknowledgement is not independently verified delivery.
+A persisted historical `authorized` decision is not an execution credential. An allow decision is not an executed effect. An execution acknowledgement is not independently verified delivery.
 
 ## Pinned integration baseline
 
@@ -31,58 +27,65 @@ An allow/authorized decision is not an executed effect. An execution acknowledge
 - Agent Action Manifest v1.1: `cogno-us/cognous-agent-action-manifest` at `46c950bed37fe3812000895430bc0312d29e37ce`
 - Alvorada Authority Context 0.1.0: `cogno-us/constitutional-governance-for-institutions` at `fb3d97938969a89e149e8ff8db2756091d1233fc`
 
-See [the execution-boundary contract](docs/execution-boundary.md).
+CI checks out the exact pinned Control Plane and Manifest revisions and executes integration tests against their real Python implementation and refund fixture.
 
-## Trust and authentication boundary
+## Execution Envelope 0.2.0
 
-The pilot uses an **in-process trusted call** to retrieve the canonical Control Plane decision by `decision_id`. It does not provide network transport authentication, service identity, key custody or production credential management. A copied decision JSON, matching hash, or caller-provided `authorized` flag is insufficient.
+At API entry Moltbot Safe deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
 
-The pinned Control Plane `AuthorizationBinding` does not include `institution_id` or `authority_domain`, although the Control Plane checks them before issuing its decision. Moltbot Safe preserves `institution_id` in its execution envelope and narrows it through local policy, but cannot independently re-bind it to the pinned decision. The exact proposed upstream extension is documented in [the Control Plane interface gap](docs/control-plane-interface-gap.md).
+For the single-refund adapter:
 
-## Synthetic destination and consistency
+- `effects` must be the integer `1` exactly; booleans, zero, negatives, fractions and other counts are rejected;
+- amount must be a finite non-negative `int` or `float`, excluding booleans;
+- the payload commitment must match the frozen payload;
+- effect identity is bound to a digest of the exact frozen operation.
 
-The only implemented effect is a local synthetic refund written to SQLite. It does not touch payment services, accounts, public chains, networks or production credentials.
+## Trusted institution/domain binding
 
-SQLite `BEGIN IMMEDIATE` serializes writers sharing the same database file, providing transactional local effect deduplication and cumulative `max_effects` enforcement across processes using that file. This is **not** distributed budgeting and is **not** an exactly-once guarantee for remote systems.
+The pinned Control Plane checks institution and authority domain but does not export them in `AuthorizationBinding`.
 
-A reused `effect_id` with different operation content is rejected. Repeated delivery of the same operation is reconciled rather than re-applied. Partial delivery remains held.
+Until the upstream contract is extended, Moltbot Safe derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
+
+The exact requested upstream extension is documented in [docs/control-plane-interface-gap.md](docs/control-plane-interface-gap.md).
+
+## Destination, attempts and recovery
+
+The synthetic destination is SQLite only. It does not touch real accounts, payment services, public chains or production credentials.
+
+Each destination submission gets a durable attempt identity. Attempt rows are immutable identities and state changes are append-only attempt events. Reusing an attempt ID is rejected and recorded under a fresh denied attempt; it never overwrites earlier success.
+
+SQLite `BEGIN IMMEDIATE` serializes effect deduplication, content binding and cumulative local effect-count checks for processes sharing one database file. The test suite exercises **separate processes**, not only threads.
+
+A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state. Partial delivery remains partial/held rather than being blindly re-applied.
+
+Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
 ## Isolation boundary
 
 Implemented for the supported path:
 
 - no subprocess execution;
-- no network calls;
+- no network calls from the destination adapter;
 - no production credentials;
-- a dedicated operator-selected state root;
-- rejection of database path traversal and symlinked database paths;
-- exact adapter/action/target/unit/amount/effect-count local restrictions;
-- unsupported actions unavailable through `SafeExecutor`.
+- dedicated operator-selected SQLite state root;
+- path traversal and existing symlink-component rejection before path resolution;
+- exact local restrictions on institution, authority domain, adapter, action, target prefix, unit, amount and effect count.
 
-Not implemented or claimed:
-
-- OS/container isolation;
-- confinement of the full upstream TypeScript application;
-- prevention of a separate host process bypassing the Python package;
-- network namespace enforcement;
-- distributed transaction or budget coordination;
-- transport authentication between Control Plane and executor;
-- independent institutional verification of the final effect.
-
-A directory alone is not treated as a sandbox.
+These are application-level restrictions, **not OS confinement**. Filesystem checks still have residual check/use races without an OS-level dirfd/openat-style confinement strategy. A separate host process with sufficient permissions can bypass this Python package. No container, VM, seccomp/AppArmor, network namespace or whole-upstream bypass-resistance claim is made.
 
 ## Tests
 
-Focused Python tests:
+Focused and pinned integration tests run with:
 
 ```bash
-PYTHONPATH=. pytest -q
+PYTHONPATH=".:pinned/control-plane/src" \
+MOLTBOT_SAFE_CONTROL_PLANE_ROOT="pinned/control-plane" \
+MOLTBOT_SAFE_MANIFEST_FIXTURE="pinned/action-manifest/examples/refund_integration_v1_1.manifest.json" \
+pytest -q tests
 ```
 
-The tests assert destination state, not only logs, including authorization binding, substitution rejection, local narrowing, effect-ID content binding, duplicate delivery, lost acknowledgement, restart recovery, partial delivery, transactional concurrent limits, malformed legacy actions, path traversal, symlink paths and the non-executing legacy API.
-
-The large TypeScript Moltbot test suite is upstream application coverage and should be reported separately from these safety-layer tests.
+The retained TypeScript Moltbot test suite is upstream application coverage and is reported separately from this Python execution-boundary evidence.
 
 ## License and attribution
 
-This repository preserves the upstream history and MIT license. See [LICENSE](LICENSE). The supported Python boundary is a constrained Cognous integration layer; it does not alter the licensing or audit status of the retained upstream application.
+The repository preserves upstream history and the MIT license. See [LICENSE](LICENSE). This constrained Cognous Python integration layer does not alter the licensing or audit status of the retained upstream application.
