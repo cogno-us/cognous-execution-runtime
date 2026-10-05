@@ -4,16 +4,37 @@ Status: synthetic local pilot. Not a production payment, identity, authority or 
 
 ## Runtime selection
 
-The supported Moltbot Safe boundary is Python `engine.safe_executor.SafeExecutor`. The retained TypeScript Moltbot application is upstream code outside this boundary. The older Python `AgentEngine` previously reported `executed` after permission-checking and logging only; it is now explicitly compatibility-only and cannot report a successful effect.
+The supported Moltbot Safe boundary is the Python path under `engine/`.
 
-## Execution envelope 0.1.0
+The retained TypeScript Moltbot application is upstream code outside this reviewed boundary. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
 
-The envelope carries:
+## Supported authorization-to-effect path
 
-- `decision_id` and stable `effect_id`;
-- optional caller attempt ID, otherwise generated locally;
+Execution is supported only through the pinned Control Plane's `BoundedAuthorizationWorkflow.execute()` at commit `283500652d47a692fb0b99a1172a6d5faffbd9a7`.
+
+A historical persisted `RuntimeDecision(result="authorized")` is insufficient by itself. Immediately before effect, the pinned workflow re-resolves and rechecks its authorization-critical inputs. Moltbot Safe is invoked only as the bounded destination adapter after those checks pass.
+
+The resulting path is:
+
+1. deep-snapshot the complete Moltbot Safe execution envelope;
+2. bind the snapshot to the actual pinned `RuntimeProposal` and persisted decision identity;
+3. derive institution/domain from the trusted resolver's Authority Context;
+4. invoke `BoundedAuthorizationWorkflow.execute()`;
+5. allow that workflow to revalidate current grant, identity/delegation, mandate, approvals, policy, conflict and required evidence state;
+6. only then invoke the Moltbot Safe destination adapter;
+7. apply stricter local restrictions and commit the exact frozen operation to SQLite;
+8. observe destination state separately from the submission acknowledgement.
+
+This is still an in-process integration. It does not provide authenticated network transport.
+
+## Execution envelope 0.2.0
+
+The request carries:
+
+- decision ID and stable effect ID;
+- optional requested attempt ID;
 - actor and principal;
-- institution ID;
+- institution ID and authority domain;
 - manifest ID/version/digest and proposal commitment;
 - action and adapter IDs;
 - target;
@@ -21,38 +42,59 @@ The envelope carries:
 - requested permissions;
 - amount and unit;
 - requested effect count and effective maximum effect count;
-- Authority Context ID and requirement ID;
+- Authority Context reference and requirement ID;
 - grant ID and revision.
 
-The executor validates all fields available in the pinned Control Plane `AuthorizationBinding` against the canonical issued decision obtained from the trusted in-process decision source. The exact payload is additionally checked against its commitment.
+The complete request is deep-copied and serialized at API entry. Later mutation of the caller's nested payload cannot alter what is validated or committed.
 
-## Trusted boundary
+For the single-refund adapter, `effects` must be exactly integer `1`. Boolean, zero, negative, fractional and larger values are rejected. Amount must be a finite non-negative integer or float and cannot be boolean.
 
-`InProcessDecisionSource` is a narrow adapter around a trusted callable that retrieves the canonical issued Control Plane decision by ID. The execution caller does not supply the authoritative decision body.
+## Institution/domain binding
 
-This is an in-process trust boundary only. It does not authenticate network peers and must not be described as transport security.
+The pinned Control Plane `AuthorizationBinding` does not expose `institution_id` or `authority_domain`.
 
-## Local restrictions
+For this pilot, both are derived from the Authority Context returned by the same trusted resolver used by the revalidating workflow. Moltbot Safe compares those trusted values exactly to the frozen execution operation. Caller labels cannot satisfy the boundary on their own.
 
-`LocalExecutionPolicy` can only narrow execution. It checks institution, adapter, action, target prefix, unit, amount and effect count. It cannot convert a non-authorized Control Plane decision into permission.
+This is a bounded integration workaround, not a silent upstream schema fork. See [control-plane-interface-gap.md](control-plane-interface-gap.md).
 
-## Destination semantics
+## Attempts, effect identity and observation
 
-`DurableRefundDestination` is SQLite-backed synthetic state. A transaction holds a write lock while it checks stable effect identity, prior effect content and cumulative grant effect count, then commits the synthetic refund row.
+The SQLite destination separates:
 
-Observation reads the destination database independently of the execution acknowledgement. State is `absent`, `applied`, or `partial`.
+- immutable attempt identity;
+- append-only attempt status events;
+- durable effect rows;
+- authoritative local destination observation.
 
-- same effect + same operation: reconcile; do not reapply;
-- same effect + different operation: deny;
-- lost acknowledgement after commit: observe before any retry;
-- partial delivery: hold; no blind retry;
-- absent: remains non-delivered; a subsequent attempt must still pass authorization;
-- restart: state survives because the destination database is durable.
+Attempt IDs are never updated with `INSERT OR REPLACE`. A reused ID is rejected; if the request must be recorded, it receives a fresh denied attempt identity so the prior history remains intact.
 
-SQLite coordination applies only to processes sharing one database file. No remote/distributed exactly-once property is claimed.
+Effect IDs are bound to a canonical digest of the frozen operation. Reusing the effect ID for different content fails. Repeated delivery of the same effect/content is not re-applied and reports `newly_executed=false`.
 
-## Filesystem, process, network and credential boundary
+Historical observation checks the expected operation digest. It may report what is already present but does not renew or create permission to execute.
 
-The supported path opens only its configured SQLite destination and audit/test files. It invokes no shell, subprocess or network API and contains no production credentials. Database path traversal and symlinked database paths are rejected.
+Lost acknowledgement after durable commit remains an `unknown` attempt outcome until observation establishes destination state. Partial delivery remains partial and is not blindly retried.
 
-This is application-level capability minimization, not OS isolation. A separate process with host filesystem access can bypass this Python module. Container, VM, seccomp/AppArmor, network namespace and host credential controls remain deployment requirements if stronger isolation is required.
+## Consistency boundary
+
+SQLite `BEGIN IMMEDIATE` serializes the local effect-content check, duplicate check, cumulative grant count and insert for processes sharing the same database file.
+
+The regression suite exercises separate OS processes sharing that file.
+
+This is not a distributed transaction, shared remote budget service or exactly-once guarantee for an external destination.
+
+## Filesystem, process, network and credentials
+
+Implemented:
+
+- no subprocess execution in the supported destination path;
+- no destination network calls;
+- no production credentials;
+- dedicated operator-selected SQLite state root;
+- lexical path containment;
+- existing symlink-component checks before path resolution;
+- rejection of symlinked database paths;
+- strict local institution/domain/adapter/action/target/unit/amount/effect restrictions.
+
+These controls do not constitute host confinement. There remains a filesystem check/use race without OS facilities such as directory file descriptors/openat-style confinement or an external sandbox. A different host process with sufficient permissions can bypass this Python module.
+
+No claim is made for whole-upstream Moltbot bypass resistance, container isolation, seccomp/AppArmor, network namespace isolation or production credential confinement.
