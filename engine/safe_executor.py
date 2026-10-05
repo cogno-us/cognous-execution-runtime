@@ -150,36 +150,38 @@ def snapshot_envelope(envelope: ExecutionEnvelope) -> FrozenEnvelope:
         allow_nan=False,
     )
     frozen = FrozenOperation(
-        actor=str(op.actor),
-        principal=str(op.principal),
-        institution_id=str(op.institution_id),
-        authority_domain=str(op.authority_domain),
-        manifest_id=str(op.manifest_id),
-        manifest_version=str(op.manifest_version),
-        manifest_digest=str(op.manifest_digest),
-        proposal_commitment=str(op.proposal_commitment),
-        action_id=str(op.action_id),
-        adapter_id=str(op.adapter_id),
-        target=str(op.target),
+        actor=copy.deepcopy(op.actor),
+        principal=copy.deepcopy(op.principal),
+        institution_id=copy.deepcopy(op.institution_id),
+        authority_domain=copy.deepcopy(op.authority_domain),
+        manifest_id=copy.deepcopy(op.manifest_id),
+        manifest_version=copy.deepcopy(op.manifest_version),
+        manifest_digest=copy.deepcopy(op.manifest_digest),
+        proposal_commitment=copy.deepcopy(op.proposal_commitment),
+        action_id=copy.deepcopy(op.action_id),
+        adapter_id=copy.deepcopy(op.adapter_id),
+        target=copy.deepcopy(op.target),
         payload_json=payload_json,
-        payload_commitment=str(op.payload_commitment),
-        requested_permissions=tuple(copy.deepcopy(op.requested_permissions)),
+        payload_commitment=copy.deepcopy(op.payload_commitment),
+        requested_permissions=tuple(copy.deepcopy(op.requested_permissions))
+        if isinstance(op.requested_permissions, (tuple, list))
+        else copy.deepcopy(op.requested_permissions),
         amount=op.amount,
-        unit=str(op.unit),
+        unit=copy.deepcopy(op.unit),
         effects=op.effects,
-        authority_context_id=str(op.authority_context_id),
-        requirement_id=str(op.requirement_id),
-        grant_id=str(op.grant_id),
-        grant_revision=str(op.grant_revision),
+        authority_context_id=copy.deepcopy(op.authority_context_id),
+        requirement_id=copy.deepcopy(op.requirement_id),
+        grant_id=copy.deepcopy(op.grant_id),
+        grant_revision=copy.deepcopy(op.grant_revision),
         effective_max_effects=op.effective_max_effects,
     )
     snap = FrozenEnvelope(
-        version=str(envelope.version),
-        decision_id=str(envelope.decision_id),
-        effect_id=str(envelope.effect_id),
+        version=copy.deepcopy(envelope.version),
+        decision_id=copy.deepcopy(envelope.decision_id),
+        effect_id=copy.deepcopy(envelope.effect_id),
         operation=frozen,
         requested_attempt_id=(
-            str(envelope.attempt_id) if envelope.attempt_id is not None else None
+            copy.deepcopy(envelope.attempt_id) if envelope.attempt_id is not None else None
         ),
     )
     validate_snapshot(snap)
@@ -208,11 +210,29 @@ def _strict_finite_number(value: object, *, name: str) -> float:
 def validate_snapshot(envelope: FrozenEnvelope) -> None:
     if envelope.version != EXECUTION_ENVELOPE_VERSION:
         raise ValueError("unsupported execution envelope version")
-    if not envelope.decision_id or not envelope.effect_id:
-        raise ValueError("decision_id and effect_id are required")
+    if (
+        not isinstance(envelope.decision_id, str)
+        or not envelope.decision_id
+        or not isinstance(envelope.effect_id, str)
+        or not envelope.effect_id
+    ):
+        raise ValueError("decision_id and effect_id must be non-empty strings")
+    if envelope.requested_attempt_id is not None and (
+        not isinstance(envelope.requested_attempt_id, str)
+        or not envelope.requested_attempt_id
+    ):
+        raise ValueError("attempt_id must be a non-empty string when supplied")
     op = envelope.operation
+    if not isinstance(op.payload_commitment, str) or not op.payload_commitment:
+        raise ValueError("payload_commitment must be a non-empty string")
     if op.payload_commitment != commitment(op.payload()):
         raise ValueError("payload commitment mismatch")
+    if not isinstance(op.requested_permissions, tuple) or any(
+        not isinstance(value, str) or not value for value in op.requested_permissions
+    ):
+        raise ValueError("requested_permissions must contain non-empty strings")
+    if not isinstance(op.unit, str) or not op.unit:
+        raise ValueError("unit must be a non-empty string")
     _strict_finite_number(op.amount, name="amount")
     _strict_positive_int(op.effects, name="effects", exactly_one=True)
     _strict_positive_int(op.effective_max_effects, name="effective_max_effects")
