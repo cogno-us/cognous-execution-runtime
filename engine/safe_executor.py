@@ -342,9 +342,8 @@ class DurableRefundDestination:
 
     def _init_db(self) -> None:
         with self._connect() as conn:
-            conn.executescript(
+            conn.execute(
                 """
-                PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS effects (
                     effect_id TEXT PRIMARY KEY,
                     operation_digest TEXT NOT NULL,
@@ -354,24 +353,74 @@ class DurableRefundDestination:
                     unit TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     state TEXT NOT NULL CHECK(state IN ('applied','partial'))
-                );
-                CREATE TABLE IF NOT EXISTS attempts (
-                    attempt_id TEXT PRIMARY KEY,
-                    effect_id TEXT NOT NULL,
-                    decision_id TEXT NOT NULL,
-                    operation_digest TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS attempt_events (
-                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    attempt_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    error TEXT,
-                    created_at REAL NOT NULL,
-                    FOREIGN KEY(attempt_id) REFERENCES attempts(attempt_id)
-                );
+                )
                 """
             )
+            conn.execute("PRAGMA journal_mode=WAL")
+
+            attempt_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='attempts'"
+            ).fetchone()
+            if attempt_exists is not None:
+                columns = {
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(attempts)").fetchall()
+                }
+                if "operation_digest" not in columns or "created_at" not in columns:
+                    legacy_rows = conn.execute(
+                        "SELECT attempt_id,effect_id,decision_id,status,error FROM attempts"
+                    ).fetchall()
+                    conn.execute("ALTER TABLE attempts RENAME TO attempts_v01")
+                    conn.execute("DROP TABLE IF EXISTS attempt_events")
+                    self._create_attempt_tables(conn)
+                    for row in legacy_rows:
+                        created_at = time.time()
+                        conn.execute(
+                            "INSERT INTO attempts(attempt_id,effect_id,decision_id,operation_digest,created_at) VALUES(?,?,?,?,?)",
+                            (
+                                row["attempt_id"],
+                                row["effect_id"],
+                                row["decision_id"],
+                                "legacy:unknown",
+                                created_at,
+                            ),
+                        )
+                        conn.execute(
+                            "INSERT INTO attempt_events(attempt_id,status,error,created_at) VALUES(?,?,?,?)",
+                            (
+                                row["attempt_id"],
+                                row["status"],
+                                row["error"],
+                                created_at,
+                            ),
+                        )
+                    conn.execute("DROP TABLE attempts_v01")
+                else:
+                    self._create_attempt_tables(conn)
+            else:
+                self._create_attempt_tables(conn)
+
+    @staticmethod
+    def _create_attempt_tables(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS attempts (
+                attempt_id TEXT PRIMARY KEY,
+                effect_id TEXT NOT NULL,
+                decision_id TEXT NOT NULL,
+                operation_digest TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS attempt_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT,
+                created_at REAL NOT NULL,
+                FOREIGN KEY(attempt_id) REFERENCES attempts(attempt_id)
+            );
+            """
+        )
 
     def begin_attempt(
         self, requested_attempt_id: str | None, snapshot: FrozenEnvelope
