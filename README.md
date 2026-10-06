@@ -88,4 +88,4 @@ The retained TypeScript Moltbot test suite is upstream application coverage and 
 
 ## License and attribution
 
-The repository preserves upstream history and the MIT license. See [LICENSE](LICENSE). This constrained Cognous Python integration layer does not alter the licensing or audit status of the retained upstream application.
+The Cognous Python execution layer is licensed under [Apache 2.0](LICENSE-APACHE-2.0); see [NOTICE](NOTICE) for scope. The retained upstream Moltbot application remains [MIT-licensed](LICENSE), with all third-party notices preserved. Licensing does not change the reviewed execution boundary or establish an audit of the upstream application.

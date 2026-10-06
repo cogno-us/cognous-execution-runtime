@@ -1,0 +1,12 @@
+Cognous constrained execution layer
+Copyright 2026 Cognous
+https://cogno.us
+
+The Cognous-authored Python safety layer in engine/, its corresponding tests,
+and Cognous-authored safety documentation are licensed under Apache-2.0.
+See LICENSE-APACHE-2.0 and engine/LICENSE.
+
+The retained upstream Moltbot application remains under its existing MIT
+license (LICENSE), Copyright (c) 2025 Peter Steinberger. Other bundled
+components retain their own licenses and notices. This grant does not
+relicense upstream code or third-party contributions.
