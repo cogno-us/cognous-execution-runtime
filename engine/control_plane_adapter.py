@@ -129,6 +129,14 @@ class PinnedControlPlaneExecutor:
         destination: DurableRefundDestination,
         policy: LocalExecutionPolicy,
     ):
+        if workflow is None or getattr(workflow, "resolver", None) is None:
+            raise ValueError(
+                "caller-supplied trusted Control Plane workflow with resolver is required"
+            )
+        if destination is None:
+            raise ValueError("caller-supplied destination is required")
+        if policy is None:
+            raise ValueError("caller-supplied execution policy is required")
         self.workflow = workflow
         self.destination = destination
         self.policy = policy
