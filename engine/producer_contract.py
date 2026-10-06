@@ -61,7 +61,8 @@ def _validate_retained_bindings(
     effects: list[dict[str, Any]],
     attempts: list[dict[str, Any]],
     events: list[dict[str, Any]],
-) -> None:
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+
     operation_digest = frozen.operation.digest
 
     for row in effects:
@@ -95,17 +96,49 @@ def _validate_retained_bindings(
         if str(event.get("attempt_id")) not in attempt_ids:
             raise ValueError("attempt event lacks a retained bound attempt")
 
+    observation = result.observation if isinstance(result.observation, dict) else {}
+    control_plane_evidence = observation.get("control_plane_attempt_evidence")
+    control_plane_attempts: list[dict[str, Any]] = []
+    attempt_identity: dict[str, Any] | None = None
+
     if result.attempt_id is not None:
         matching = [row for row in attempts if row.get("attempt_id") == result.attempt_id]
-        if not matching:
-            raise ValueError("execution result attempt_id has no retained bound attempt")
-    elif result.attempted and result.status not in {"denied"}:
+        if matching:
+            attempt_identity = {
+                "namespace": "executor",
+                "attempt_id": result.attempt_id,
+                "owner": "cogno-us/moltbot-safe",
+            }
+        else:
+            if not isinstance(control_plane_evidence, dict):
+                raise ValueError(
+                    "execution result attempt_id has no retained bound attempt evidence"
+                )
+            if control_plane_evidence.get("attempt_id") != result.attempt_id:
+                raise ValueError("Control Plane attempt evidence identity mismatch")
+            if control_plane_evidence.get("decision_id") != frozen.decision_id:
+                raise ValueError("Control Plane attempt evidence decision binding mismatch")
+            if control_plane_evidence.get("effect_id") != frozen.effect_id:
+                raise ValueError("Control Plane attempt evidence effect binding mismatch")
+            control_plane_attempts.append(copy.deepcopy(control_plane_evidence))
+            attempt_identity = {
+                "namespace": "control_plane",
+                "attempt_id": result.attempt_id,
+                "owner": "cogno-us/cognous-agent-control-plane",
+            }
+    elif result.attempted and result.status not in {"denied", "observed"}:
         raise ValueError("attempted execution result is missing attempt_id")
 
-    if result.status in {"executed", "reconciled", "partial", "observed"} and not effects:
+    observed_state = result.observed_state
+    if result.status in {"executed", "reconciled", "partial"} and observed_state in {
+        "applied", "partial"
+    } and not effects:
         raise ValueError("execution result requires retained destination effect evidence")
+    if result.status == "observed" and observed_state in {"applied", "partial"} and not effects:
+        raise ValueError("historical observation requires retained destination effect evidence")
+    if result.status == "observed" and observed_state in {"absent", "unknown"} and effects:
+        raise ValueError("absence/unknown observation contradicts retained destination effect evidence")
 
-    observation = result.observation if isinstance(result.observation, dict) else {}
     destination_state = observation.get("destination_state")
     if isinstance(destination_state, dict) and destination_state:
         observed_effect = destination_state.get("effect_id")
@@ -130,6 +163,20 @@ def _validate_retained_bindings(
         actual_payload = destination_state.get("payload")
         if actual_payload is not None and actual_payload != frozen.operation.payload():
             raise ValueError("execution observation payload contradicts supplied envelope")
+
+    observed_effect = observation.get("effect_id")
+    if observed_effect is not None and observed_effect != frozen.effect_id:
+        raise ValueError("execution observation effect identity contradicts supplied envelope")
+    observed_state_value = observation.get("state")
+    if observed_state_value is not None and observed_state_value != result.observed_state:
+        raise ValueError("execution observation state contradicts execution result")
+    if result.status == "observed" and result.observed_state in {"absent", "unknown"}:
+        if isinstance(destination_state, dict) and destination_state:
+            raise ValueError(
+                "absence/unknown observation must not fabricate destination state"
+            )
+
+    return attempt_identity, control_plane_attempts
 
 
 def export_execution_artifacts(
@@ -169,7 +216,7 @@ def export_execution_artifacts(
         if row.get("attempt_id") in attempt_ids
     ]
 
-    _validate_retained_bindings(
+    attempt_identity, control_plane_attempts = _validate_retained_bindings(
         frozen,
         result,
         effects=effects,
@@ -214,6 +261,8 @@ def export_execution_artifacts(
         "effects": effects,
         "attempts": attempts,
         "attempt_events": events,
+        "attempt_identity": attempt_identity,
+        "control_plane_attempts": control_plane_attempts,
         "observations": observations,
     }
 
