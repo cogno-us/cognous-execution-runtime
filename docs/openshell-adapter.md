@@ -231,3 +231,9 @@ The earlier Python baseline tests also passed. No live kernel enforcement was ru
 dependency setup failed with `ERR_PNPM_EXOTIC_SUBDEP` for `libsignal` under
 `@whiskeysockets/baileys` (`blockExoticSubdeps`). No security control was disabled.
 The retained TypeScript lint/build/test suites are not reported as passed.
+
+## Adapter change history
+
+- 0.1.0: optional pinned OpenShell synthetic destination, durable environment
+  binding, conservative recovery and opt-in live qualification ([PR #5](https://github.com/cogno-us/moltbot-safe/pull/5)).
+  Thanks @titanicprime for the integration requirements and review boundaries.
