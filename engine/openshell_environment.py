@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import re
 import subprocess
 from dataclasses import asdict, dataclass
@@ -200,22 +201,65 @@ class OpenShellRefundDestination(DurableRefundDestination):
     def _request(snapshot, mode):
         return {"version": ADAPTER_VERSION, "mode": mode, "snapshot": asdict(snapshot)}
 
+    @staticmethod
+    def _validate_observation(snapshot, result):
+        """A copied digest is not evidence that the returned fields agree."""
+        if type(result) is not dict or set(result) != {"effect_id", "state", "destination_state"}:
+            raise PermissionError("invalid observation fields")
+        if type(result["effect_id"]) is not str or result["effect_id"] != snapshot.effect_id:
+            raise PermissionError("observation effect identity mismatch")
+        if type(result["state"]) is not str or result["state"] not in {"absent", "applied", "partial"}:
+            raise PermissionError("invalid observation state")
+        state = result["destination_state"]
+        if type(state) is not dict:
+            raise PermissionError("invalid destination state type")
+        if result["state"] == "absent":
+            if state:
+                raise PermissionError("absent observation contains destination content")
+            return
+        op = snapshot.operation
+        expected_strings = {
+            "effect_id": snapshot.effect_id, "operation_digest": op.digest,
+            "grant_id": op.grant_id, "target": op.target, "unit": op.unit,
+        }
+        if set(state) != set(expected_strings) | {"amount", "payload"}:
+            raise PermissionError("invalid destination fields")
+        for field, expected in expected_strings.items():
+            if type(state[field]) is not str or state[field] != expected:
+                raise PermissionError(f"destination {field} mismatch")
+        amount = state["amount"]
+        # SQLite returns REAL even for an integer request. Numeric equivalence
+        # is intentional here; booleans, strings and non-finite values are not.
+        if type(amount) not in (int, float) or not math.isfinite(amount) or amount != op.amount:
+            raise PermissionError("destination amount mismatch")
+        if type(state["payload"]) is not dict:
+            raise PermissionError("invalid destination payload type")
+        # Canonical JSON also distinguishes bool from int in nested payloads,
+        # unlike Python dictionary equality (True == 1).
+        try:
+            payload_matches = json.dumps(
+                state["payload"], sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            ) == op.payload_json
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise PermissionError("invalid destination payload") from exc
+        if not payload_matches:
+            raise PermissionError("destination payload mismatch")
+
     def observe_bound(self, snapshot):
         self._binding(snapshot)
         try:
             self._inspect(snapshot)
             result = self.cli.invoke(self.config, self._request(snapshot, "observe"))
-            if result.get("effect_id") != snapshot.effect_id or result.get("state") not in {"absent", "applied", "partial"}:
-                raise ValueError("invalid destination observation")
-            if result["state"] != "absent" and result.get("destination_state", {}).get("operation_digest") != snapshot.operation.digest:
-                raise PermissionError("effect content substitution")
+            self._validate_observation(snapshot, result)
             with self._connect() as db:
                 pending = db.execute("SELECT 1 FROM dispatch_intents WHERE effect_id=?", (snapshot.effect_id,)).fetchone()
             if result["state"] == "absent" and pending:
                 result = {"effect_id": snapshot.effect_id, "state": "unknown", "destination_state": {}}
             self._event(snapshot, "destination_observed", result)
             return result
-        except PermissionError:
+        except PermissionError as exc:
+            self._event(snapshot, "observation_rejected", {"reason": str(exc)})
             raise
         except Exception as exc:
             self._event(snapshot, "observation_unavailable", {"error_type": type(exc).__name__})
@@ -257,6 +301,14 @@ class OpenShellRefundDestination(DurableRefundDestination):
     def request_cancel(self, snapshot):
         self._binding(snapshot)
         self._event(snapshot, "cancellation_requested", {})
+        try:
+            # v0.1.2 StopSandboxRequest has only name/workspace/request_id;
+            # there is no expected UUID or revision precondition. Exclusive
+            # gateway administration remains necessary across this check/use.
+            self._inspect(snapshot)
+        except Exception as exc:
+            self._event(snapshot, "cancellation_held", {"error_type": type(exc).__name__})
+            return {"effect_id": snapshot.effect_id, "state": "unknown", "destination_state": {}}
         try:
             self.cli.request_stop(self.config)
             self._event(snapshot, "stop_acknowledged", {})

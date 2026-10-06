@@ -290,3 +290,136 @@ def test_cli_runtime_contract(monkeypatch, tmp_path, mutate):
         with pytest.raises(PermissionError): cli.inspect(config())
     else:
         assert cli.inspect(config())['runtime_evidence'] == info
+
+
+@pytest.mark.parametrize('stage', ['completed', 'restart', 'lost_ack'])
+@pytest.mark.parametrize('field', ['effect_id', 'operation_digest', 'grant_id', 'target', 'amount', 'unit', 'payload'])
+@pytest.mark.parametrize('mutation', ['altered', 'missing', 'wrong_type'])
+def test_contradictory_destination_fields_never_reconcile(tmp_path, stage, field, mutation):
+    from engine.safe_executor import DurableRefundDestination
+    c, cli, d, snap, executor = setup(tmp_path)
+    invoke = cli.invoke
+
+    def tampered(c, request):
+        result = invoke(c, request)
+        if request['mode'] == 'observe' and result['state'] == 'applied':
+            state = result['destination_state']
+            if mutation == 'missing':
+                del state[field]
+            elif mutation == 'wrong_type':
+                state[field] = True if field == 'amount' else []
+            else:
+                state[field] = {'payload': {'refund_reason':'attacker'}, 'amount':999999}.get(field, 'attacker')
+        return result
+
+    if stage == 'lost_ack':
+        cli.failure = 'lost_ack'
+        cli.invoke = tampered
+        first = executor.execute_snapshot(snap)
+        assert first.status == 'unknown' and not first.newly_executed
+        assert first.observed_state == 'unknown'
+        cli.failure = None
+    else:
+        assert executor.execute_snapshot(snap).status == 'executed'
+        cli.invoke = tampered
+    if stage in {'restart', 'lost_ack'}:
+        d = OpenShellRefundDestination(tmp_path/'host', c, cli)
+        executor = LocalDestinationExecutor(d, executor.policy)
+    result = executor.execute_snapshot(snap)
+    assert result.status in {'denied', 'unknown'}
+    assert result.observed_state != 'applied' and not result.newly_executed
+    assert sum(x['mode'] == 'commit' for x in cli.calls) == 1
+    actual = DurableRefundDestination(cli.root).observe_bound(snap)
+    assert actual['destination_state']['target'] == snap.operation.target
+    assert actual['destination_state']['amount'] == snap.operation.amount
+    assert DurableRefundDestination(cli.root).effect_count(snap.operation.grant_id) == 1
+
+
+@pytest.mark.parametrize('failure', ['uuid', 'unavailable', 'missing_uuid'])
+def test_cancel_checks_identity_before_stop(tmp_path, failure):
+    c, cli, d, snap, executor = setup(tmp_path)
+    assert executor.execute_snapshot(snap).status == 'executed'
+    stops = []
+    cli.request_stop = lambda c: stops.append(c.sandbox)
+    if failure == 'uuid':
+        cli.info['id'] = 'replacement-uuid'
+    elif failure == 'missing_uuid':
+        del cli.info['id']
+    else:
+        cli.failure = 'startup'
+    assert d.request_cancel(snap)['state'] == 'unknown'
+    assert stops == []
+
+
+@pytest.mark.parametrize('amount', [True, '50', None, float('nan'), float('inf'), float('-inf')])
+def test_observation_amount_types_and_finiteness(tmp_path, amount):
+    c, cli, d, snap, executor = setup(tmp_path)
+    executor.execute_snapshot(snap)
+    invoke = cli.invoke
+    def altered(c, request):
+        result = invoke(c, request)
+        result['destination_state']['amount'] = amount
+        return result
+    cli.invoke = altered
+    assert executor.execute_snapshot(snap).status == 'denied'
+    assert sum(x['mode']=='commit' for x in cli.calls) == 1
+
+
+@pytest.mark.parametrize('mutation', ['top_effect_missing', 'top_effect_changed', 'state_missing',
+    'destination_missing', 'destination_list', 'absent_with_content', 'payload_bool_for_int'])
+def test_observation_schema_and_nested_payload_types(tmp_path, mutation):
+    op = make_operation(payload={'nested':{'count':1}})
+    c, cli, d, snap, executor = setup(tmp_path, op)
+    executor.execute_snapshot(snap)
+    invoke = cli.invoke
+    def altered(c, request):
+        result = invoke(c, request)
+        if mutation == 'top_effect_missing': del result['effect_id']
+        elif mutation == 'top_effect_changed': result['effect_id'] = 'other'
+        elif mutation == 'state_missing': del result['state']
+        elif mutation == 'destination_missing': del result['destination_state']
+        elif mutation == 'destination_list': result['destination_state'] = []
+        elif mutation == 'absent_with_content': result['state'] = 'absent'
+        else: result['destination_state']['payload']['nested']['count'] = True
+        return result
+    cli.invoke = altered
+    result = executor.execute_snapshot(snap)
+    assert result.status == 'denied' and not result.newly_executed
+    assert sum(x['mode']=='commit' for x in cli.calls) == 1
+
+
+def test_pinned_workflow_cannot_reconcile_copied_digest_with_altered_values(tmp_path):
+    h,p,resolver,workflow,decision,_,_,req = _integrated(tmp_path)
+    c = config()
+    cli = FakeCLI(tmp_path/'sandbox', c)
+    d = OpenShellRefundDestination(tmp_path/'host', c, cli)
+    d.bind(snapshot_envelope(req))
+    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=d, policy=policy(req.operation))
+    assert executor.execute(envelope=req, proposal=p, decision=decision, now=h.NOW).status == 'executed'
+    invoke = cli.invoke
+    def altered(c, request):
+        result = invoke(c, request)
+        result['destination_state'].update(amount=999999, target='attacker')
+        return result
+    cli.invoke = altered
+    restarted = OpenShellRefundDestination(tmp_path/'host', c, cli)
+    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=restarted, policy=policy(req.operation))
+    result = executor.execute(envelope=req, proposal=p, decision=decision, now=h.NOW)
+    assert result.status == 'denied' and not result.newly_executed
+    assert result.observed_state == 'unknown'
+    assert sum(x['mode']=='commit' for x in cli.calls) == 1
+
+
+def test_verified_cancel_stops_once_without_reversing_effect(tmp_path):
+    c, cli, d, snap, executor = setup(tmp_path)
+    executor.execute_snapshot(snap)
+    stops = []
+    stop = cli.request_stop
+    def recording_stop(c):
+        stops.append(c.sandbox_id)
+        stop(c)
+    cli.request_stop = recording_stop
+    assert d.request_cancel(snap)['state'] == 'unknown'
+    assert stops == [c.sandbox_id]
+    cli.info['phase'] = 'Ready'
+    assert d.observe_bound(snap)['state'] == 'applied'

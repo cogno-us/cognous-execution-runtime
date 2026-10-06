@@ -237,3 +237,43 @@ The retained TypeScript lint/build/test suites are not reported as passed.
 - 0.1.0: optional pinned OpenShell synthetic destination, durable environment
   binding, conservative recovery and opt-in live qualification ([PR #5](https://github.com/cogno-us/moltbot-safe/pull/5)).
   Thanks @titanicprime for the integration requirements and review boundaries.
+
+### PR 5 targeted correction pass
+
+Governor review of `559128a786759bfb7271c347d6d3f0c57c874aab` reproduced two
+failures before modification: a contradictory amount with a copied digest was
+reconciled, and cancellation called stop despite substituted or unavailable
+identity. Four focused reproduction cases failed against that reviewed code.
+
+Observation now requires the exact response shape and typed effect/state fields.
+Applied and partial results require effect ID, operation digest, grant ID, target,
+finite numeric amount (never boolean/string), unit and object payload. Each is
+compared with the frozen operation. Canonical payload comparison distinguishes
+nested booleans from numbers; amount allows SQLite's integer-to-REAL conversion.
+Absent results must contain an empty destination object. Missing, malformed or
+contradictory observations cannot reconcile successfully or cause replacement
+execution. Dispatch reservations survive errors, lost acknowledgement and restart.
+Rejected observations are journaled as `observation_rejected`.
+
+Cancellation performs a fresh bound sandbox/configuration inspection **before**
+calling stop. UUID substitution, missing identity or failed inspection records
+`cancellation_held`, returns unknown and issues no stop request. The pinned
+[CLI implementation](https://github.com/NVIDIA/OpenShell/blob/6648bd0c290efbc41ba131ee9831ee45cd431f94/crates/openshell-cli/src/run.rs)
+and [StopSandboxRequest contract](https://github.com/NVIDIA/OpenShell/blob/6648bd0c290efbc41ba131ee9831ee45cd431f94/proto/openshell.proto)
+use name/workspace; `request_id` deduplicates requests and is not an expected
+sandbox UUID. No immutable-ID/conditional stop precondition is available in this
+interface. **The inspection-to-stop race remains**, so exclusive trusted gateway
+administration is still mandatory. Stop acknowledgement never establishes rollback.
+
+The worker image recipe now copies `LICENSE-APACHE-2.0`, `NOTICE`, `LICENSE`
+(retained MIT) and `engine/LICENSE` into the image. The source notices are
+unchanged; the base image retains its own notices. Image construction remains
+unverified because Docker is unavailable.
+
+Correction validation, using the same pinned dependencies and commands above:
+**163 passed, 2 skipped** locally. Coverage includes altered/missing/wrong-type
+fields after completion, restart and lost acknowledgement; non-finite amounts;
+malformed response shapes; nested payload types; actual pinned Control Plane
+reconciliation; and cancellation identity failures with no stop calls. Python
+compilation and `git diff --check` passed. OpenShell transport remains mocked;
+both live qualification tests remain skipped and live enforcement unverified.
