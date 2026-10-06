@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import multiprocessing
@@ -15,6 +16,7 @@ from engine.safe_executor import (
     DurableRefundDestination,
     ExecutionEnvelope,
     ExecutionOperation,
+    ExecutionResult,
     LocalDestinationExecutor,
     LocalExecutionPolicy,
     commitment,
