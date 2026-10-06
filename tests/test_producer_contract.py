@@ -14,7 +14,7 @@ from engine.producer_contract import (
     commitment,
     export_execution_artifacts,
 )
-from engine.safe_executor import EXECUTION_ENVELOPE_VERSION, LocalDestinationExecutor
+from engine.safe_executor import EXECUTION_ENVELOPE_VERSION, LocalDestinationExecutor, snapshot_envelope
 
 
 def operation() -> ExecutionOperation:
@@ -62,7 +62,7 @@ def test_exported_profile_separates_interface_revision_and_provenance(tmp_path):
     op = operation()
     envelope = ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION, "decision-1", "effect-1", op)
     destination = DurableRefundDestination(tmp_path / "state")
-    result = LocalDestinationExecutor(destination, policy(op)).execute(envelope)
+    result = LocalDestinationExecutor(destination, policy(op)).execute_snapshot(snapshot_envelope(envelope))
 
     exported = export_execution_artifacts(
         envelope,
@@ -92,7 +92,7 @@ def test_export_rejects_contradictory_result_binding(tmp_path):
     op = operation()
     envelope = ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION, "decision-1", "effect-1", op)
     destination = DurableRefundDestination(tmp_path / "state")
-    result = LocalDestinationExecutor(destination, policy(op)).execute(envelope)
+    result = LocalDestinationExecutor(destination, policy(op)).execute_snapshot(snapshot_envelope(envelope))
     changed = copy.copy(result)
     object.__setattr__(changed, "effect_id", "other-effect")
     with pytest.raises(ValueError, match="identity contradicts"):
@@ -103,7 +103,7 @@ def test_export_does_not_construct_authority_or_policy(tmp_path):
     op = operation()
     envelope = ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION, "decision-1", "effect-1", op)
     destination = DurableRefundDestination(tmp_path / "state")
-    result = LocalDestinationExecutor(destination, policy(op)).execute(envelope)
+    result = LocalDestinationExecutor(destination, policy(op)).execute_snapshot(snapshot_envelope(envelope))
     exported = export_execution_artifacts(envelope, result, destination)
     assert "resolver" not in exported
     assert "authority_context" not in exported
