@@ -12,6 +12,7 @@ from engine.safe_executor import (
     ExecutionOperation,
     LocalDestinationExecutor,
     commitment,
+    snapshot_envelope,
 )
 
 
@@ -47,7 +48,7 @@ def test_versioned_executor_evidence_profile(tmp_path):
     op=_operation()
     env=ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION,"decision-1","effect-1",op)
     destination=DurableRefundDestination(tmp_path/"state")
-    result=LocalDestinationExecutor(destination,policy_for_operation(op)).execute(env)
+    result=LocalDestinationExecutor(destination,policy_for_operation(op)).execute_snapshot(snapshot_envelope(env))
     exported=export_executor_evidence(
         envelope=env,
         result=result,
