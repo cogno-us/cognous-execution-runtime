@@ -1,3 +1,18 @@
+<!-- cognous-banner:start -->
+```text
+──────────────────────────────────────────────────
+   __________  _______   ______  __  _______
+  / ____/ __ \/ ____/ | / / __ \/ / / / ___/
+ / /   / / / / / __/  |/ / / / / / / /\__ \
+/ /___/ /_/ / /_/ / /|  / /_/ / /_/ /___/ /
+\____/\____/\____/_/ |_/\____/\____//____/
+           CONSTRAINED AGENT EXECUTION
+       g o v e r n e d   b y   d e s i g n
+  github.com/cogno-us/cognous-open-control-stack
+──────────────────────────────────────────────────
+```
+<!-- cognous-banner:end -->
+
 # moltbot-safe
 
 Moltbot Safe is the **single-agent constrained execution boundary** in the Cognous Open Source Stack.
