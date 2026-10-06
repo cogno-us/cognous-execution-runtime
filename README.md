@@ -44,6 +44,14 @@ A persisted historical `authorized` decision is not an execution credential. An 
 
 CI checks out the exact pinned Control Plane and Manifest revisions and executes integration tests against their real Python implementation and refund fixture.
 
+## Executor producer profile 1.0.0
+
+The supported execution boundary exposes `engine.producer_contract` for
+versioned export of envelopes, results, effects, attempts, append-only attempt
+events and observations. The producer profile is separate from repository
+revision provenance and does not construct authority or policy. See
+[docs/executor-producer-profile.md](docs/executor-producer-profile.md).
+
 ## Execution Envelope 0.2.0
 
 At API entry Moltbot Safe deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
