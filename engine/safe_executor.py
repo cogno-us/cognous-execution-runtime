@@ -638,8 +638,8 @@ class LocalDestinationExecutor:
                 error=str(exc),
             )
 
-        if existing["state"] in {"applied", "partial"}:
-            status = "reconciled" if existing["state"] == "applied" else "partial"
+        if existing["state"] in {"applied", "partial", "unknown"}:
+            status = "reconciled" if existing["state"] == "applied" else existing["state"]
             self.destination.transition_attempt(attempt_id, status)
             return ExecutionResult(
                 status,
@@ -656,7 +656,9 @@ class LocalDestinationExecutor:
         try:
             ack = self.destination.commit(snapshot, simulate=simulate)
             observation = ack["observation"]
-            status = "partial" if observation["state"] == "partial" else "executed"
+            status = "partial" if observation["state"] == "partial" else (
+                "reconciled" if ack["duplicate"] else "executed"
+            )
             self.destination.transition_attempt(attempt_id, status)
             return ExecutionResult(
                 status,
@@ -670,7 +672,10 @@ class LocalDestinationExecutor:
                 observation=observation,
             )
         except TimeoutError as exc:
-            observation = self.destination.observe_bound(snapshot)
+            try:
+                observation = self.destination.observe_bound(snapshot)
+            except Exception:
+                observation = {"effect_id": snapshot.effect_id, "state": "unknown", "destination_state": {}}
             self.destination.transition_attempt(attempt_id, "unknown", str(exc))
             return ExecutionResult(
                 "unknown",
@@ -680,7 +685,7 @@ class LocalDestinationExecutor:
                 True,
                 False,
                 observation["state"],
-                True,
+                False,
                 observation=observation,
                 error=str(exc),
             )

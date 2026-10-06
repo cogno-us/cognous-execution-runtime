@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - "engine/**"
+      - "examples/openshell/**"
+      - "docs/openshell-adapter.md"
       - "tests/**"
       - "docs/execution-boundary.md"
       - "docs/control-plane-interface-gap.md"
@@ -11,6 +13,8 @@ on:
   pull_request:
     paths:
       - "engine/**"
+      - "examples/openshell/**"
+      - "docs/openshell-adapter.md"
       - "tests/**"
       - "docs/execution-boundary.md"
       - "docs/control-plane-interface-gap.md"
@@ -62,3 +66,6 @@ jobs:
           MOLTBOT_SAFE_CONTROL_PLANE_ROOT: "pinned/control-plane"
           MOLTBOT_SAFE_MANIFEST_FIXTURE: "pinned/action-manifest/examples/refund_integration_v1_1.manifest.json"
         run: pytest -q tests
+
+      - name: Compile optional OpenShell helpers
+        run: python -m compileall -q engine examples/openshell

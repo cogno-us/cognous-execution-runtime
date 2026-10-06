@@ -60,9 +60,17 @@ A duplicate same-operation delivery is observed/reconciled and reports `newly_ex
 
 Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
+## Optional OpenShell environment
+
+[OpenShell adapter 0.1.0](docs/openshell-adapter.md) adds an opt-in dedicated local
+Docker sandbox destination beneath the same Python Control Plane integration.
+It pins OpenShell v0.1.2, exact operation/configuration identity, and conservative
+recovery. Live enforcement remains unverified in the development environment.
+The existing host-local SQLite path remains the default.
+
 ## Isolation boundary
 
-Implemented for the supported path:
+Implemented for the default host-local path:
 
 - no subprocess execution;
 - no network calls from the destination adapter;
