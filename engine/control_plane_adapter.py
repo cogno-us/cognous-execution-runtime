@@ -273,6 +273,9 @@ class PinnedControlPlaneExecutor:
                 "effect_id": cp_observation.effect_id,
                 "state": cp_observation.state,
                 "destination_state": copy.deepcopy(cp_observation.destination_state),
+                "control_plane_attempt_evidence": cp_attempt.model_dump(
+                    mode="json", exclude_none=False
+                ),
             },
             error=cp_attempt.error,
         )
