@@ -69,7 +69,7 @@ def test_export_rejects_contradictory_result_binding(tmp_path):
     op=_operation()
     env=ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION,"decision-1","effect-1",op)
     destination=DurableRefundDestination(tmp_path/"state")
-    result=LocalDestinationExecutor(destination,policy_for_operation(op)).execute(env)
+    result=LocalDestinationExecutor(destination,policy_for_operation(op)).execute_snapshot(snapshot_envelope(env))
     result.effect_id="other-effect"
     try:
         export_executor_evidence(
