@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from engine.control_plane_adapter import PinnedControlPlaneExecutor
+from engine.producer_contract import export_execution_artifacts
 from engine.safe_executor import (
     EXECUTION_ENVELOPE_VERSION,
     DurableRefundDestination,
@@ -482,3 +483,150 @@ def test_caller_institution_label_cannot_satisfy_trusted_boundary(tmp_path):
     )
     assert result.status == "denied"
     assert destination.observe(decision.effect_id)["state"] == "absent"
+
+
+
+def test_export_historical_absence_observation_without_effect_row(tmp_path):
+    op = make_operation()
+    request = envelope(op, decision_id="decision-absent", effect_id="effect-absent")
+    destination = DurableRefundDestination(tmp_path / "empty-state")
+    observed = LocalDestinationExecutor(
+        destination, policy(op)
+    ).observe_historical(request)
+
+    assert observed.status == "observed"
+    assert observed.observed_state == "absent"
+
+    exported = export_execution_artifacts(request, observed, destination)
+
+    assert exported["execution_result"]["status"] == "observed"
+    assert exported["execution_result"]["observed_state"] == "absent"
+    assert exported["effects"] == []
+    assert exported["attempts"] == []
+    assert exported["attempt_events"] == []
+    assert exported["attempt_identity"] is None
+    assert exported["control_plane_attempts"] == []
+    assert exported["observations"][0]["effect_id"] == "effect-absent"
+    assert exported["observations"][0]["state"] == "absent"
+    assert exported["observations"][0]["destination_state"] == {}
+
+
+def test_export_historical_unknown_observation_without_fabricated_effect(tmp_path):
+    op = make_operation()
+    request = envelope(op, decision_id="decision-unknown", effect_id="effect-unknown")
+    destination = DurableRefundDestination(tmp_path / "empty-state")
+    unknown = ExecutionResult(
+        status="observed",
+        decision_id=request.decision_id,
+        effect_id=request.effect_id,
+        attempt_id=None,
+        attempted=False,
+        acknowledged=False,
+        observed_state="unknown",
+        newly_executed=False,
+        observation={
+            "effect_id": request.effect_id,
+            "state": "unknown",
+            "destination_state": {},
+        },
+    )
+
+    exported = export_execution_artifacts(request, unknown, destination)
+
+    assert exported["effects"] == []
+    assert exported["attempts"] == []
+    assert exported["observations"][0]["state"] == "unknown"
+    assert exported["observations"][0]["destination_state"] == {}
+
+
+def test_pinned_control_plane_reconciliation_export_preserves_attempt_namespaces(tmp_path):
+    h, p, resolver, workflow, decision, destination, executor, request = _integrated(
+        tmp_path
+    )
+
+    first = executor.execute(
+        envelope=request, proposal=p, decision=decision, now=h.NOW
+    )
+    assert first.status == "executed"
+    assert first.attempt_id is not None
+    first_executor_attempt_id = first.attempt_id
+    assert destination.effect_count(decision.binding.grant_id) == 1
+
+    reconciled = executor.execute(
+        envelope=request, proposal=p, decision=decision, now=h.NOW
+    )
+    assert reconciled.status == "reconciled"
+    assert reconciled.newly_executed is False
+    assert reconciled.attempt_id is not None
+    assert reconciled.attempt_id != first_executor_attempt_id
+
+    exported = export_execution_artifacts(request, reconciled, destination)
+
+    assert exported["attempt_identity"] == {
+        "namespace": "control_plane",
+        "attempt_id": reconciled.attempt_id,
+        "owner": "cogno-us/cognous-agent-control-plane",
+    }
+    assert len(exported["control_plane_attempts"]) == 1
+    cp_attempt = exported["control_plane_attempts"][0]
+    assert cp_attempt["attempt_id"] == reconciled.attempt_id
+    assert cp_attempt["decision_id"] == decision.decision_id
+    assert cp_attempt["effect_id"] == decision.effect_id
+
+    executor_attempt_ids = {row["attempt_id"] for row in exported["attempts"]}
+    assert first_executor_attempt_id in executor_attempt_ids
+    assert reconciled.attempt_id not in executor_attempt_ids
+    assert len(exported["effects"]) == 1
+    assert exported["effects"][0]["effect_id"] == decision.effect_id
+    assert destination.effect_count(decision.binding.grant_id) == 1
+
+
+def test_export_rejects_fabricated_control_plane_attempt_reference(tmp_path):
+    h, p, resolver, workflow, decision, destination, executor, request = _integrated(
+        tmp_path
+    )
+    first = executor.execute(
+        envelope=request, proposal=p, decision=decision, now=h.NOW
+    )
+    assert first.status == "executed"
+
+    reconciled = executor.execute(
+        envelope=request, proposal=p, decision=decision, now=h.NOW
+    )
+    assert reconciled.status == "reconciled"
+
+    fabricated = copy.deepcopy(reconciled)
+    fabricated.observation["control_plane_attempt_evidence"]["attempt_id"] = (
+        "fabricated-control-plane-attempt"
+    )
+
+    with pytest.raises(ValueError, match="Control Plane attempt evidence identity mismatch"):
+        export_execution_artifacts(request, fabricated, destination)
+
+
+def test_export_rejects_dangling_unattributed_attempt_reference(tmp_path):
+    op = make_operation()
+    request = envelope(
+        op,
+        decision_id="decision-dangling",
+        effect_id="effect-dangling",
+    )
+    destination = DurableRefundDestination(tmp_path / "empty-state")
+    dangling = ExecutionResult(
+        status="unknown",
+        decision_id=request.decision_id,
+        effect_id=request.effect_id,
+        attempt_id="dangling-attempt",
+        attempted=True,
+        acknowledged=False,
+        observed_state="unknown",
+        newly_executed=False,
+        observation={
+            "effect_id": request.effect_id,
+            "state": "unknown",
+            "destination_state": {},
+        },
+    )
+
+    with pytest.raises(ValueError, match="no retained bound attempt evidence"):
+        export_execution_artifacts(request, dangling, destination)
