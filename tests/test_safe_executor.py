@@ -288,6 +288,7 @@ def _integrated(tmp_path):
         resolver=resolver,
         destination=cp_destination,
         records=records,
+        observation_policy=h.ObservationPolicy(max_age_seconds=60),
     )
     decision = workflow.decide(p, now=h.NOW)
     assert decision.result == "authorized"
@@ -323,6 +324,7 @@ def _integrated(tmp_path):
     destination = DurableRefundDestination(tmp_path / "moltbot-state")
     executor = PinnedControlPlaneExecutor(
         workflow=workflow,
+        observation_clock=lambda: h.NOW,
         destination=destination,
         policy=policy(op),
     )
@@ -598,7 +600,7 @@ def test_export_rejects_fabricated_control_plane_attempt_reference(tmp_path):
     assert reconciled.status == "reconciled"
 
     fabricated = copy.deepcopy(reconciled)
-    fabricated.observation["control_plane_attempt_evidence"]["attempt_id"] = (
+    fabricated.control_plane_evidence["attempt"]["attempt_id"] = (
         "fabricated-control-plane-attempt"
     )
 

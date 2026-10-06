@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 from .safe_executor import (
     DurableRefundDestination,
@@ -13,6 +14,21 @@ from .safe_executor import (
     LocalExecutionPolicy,
     snapshot_envelope,
 )
+
+
+class _ReconciliationCapture:
+    """Per-call capture while forwarding every write to the durable store."""
+
+    def __init__(self, records):
+        self.records = records
+        self.reconciliations = []
+
+    def __getattr__(self, name):
+        return getattr(self.records, name)
+
+    def append_reconciliation(self, value):
+        self.records.append_reconciliation(value)
+        self.reconciliations.append(value)
 
 
 @dataclass
@@ -35,7 +51,9 @@ class ControlPlaneRefundDestinationAdapter:
         policy: LocalExecutionPolicy,
         trusted_institution_id: str,
         trusted_authority_domain: str,
+        observation_clock: Callable[[], datetime],
     ):
+        self.observation_clock = observation_clock
         self.snapshot = snapshot
         self.destination = destination
         self.executor = LocalDestinationExecutor(destination, policy)
@@ -61,12 +79,12 @@ class ControlPlaneRefundDestinationAdapter:
 
         # Construct the pinned Control Plane EffectObservation lazily so this
         # module can still be imported when that package is not installed.
-        from agent_control_plane.bounded import EffectObservation, _iso, _now
+        from agent_control_plane.bounded import EffectObservation, _iso
 
         state = observed["state"]
         return EffectObservation(
             effect_id=effect_id,
-            observed_at=_iso(_now()),
+            observed_at=_iso(self.observation_clock()),
             state=state,
             destination_state=copy.deepcopy(observed["destination_state"]),
         )
@@ -128,6 +146,7 @@ class PinnedControlPlaneExecutor:
         workflow: Any,
         destination: DurableRefundDestination,
         policy: LocalExecutionPolicy,
+        observation_clock: Callable[[], datetime] | None = None,
     ):
         if workflow is None or getattr(workflow, "resolver", None) is None:
             raise ValueError(
@@ -137,6 +156,7 @@ class PinnedControlPlaneExecutor:
             raise ValueError("caller-supplied destination is required")
         if policy is None:
             raise ValueError("caller-supplied execution policy is required")
+        self.observation_clock = observation_clock or (lambda: datetime.now(timezone.utc))
         self.workflow = workflow
         self.destination = destination
         self.policy = policy
@@ -218,16 +238,19 @@ class PinnedControlPlaneExecutor:
             policy=self.policy,
             trusted_institution_id=trusted_institution,
             trusted_authority_domain=trusted_domain,
+            observation_clock=self.observation_clock,
         )
         # Build a fresh workflow view with the same trusted resolver, manifest,
         # durable Control Plane record store and revalidation settings. Do not
         # mutate the caller's workflow destination, which would create a
         # cross-request race.
+        records = _ReconciliationCapture(self.workflow.records)
         workflow = self.workflow.__class__(
             manifest=self.workflow.manifest,
             resolver=self.workflow.resolver,
             destination=adapter,
-            records=self.workflow.records,
+            records=records,
+            observation_policy=self.workflow.observation_policy,
             status_max_age_seconds=self.workflow.status_max_age_seconds,
             identity_max_age_seconds=self.workflow.identity_max_age_seconds,
             mandate_max_age_seconds=self.workflow.mandate_max_age_seconds,
@@ -248,37 +271,55 @@ class PinnedControlPlaneExecutor:
         try:
             cp_attempt, cp_observation = workflow.execute(**kwargs)
         except PermissionError as exc:
-            return self._denied(snapshot, str(exc))
+            result = self._denied(snapshot, str(exc))
+            if records.reconciliations:
+                result.control_plane_evidence = {"reconciliation":
+                    records.reconciliations[-1].model_dump(mode="json", exclude_none=False)}
+            return result
 
         local = adapter.outcome.result
-        if local is not None:
-            return local
-
-        # The Control Plane may reconcile an already-existing effect without
-        # invoking apply(). That is observation/reconciliation, not a new effect.
-        state = cp_observation.state
-        status = "reconciled" if state == "applied" else (
-            "partial" if state == "partial" else "unknown"
-        )
+        # Retain the upstream attempt and validation independently of the local
+        # acknowledgement. A committed effect is not a validated observation.
+        reconciliation = records.reconciliations[-1]
+        evidence = {
+            "attempt": cp_attempt.model_dump(mode="json", exclude_none=False),
+            "reconciliation": reconciliation.model_dump(mode="json", exclude_none=False),
+        }
+        state = cp_observation.state if cp_observation is not None else "unknown"
+        status = (local.status if local is not None else
+                  ("reconciled" if state == "applied" else
+                   "partial" if state == "partial" else "unknown"))
+        if cp_observation is None:
+            status = "unknown"
+        observation = None
+        if cp_observation is not None:
+            observation = cp_observation.model_dump(mode="json", exclude_none=False)
         return ExecutionResult(
             status=status,
             decision_id=snapshot.decision_id,
             effect_id=snapshot.effect_id,
-            attempt_id=cp_attempt.attempt_id,
-            attempted=True,
-            acknowledged=cp_attempt.status == "acknowledged",
+            attempt_id=local.attempt_id if local is not None else cp_attempt.attempt_id,
+            attempted=local.attempted if local is not None else True,
+            acknowledged=local.acknowledged if local is not None else cp_attempt.status == "acknowledged",
             observed_state=state,
-            newly_executed=False,
-            observation={
-                "effect_id": cp_observation.effect_id,
-                "state": cp_observation.state,
-                "destination_state": copy.deepcopy(cp_observation.destination_state),
-                "control_plane_attempt_evidence": cp_attempt.model_dump(
-                    mode="json", exclude_none=False
-                ),
-            },
-            error=cp_attempt.error,
+            newly_executed=local.newly_executed if local is not None else False,
+            observation=observation,
+            control_plane_evidence=evidence,
+            error=cp_attempt.error or (";".join(reconciliation.reasons) or None),
         )
+
+    def reconcile(self, envelope: ExecutionEnvelope, *, now: datetime):
+        """Effect-free reconciliation; absence never grants dispatch permission."""
+        snapshot = snapshot_envelope(envelope)
+        adapter = ControlPlaneRefundDestinationAdapter(
+            snapshot=snapshot, destination=self.destination, policy=self.policy,
+            trusted_institution_id=snapshot.operation.institution_id,
+            trusted_authority_domain=snapshot.operation.authority_domain,
+            observation_clock=self.observation_clock,
+        )
+        workflow = copy.copy(self.workflow)
+        workflow.destination = adapter
+        return workflow.reconcile(snapshot.effect_id, now=now)
 
     def observe_historical(self, envelope: ExecutionEnvelope) -> ExecutionResult:
         """Observe bound durable state without renewing execution authority."""

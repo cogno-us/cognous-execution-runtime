@@ -86,7 +86,7 @@ import engine.producer_contract
 
 assert "tests.test_safe_executor" not in sys.modules
 assert all(not name.startswith("tests.") for name in sys.modules)
-assert engine.producer_contract.EXECUTOR_PRODUCER_PROFILE_VERSION == "1.0.0"
+assert engine.producer_contract.EXECUTOR_PRODUCER_PROFILE_VERSION == "2.0.0"
 """.replace("REPO_ROOT", repr(str(repo_root)))
     completed = subprocess.run(
         [sys.executable, "-c", code],

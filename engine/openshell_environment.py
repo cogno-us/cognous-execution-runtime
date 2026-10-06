@@ -220,6 +220,7 @@ class OpenShellRefundDestination(DurableRefundDestination):
         op = snapshot.operation
         expected_strings = {
             "effect_id": snapshot.effect_id, "operation_digest": op.digest,
+            "state": result["state"],
             "grant_id": op.grant_id, "target": op.target, "unit": op.unit,
         }
         if set(state) != set(expected_strings) | {"amount", "payload"}:

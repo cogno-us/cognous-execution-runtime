@@ -206,7 +206,7 @@ version 0.2.0 and original local SQL effect schema remain unchanged.
 ## Validation record for this change
 
 Locally executed against actual pinned Control Plane source
-`283500652d47a692fb0b99a1172a6d5faffbd9a7` and Manifest fixture
+`2ea9528eeb87e14ff10f05de06473122b9df540f` and Manifest fixture
 `46c950bed37fe3812000895430bc0312d29e37ce`:
 
 ```bash

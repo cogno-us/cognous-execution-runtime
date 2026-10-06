@@ -156,7 +156,7 @@ def test_actual_pinned_control_plane_with_mocked_openshell(tmp_path, mutation):
     cli = FakeCLI(tmp_path/'sandbox', c)
     d = OpenShellRefundDestination(tmp_path/'host', c, cli)
     d.bind(snapshot_envelope(req))
-    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=d, policy=policy(req.operation))
+    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=d, policy=policy(req.operation), observation_clock=lambda: h.NOW)
     grant = resolver.contexts[h.PROFILE]['grant']
     if mutation == 'missing':
         decision = decision.model_copy(update={'decision_id':'missing'})
@@ -394,7 +394,7 @@ def test_pinned_workflow_cannot_reconcile_copied_digest_with_altered_values(tmp_
     cli = FakeCLI(tmp_path/'sandbox', c)
     d = OpenShellRefundDestination(tmp_path/'host', c, cli)
     d.bind(snapshot_envelope(req))
-    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=d, policy=policy(req.operation))
+    executor = PinnedControlPlaneExecutor(workflow=workflow, destination=d, policy=policy(req.operation), observation_clock=lambda: h.NOW)
     assert executor.execute(envelope=req, proposal=p, decision=decision, now=h.NOW).status == 'executed'
     invoke = cli.invoke
     def altered(c, request):
