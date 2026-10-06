@@ -10,7 +10,7 @@ The retained TypeScript Moltbot application is upstream code outside this review
 
 ## Supported authorization-to-effect path
 
-Execution is supported only through the pinned Control Plane's `BoundedAuthorizationWorkflow.execute()` at commit `283500652d47a692fb0b99a1172a6d5faffbd9a7`.
+Execution is supported only through the pinned Control Plane's `BoundedAuthorizationWorkflow.execute()` at commit `2ea9528eeb87e14ff10f05de06473122b9df540f`.
 
 A historical persisted `RuntimeDecision(result="authorized")` is insufficient by itself. Immediately before effect, the pinned workflow re-resolves and rechecks its authorization-critical inputs. Moltbot Safe is invoked only as the bounded destination adapter after those checks pass.
 

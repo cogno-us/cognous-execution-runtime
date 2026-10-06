@@ -20,7 +20,7 @@ from .safe_executor import (
 )
 
 EXECUTOR_PRODUCER_PROFILE_ID = "urn:cognous:profiles:moltbot-safe-executor-producer"
-EXECUTOR_PRODUCER_PROFILE_VERSION = "1.0.0"
+EXECUTOR_PRODUCER_PROFILE_VERSION = "2.0.0"
 SUPPORTED_EXECUTION_ENVELOPE_VERSIONS = (EXECUTION_ENVELOPE_VERSION,)
 
 
@@ -97,8 +97,13 @@ def _validate_retained_bindings(
             raise ValueError("attempt event lacks a retained bound attempt")
 
     observation = result.observation if isinstance(result.observation, dict) else {}
-    control_plane_evidence = observation.get("control_plane_attempt_evidence")
+    control_plane_evidence = result.control_plane_evidence.get("attempt") or observation.get("control_plane_attempt_evidence")
     control_plane_attempts: list[dict[str, Any]] = []
+    if control_plane_evidence:
+        if (control_plane_evidence.get("decision_id") != frozen.decision_id or
+                control_plane_evidence.get("effect_id") != frozen.effect_id):
+            raise ValueError("Control Plane attempt evidence binding mismatch")
+        control_plane_attempts.append(copy.deepcopy(control_plane_evidence))
     attempt_identity: dict[str, Any] | None = None
 
     if result.attempt_id is not None:
@@ -120,7 +125,8 @@ def _validate_retained_bindings(
                 raise ValueError("Control Plane attempt evidence decision binding mismatch")
             if control_plane_evidence.get("effect_id") != frozen.effect_id:
                 raise ValueError("Control Plane attempt evidence effect binding mismatch")
-            control_plane_attempts.append(copy.deepcopy(control_plane_evidence))
+            if control_plane_evidence not in control_plane_attempts:
+                control_plane_attempts.append(copy.deepcopy(control_plane_evidence))
             attempt_identity = {
                 "namespace": "control_plane",
                 "attempt_id": result.attempt_id,
@@ -128,6 +134,20 @@ def _validate_retained_bindings(
             }
     elif result.attempted and result.status not in {"denied", "observed"}:
         raise ValueError("attempted execution result is missing attempt_id")
+
+    reconciliation = result.control_plane_evidence.get("reconciliation")
+    if reconciliation:
+        if reconciliation.get("effect_id") != frozen.effect_id:
+            raise ValueError("Control Plane reconciliation effect binding mismatch")
+        if reconciliation.get("retry_eligible") is not False:
+            raise ValueError("current Control Plane evidence must not confer retry permission")
+        accepted = reconciliation.get("observation_accepted") is True
+        if observation and (not accepted or reconciliation.get("observation") != observation):
+            raise ValueError("rejected or substituted observation cannot enter accepted claims")
+        if not observation and accepted and result.status != "denied":
+            raise ValueError("accepted Control Plane observation missing from result")
+        if not accepted and result.observed_state != "unknown":
+            raise ValueError("rejected observation cannot establish observed state")
 
     observed_state = result.observed_state
     if result.status in {"executed", "reconciled", "partial"} and observed_state in {
@@ -264,6 +284,10 @@ def export_execution_artifacts(
         "attempt_identity": attempt_identity,
         "control_plane_attempts": control_plane_attempts,
         "observations": observations,
+        "control_plane_evidence": copy.deepcopy(result.control_plane_evidence),
+        "rejected_observations": [copy.deepcopy(rec["observation"])]
+            if (rec := result.control_plane_evidence.get("reconciliation", {}))
+            and not rec.get("observation_accepted") and rec.get("observation") else [],
     }
 
 

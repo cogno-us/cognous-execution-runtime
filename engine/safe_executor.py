@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 EXECUTION_ENVELOPE_VERSION = "0.2.0"
-CONTROL_PLANE_COMMIT = "283500652d47a692fb0b99a1172a6d5faffbd9a7"
+CONTROL_PLANE_COMMIT = "2ea9528eeb87e14ff10f05de06473122b9df540f"
 MANIFEST_COMMIT = "46c950bed37fe3812000895430bc0312d29e37ce"
 ALVORADA_COMMIT = "fb3d97938969a89e149e8ff8db2756091d1233fc"
 
@@ -309,8 +309,9 @@ class ExecutionResult:
     acknowledged: bool
     observed_state: str
     newly_executed: bool
-    observation: dict = field(default_factory=dict)
+    observation: dict | None = field(default_factory=dict)
     error: str | None = None
+    control_plane_evidence: dict = field(default_factory=dict)
 
 
 class AttemptIdConflict(RuntimeError):
@@ -500,6 +501,7 @@ class DurableRefundDestination:
             "state": row["state"],
             "destination_state": {
                 "effect_id": row["effect_id"],
+                "state": row["state"],
                 "grant_id": row["grant_id"],
                 "target": row["target"],
                 "amount": row["amount"],
