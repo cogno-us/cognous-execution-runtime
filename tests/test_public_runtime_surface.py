@@ -188,7 +188,9 @@ def test_existing_binding_and_recovery_semantics_remain_intact(tmp_path):
         simulate="crash_after_commit",
     )
     assert first.status == "unknown"
-    assert first.newly_executed is True
+    # Existing lost-ack contract: durable effect may exist while the caller
+    # cannot claim a newly executed acknowledged result.
+    assert first.newly_executed is False
     assert destination.effect_count(op.grant_id) == 1
 
     restarted = DurableRefundDestination(state)
