@@ -9,6 +9,13 @@ from pathlib import Path
 
 import pytest
 
+try:
+    import agent_control_plane.local_authority_effect  # noqa: F401
+except ModuleNotFoundError:
+    pytestmark = pytest.mark.skip(
+        reason="Worker21 atomic profile requires proposed Control Plane local-authority-effect contract"
+    )
+
 from engine.local_authority_effect import (
     AtomicAuthorityEffectDestination,
     AtomicLocalControlPlaneExecutor,
