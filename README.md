@@ -87,9 +87,18 @@ Historical observation is available without renewing authority, but observation 
 
 Worker 21 adds a **proposed opt-in local profile** for synthetic SQLite effects. It is separate from the default `PinnedControlPlaneExecutor` path.
 
-For an opted-in database, one SQLite file becomes authoritative for the local profile's mutable grant, approval, policy and evidence state, exact execution claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders invalidating writes against claim consumption and effect insertion. Trusted time is evaluated after the write transaction is acquired.
+The enforceable path begins with the Control Plane's trusted authority handoff:
+final resolution, coherent active/current snapshot validation and exact claim
+provisioning occur while the source excludes its invalidating writers. After
+that provisioning commits, one SQLite file becomes authoritative for the local
+profile's mutable grant, approval, policy and evidence state, exact execution
+claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders
+invalidating writes against claim consumption and effect insertion. Trusted time
+is evaluated after the write transaction is acquired.
 
-The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement reconciles to the original durable effect; a consumed claim is never reopened automatically.
+The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement reconciles only to the effect bound to that exact claim and
+its transaction-retained operation digest; a consumed claim is never reopened
+automatically.
 
 See [docs/local-authority-effect-profile.md](docs/local-authority-effect-profile.md). This branch is implemented/tested as a proposal, not merged or hub-selected.
 
