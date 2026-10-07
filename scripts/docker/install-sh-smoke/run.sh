@@ -16,11 +16,13 @@ else
 fi
 
 echo "==> Resolve npm versions"
-LATEST_VERSION="$(npm view "$PACKAGE_NAME" version)"
-if [[ -n "$SMOKE_PREVIOUS_VERSION" ]]; then
+LATEST_VERSION="$(timeout 30s npm view "$PACKAGE_NAME" version)"
+if [[ "$SKIP_PREVIOUS" == "1" ]]; then
+  PREVIOUS_VERSION="not-requested"
+elif [[ -n "$SMOKE_PREVIOUS_VERSION" ]]; then
   PREVIOUS_VERSION="$SMOKE_PREVIOUS_VERSION"
 else
-  VERSIONS_JSON="$(npm view "$PACKAGE_NAME" versions --json)"
+  VERSIONS_JSON="$(timeout 30s npm view "$PACKAGE_NAME" versions --json)"
   PREVIOUS_VERSION="$(VERSIONS_JSON="$VERSIONS_JSON" LATEST_VERSION="$LATEST_VERSION" node - <<'NODE'
 const raw = process.env.VERSIONS_JSON || "[]";
 const latest = process.env.LATEST_VERSION || "";
@@ -52,28 +54,50 @@ if [[ "$SKIP_PREVIOUS" == "1" ]]; then
   echo "==> Skip preinstall previous (CLAWDBOT_INSTALL_SMOKE_SKIP_PREVIOUS=1)"
 else
   echo "==> Preinstall previous (forces installer upgrade path)"
-  npm install -g "${PACKAGE_NAME}@${PREVIOUS_VERSION}"
+  timeout 300s npm install -g "${PACKAGE_NAME}@${PREVIOUS_VERSION}"
 fi
 
-echo "==> Run official installer one-liner"
-curl -fsSL "$INSTALL_URL" | bash
+echo "==> Download official installer (60-second limit)"
+INSTALLER_FILE="$(mktemp)"
+trap 'rm -f "$INSTALLER_FILE"' EXIT
+curl -fsSL --connect-timeout 10 --max-time 60 "$INSTALL_URL" -o "$INSTALLER_FILE"
+echo "==> Installer SHA-256"
+sha256sum "$INSTALLER_FILE"
+echo "==> Execute official installer non-interactively (5-minute limit)"
+# Preserve the actual exit code, including timeout 124; never turn a timeout into a pass.
+INSTALLER_STATUS=0
+CI=1 TERM=dumb timeout --kill-after=10s 300s bash "$INSTALLER_FILE" || INSTALLER_STATUS=$?
+if [[ "$INSTALLER_STATUS" -ne 0 ]]; then
+  echo "ERROR: external installer exited with status $INSTALLER_STATUS" >&2
+  if [[ "$INSTALLER_STATUS" -eq 124 || "$INSTALLER_STATUS" -eq 137 ]]; then
+    echo "ERROR: external installer exceeded its bounded execution time" >&2
+  fi
+  exit "$INSTALLER_STATUS"
+fi
 
 echo "==> Verify installed version"
 CLI_NAME="$PACKAGE_NAME"
 if ! command -v "$CLI_NAME" >/dev/null 2>&1; then
-  if command -v "$ALT_PACKAGE_NAME" >/dev/null 2>&1; then
+  if [[ -z "${CLAWDBOT_INSTALL_PACKAGE:-}" ]] && command -v "$ALT_PACKAGE_NAME" >/dev/null 2>&1; then
     CLI_NAME="$ALT_PACKAGE_NAME"
-    LATEST_VERSION="$(npm view "$CLI_NAME" version)"
+    LATEST_VERSION="$(timeout 30s npm view "$CLI_NAME" version)"
     echo "==> Detected alternate CLI: $CLI_NAME"
   else
-    echo "ERROR: neither $PACKAGE_NAME nor $ALT_PACKAGE_NAME is on PATH" >&2
+    echo "ERROR: expected CLI $PACKAGE_NAME is unavailable (legacy fallback: $ALT_PACKAGE_NAME)" >&2
     exit 1
   fi
 fi
 if [[ -n "${CLAWDBOT_INSTALL_LATEST_OUT:-}" ]]; then
   printf "%s" "$LATEST_VERSION" > "$CLAWDBOT_INSTALL_LATEST_OUT"
 fi
-INSTALLED_VERSION="$("$CLI_NAME" --version 2>/dev/null | head -n 1 | tr -d '\r')"
+INSTALLED_VERSION="$(timeout 30s "$CLI_NAME" --version 2>/dev/null | head -n 1 | tr -d '\r')"
+# OpenClaw reports a product label and build revision; compare the version itself.
+if [[ "$CLI_NAME" == "openclaw" ]]; then
+  if [[ "$INSTALLED_VERSION" =~ ^OpenClaw[[:space:]]+([^[:space:]]+)[[:space:]]+\([[:xdigit:]]+\)$ ]]; then
+    INSTALLED_VERSION="${BASH_REMATCH[1]}"
+  fi
+fi
+
 echo "cli=$CLI_NAME installed=$INSTALLED_VERSION expected=$LATEST_VERSION"
 
 if [[ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]]; then
@@ -82,6 +106,6 @@ if [[ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]]; then
 fi
 
 echo "==> Sanity: CLI runs"
-"$CLI_NAME" --help >/dev/null
+timeout 30s "$CLI_NAME" --help >/dev/null
 
 echo "OK"

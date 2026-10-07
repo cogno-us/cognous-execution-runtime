@@ -1,4 +1,4 @@
-# Moltbot Safe — One-Page Overview
+# Cognous Execution Runtime — One-Page Overview
 
 ## Purpose
 
@@ -23,12 +23,12 @@ A valid signature, chain inclusion, message receipt, reasoning instruction or ev
 
 ## Evidence and Limits
 
-The [accepted hub lock](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/component-lock.json) selects this component at `177354e959cc78c59c1a776f018cfbfbf28c927b`. Read the component's [README](../README.md) for version-specific acceptance and the [hub support ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) for the executed scope. Component acceptance is not automatic adoption of newer revisions or production qualification.
+The [accepted hub lock](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/component-lock.json) selects this component at `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`. Read the component's [README](../README.md) for version-specific acceptance and the [hub support ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) for the executed scope. Component acceptance is not automatic adoption of newer revisions or production qualification.
 
-Application restrictions do not establish OS confinement of the whole repository. A sufficiently privileged host process can bypass the Python layer. The separately accepted hub bubblewrap campaign qualifies only its fixed worker and recorded environment, not this application generally. Live OpenShell confinement and logical-intent prevention are not hub-supported.
+Application restrictions do not establish OS confinement of the whole repository. A sufficiently privileged host process can bypass the Python layer. The separately accepted hub bubblewrap campaign qualifies only its fixed worker and recorded environment, not this application generally. Live OpenShell confinement is not established. Atomic local authority/effect and refund-intent ownership are separately selected optional hub profiles, not combined enforcement or production guarantees.
 
 ## Practical Next Step
 
 Choose one bounded example and follow the [README](../README.md). Compare expected and observed results and retain uncertainty. The [business collateral](business-collateral.md) supplies evaluation questions and the component's wider context.
 
-[Cognous](https://cogno.us) · [Source](https://github.com/cogno-us/moltbot-safe) · [All stack components](https://github.com/cogno-us/cognous-open-control-stack). Existing licenses and notices apply.
+[Cognous](https://cogno.us) · [Source](https://github.com/cogno-us/cognous-execution-runtime) · [All stack components](https://github.com/cogno-us/cognous-open-control-stack). Existing licenses and notices apply.

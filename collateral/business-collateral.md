@@ -1,4 +1,4 @@
-# Moltbot Safe — Business Collateral
+# Cognous Execution Runtime — Business Collateral
 
 ## 1. Executive Summary
 
@@ -30,19 +30,19 @@ This is a reference use case. Adopting the format or running the example does no
 
 ## 6. Relationship to the Stack
 
-This component contributes **constrained execution beneath independent current authorization**. The [Cognous Open Control Stack](https://github.com/cogno-us/cognous-open-control-stack) connects declared proposals, independent authority, constrained execution and retained review evidence. Components remain separately owned and versioned; the [selected lock](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/component-lock.json) determines which revisions participate in the supported integration.
+This component contributes **constrained execution beneath independent current authorization**. The [Cognous Open Control Stack](https://github.com/cogno-us/cognous-open-control-stack) connects declared proposals, independent authority, constrained execution and retained review evidence. Components remain separately owned and versioned; the [selected lock](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/component-lock.json) determines which revisions participate in the supported integration.
 
 A valid signature, chain inclusion, message receipt, reasoning instruction or evidence-package digest does not authorize execution. Institutional authority must be supplied and evaluated through the appropriate trusted boundary.
 
 ## 7. What the Evidence Supports
 
-The hub selects executor `177354e959cc78c59c1a776f018cfbfbf28c927b` with producer profile **2.0.0** and Execution Envelope **0.2.0**. This repository's Python CI separately pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the accepted hub tests the repaired persistence generation. Neither pin should be silently substituted for the other. Packaged-image qualification and the readiness package are separately accepted; [the readiness checkpoint](../docs/workstreams/live-openshell-qualification-checkpoint.md) records the actual Docker evidence and blocked live prerequisites.
+The hub selects executor `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac` with producer profile **2.0.0** and Execution Envelope **0.2.0**. This repository's Python CI separately pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the accepted hub qualifies merged Control Plane `d3dadee70bd319812b207389ab1e0f6efe511916`. Neither pin should be silently substituted for the other. Packaged-image qualification and the readiness package are separately accepted; [the readiness checkpoint](../docs/workstreams/live-openshell-qualification-checkpoint.md) records the actual Docker evidence and blocked live prerequisites.
 
-The [accepted hub evidence](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/examples/control-plane-store-adoption/qualification-summary.json) supports bounded synthetic integration at its exact pins. Aggregate test totals do not establish deployment benefit, compliance or independent real-world verification. The [support ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) distinguishes the standard reference, separate protected-worker campaign and unqualified production work.
+The [accepted hub evidence](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/docs/release-status.md) supports bounded synthetic integration at its exact pins. Aggregate test totals do not establish deployment benefit, compliance or independent real-world verification. The [support ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) distinguishes the standard reference, separate protected-worker campaign and unqualified production work.
 
 ## 8. What It Does Not Establish
 
-Application restrictions do not establish OS confinement of the whole repository. A sufficiently privileged host process can bypass the Python layer. The separately accepted hub bubblewrap campaign qualifies only its fixed worker and recorded environment, not this application generally. Live OpenShell confinement and logical-intent prevention are not hub-supported.
+Application restrictions do not establish OS confinement of the whole repository. A sufficiently privileged host process can bypass the Python layer. The separately accepted hub bubblewrap campaign qualifies only its fixed worker and recorded environment, not this application generally. Live OpenShell confinement is not established. Atomic local authority/effect and refund-intent ownership are separately selected optional hub profiles, not combined enforcement or production guarantees.
 
 ## 9. Evaluation Questions
 
@@ -62,6 +62,6 @@ Follow the [README](../README.md) and select one bounded use case. Inspect its i
 
 ## 12. Status and Attribution
 
-This collateral summarizes merged public material at repository `31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d` and the accepted hub baseline `5737267d94d2b445735c95e8480a31de73a2abe8`. It does not anticipate pending branches. The protected-worker result applies only to its recorded Linux/bubblewrap fixture; live OpenShell and logical-intent prevention are not hub-supported at this snapshot.
+This collateral summarizes merged public material at repository `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac` and the accepted hub baseline `649df22a1392af2c4fa77e4c71749c482f82649c`. It does not anticipate pending branches. The protected-worker result applies only to its recorded Linux/bubblewrap fixture; live OpenShell confinement is not established. Separately enabled atomic local authority/effect and refund-intent profiles are merged and hub-selected; they cannot be combined in one database.
 
-[Cognous](https://cogno.us) · [Source repository](https://github.com/cogno-us/moltbot-safe) · [Stack responsibilities](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/architecture.md). Existing licenses and third-party notices remain controlling.
+[Cognous](https://cogno.us) · [Source repository](https://github.com/cogno-us/cognous-execution-runtime) · [Stack responsibilities](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/architecture.md). Existing licenses and third-party notices remain controlling.

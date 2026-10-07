@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import "./test-helpers/fast-coding-tools.js";
 import type { MoltbotConfig } from "../config/config.js";
 import type { ExecApprovalsResolved } from "../infra/exec-approvals.js";
 import { createMoltbotCodingTools } from "./pi-tools.js";

@@ -2,11 +2,86 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      application: ${{ steps.scope.outputs.application }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          installer_only = {
+              ".github/workflows/ci.yml",
+              ".github/workflows/install-smoke.yml",
+              "scripts/test-install-sh-docker.sh",
+              "scripts/docker/install-sh-smoke/run.sh",
+              "scripts/docker/install-sh-nonroot/run.sh",
+              "docs/workstreams/external-installer-smoke-checkpoint.md",
+          }
+          # Exact Python-profile paths are covered by Python safety and Worker21 workflows.
+          installer_only.update({
+              ".github/workflows/worker21-authority-effect.yml",
+              "CHANGELOG.md",
+              "README.md",
+              "collateral/business-collateral.md",
+              "collateral/one-page-overview.md",
+              "docs/local-authority-effect-profile.md",
+              "docs/workstreams/local-authority-effect-checkpoint.md",
+              "engine/atomic_local_control_plane_executor.py",
+              "engine/local_authority_effect.py",
+              "engine/local_authority_effect_recovery.py",
+              "engine/refund_intent.py",
+              "engine/safe_executor.py",
+              "tests/test_local_authority_effect.py",
+              "tests/test_profile_exclusivity.py",
+          })
+          def application_required(paths):
+              return not paths or any(p not in installer_only for p in paths)
+          assert not application_required(["scripts/docker/install-sh-smoke/run.sh"])
+          assert application_required(["src/gateway/server.ts"])
+          assert not application_required(["README.md", "collateral/business-collateral.md", "collateral/one-page-overview.md"])
+          assert application_required(["collateral/business-collateral.md", "src/index.ts"])
+          assert application_required(["pnpm-lock.yaml"])
+          assert application_required(["tests/test_safe_executor.py"])
+          assert application_required(["scripts/docker/install-sh-smoke/run.sh", "src/index.ts"])
+          assert application_required([])
+          base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+          result = subprocess.run(
+              ["git", "diff", "--name-only", "--no-renames", "-z", base, head],
+              capture_output=True,
+          )
+          # Missing history or invalid refs must retain full application coverage.
+          paths = [p for p in result.stdout.decode().split("\0") if p]
+          required = result.returncode != 0 or application_required(paths)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"application={str(required).lower()}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("Application tests: " + ("required" if required else "not applicable: installer/CI or dedicated Python-profile changes") + "\n")
+              out.write("\n".join(paths) + "\n")
+          PY
+
   install-check:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: scope
+    if: ${{ needs.scope.outputs.application == 'true' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,17 +141,30 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
   checks:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ needs.scope.outputs.application == 'true' }}
+    needs: [scope, install-check]
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runtime: node
             task: lint
             command: pnpm lint
           - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=2
+          - runtime: node
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=2
+          - runtime: node
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=2
+          - runtime: node
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=2
           - runtime: node
             task: build
             command: pnpm build
@@ -87,8 +175,17 @@ jobs:
             task: format
             command: pnpm format
           - runtime: bun
-            task: test
-            command: pnpm canvas:a2ui:bundle && bunx vitest run
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=2
+          - runtime: bun
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=2
+          - runtime: bun
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=2
+          - runtime: bun
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=2
           - runtime: bun
             task: build
             command: bunx tsc -p tsconfig.json
@@ -157,10 +254,12 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
+        timeout-minutes: 12
         run: ${{ matrix.command }}
 
   secrets:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -185,7 +284,10 @@ jobs:
           fi
 
   checks-windows:
-    runs-on: blacksmith-4vcpu-windows-2025
+    needs: [scope, checks]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && needs.checks.result != 'skipped' }}
+    timeout-minutes: 30
+    runs-on: windows-2025
     env:
       NODE_OPTIONS: --max-old-space-size=4096
       CLAWDBOT_TEST_WORKERS: 1
@@ -194,14 +296,24 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runtime: node
             task: lint
             command: pnpm lint
           - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
+          - runtime: node
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
+          - runtime: node
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
+          - runtime: node
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
           - runtime: node
             task: build
             command: pnpm build
@@ -273,17 +385,27 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
+        timeout-minutes: 12
         run: ${{ matrix.command }}
 
   checks-macos:
-    if: github.event_name == 'pull_request'
+    needs: [scope, android]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && github.event_name == 'pull_request' }}
+    timeout-minutes: 30
     runs-on: macos-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
-          - task: test
-            command: pnpm test
+          - task: test-1-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
+          - task: test-2-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
+          - task: test-3-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
+          - task: test-4-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -343,15 +465,19 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }}
+        timeout-minutes: 20
         env:
           NODE_OPTIONS: --max-old-space-size=4096
         run: ${{ matrix.command }}
 
   macos-app:
-    if: github.event_name == 'pull_request'
+    needs: [scope, checks-macos]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && github.event_name == 'pull_request' }}
+    timeout-minutes: 30
     runs-on: macos-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - task: lint
@@ -415,9 +541,11 @@ jobs:
           swift --version
 
       - name: Run ${{ matrix.task }}
+        timeout-minutes: 20
         run: ${{ matrix.command }}
   ios:
     if: false # ignore iOS in CI for now
+    timeout-minutes: 30
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -590,9 +718,13 @@ jobs:
           PY
 
   android:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: [scope, checks-windows]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && needs.checks-windows.result != 'skipped' }}
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - task: test
@@ -628,6 +760,7 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: false
+          packages: platform-tools
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

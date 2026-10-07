@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import "./test-helpers/fast-coding-tools.js";
 import { createMoltbotCodingTools } from "./pi-tools.js";
 
 async function withTempDir<T>(prefix: string, fn: (dir: string) => Promise<T>) {

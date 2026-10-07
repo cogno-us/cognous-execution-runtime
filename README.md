@@ -6,86 +6,157 @@
  / /   / / / / / __/  |/ / / / / / / /\__ \
 / /___/ /_/ / /_/ / /|  / /_/ / /_/ /___/ /
 \____/\____/\____/_/ |_/\____/\____//____/
-           CONSTRAINED AGENT EXECUTION
+            COGNOUS EXECUTION RUNTIME
        g o v e r n e d   b y   d e s i g n
   github.com/cogno-us/cognous-open-control-stack
 ──────────────────────────────────────────────────
 ```
 <!-- cognous-banner:end -->
 
-# Moltbot Safe
+# Cognous Execution Runtime
 
-**Constrained execution beneath independent current authorization.**
+Cognous Execution Runtime provides the **single-agent constrained execution boundary** in the Cognous Open Control Stack. Its retained Python package and producer identities continue to use Moltbot Safe names for compatibility.
 
-## Overview
+## Supported runtime
 
-The Python execution layer under engine/ provides the stack's bounded synthetic destination and adapter boundary. The repository also retains the upstream TypeScript Moltbot application; that application is outside the reviewed Cognous Python execution boundary.
+The supported safety-layer runtime is the Python package under `engine/`. The repository also retains a substantial upstream TypeScript Moltbot application and its history. That application is **not** part of this reviewed execution boundary, and this work does not claim to audit or harden the whole upstream application.
 
-**Implementation status:** this README describes merged public reference work. Component acceptance, selection in the hub and execution of a qualification are separate facts. The selected revision for this component is `177354e959cc78c59c1a776f018cfbfbf28c927b`; the [hub lock](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/component-lock.json) is the source of that integration choice.
+The legacy `engine.AgentEngine` is compatibility-only. It validates, permission-checks and logs, but performs no effect and therefore cannot report successful execution.
 
-## Purpose and intended users
+The supported path is:
 
-An authorization record is not proof that an effect was performed, and a timeout is not proof that it was absent. The executor needs exact operation binding, bounded destination behavior and observable recovery state that cannot be replaced by a generated success message.
+```text
+Pinned Control Plane BoundedAuthorizationWorkflow.execute()
+        -> current grant / approval / policy / evidence revalidation
+        -> Moltbot Safe ControlPlaneRefundDestinationAdapter
+        -> strict local execution policy
+        -> durable synthetic SQLite refund
+        -> destination observation / reconciliation
+```
 
-Engineers can inspect the reference contracts and examples; enterprise architecture, security and governance reviewers can examine the boundary and evidence. Evaluate this component for its named responsibility rather than as a complete governance platform.
+A persisted historical `authorized` decision is not an execution credential. An allow decision is not an executed effect. An execution acknowledgement is not independently verified delivery.
 
-## Key features
+## Accepted integration and versioned evidence
 
-| Capability | Implemented or specified responsibility |
-|---|---|
-| **Frozen operation** | Snapshot nested request content before callbacks and bind the effect to that exact operation. |
-| **Strict local policy** | Constrain institution, authority domain, action, adapter, target, amount, unit and effect count. |
-| **SQLite destination** | Serialize same-effect suppression, conflicting-content rejection and cumulative local effect counting. |
-| **Versioned evidence** | Export Execution Envelope 0.2.0 and executor producer profile 2.0.0 with separate attempt/observation history. |
-| **Optional OpenShell path** | Provide a pinned adapter, packaged-worker qualification and readiness tooling, separately from the default host-local destination. |
+The accepted hub lock at [hub PR #31's merge](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/component-lock.json) selects:
 
-## How it works
+- Execution Runtime: `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`.
+- Control Plane: `d3dadee70bd319812b207389ab1e0f6efe511916`.
+- Action Manifest v1.1: `46c950bed37fe3812000895430bc0312d29e37ce`.
+- Institutional Governance: `fb3d97938969a89e149e8ff8db2756091d1233fc`.
 
-The supported path uses the pinned Control Plane workflow to revalidate authority before ControlPlaneRefundDestinationAdapter reaches the SQLite destination. Duplicate delivery of the same operation is reconciled without a second effect. Conflicting content under the same effect ID fails. Unknown acknowledgement, partial delivery and accepted observation remain distinct facts; observed absence never grants retry permission.
+The public `engine.producer_contract` exports executor producer profile **2.0.0** and Execution Envelope **0.2.0**, retaining results, effects, attempts, events and observations. Exports do not grant authority. See [the producer contract](docs/executor-producer-profile.md).
 
-A valid signature, chain inclusion, message receipt, reasoning instruction or evidence-package digest does not authorize execution. Institutional authority must be supplied and evaluated through the appropriate trusted boundary.
+Component workflows and hub qualification are different evidence sets. The legacy [Python safety workflow](.github/workflows/python-safety.yml) pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the [atomic-profile workflow](.github/workflows/worker21-authority-effect.yml) pins reviewed Control Plane head `73e3c65acc47dc43593dcb0420d14032ed410b14`. The hub separately qualifies the merged revisions listed above. Do not substitute one set of test results for another.
 
-## Getting started
+## Execution Envelope 0.2.0
 
-Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) for the selected integrated reference. Component test setup is defined in the [Python safety workflow](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/.github/workflows/python-safety.yml), including exact producer checkouts and environment variables. The [OpenShell adapter guide](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/openshell-adapter.md) describes the opt-in path; do not provision or infer live confinement from mock tests.
+At API entry Moltbot Safe deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
 
-## Evidence and supported scope
+For the single-refund adapter:
 
-The hub selects executor `177354e959cc78c59c1a776f018cfbfbf28c927b` with producer profile **2.0.0** and Execution Envelope **0.2.0**. This repository's Python CI separately pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the accepted hub tests the repaired persistence generation. Neither pin should be silently substituted for the other. Packaged-image qualification and the readiness package are separately accepted; [the readiness checkpoint](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/workstreams/live-openshell-qualification-checkpoint.md) records the actual Docker evidence and blocked live prerequisites.
+- `effects` must be the integer `1` exactly; booleans, zero, negatives, fractions and other counts are rejected;
+- amount must be a finite non-negative `int` or `float`, excluding booleans;
+- the payload commitment must match the frozen payload;
+- effect identity is bound to a digest of the exact frozen operation.
 
-The accepted [hub persistence-generation evidence](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/examples/control-plane-store-adoption/qualification-summary.json) records 915 Python tests in each of two repetitions, 35 matrix entries satisfying their gates and 120 separate mocked OpenShell tests. Those are aggregate hub results, not a per-component test count or a claim of production readiness. Optional behavioral layers receive static checks only. The [support ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) separates implementation, execution and adoption.
+## Trusted institution/domain binding
 
+The pinned Control Plane checks institution and authority domain but does not export them in `AuthorizationBinding`.
 
-### Protected worker and pending intent work
+Until the upstream contract is extended, Moltbot Safe derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
 
-The [accepted hub campaign](https://github.com/cogno-us/cognous-open-control-stack/blob/5737267d94d2b445735c95e8480a31de73a2abe8/docs/workstreams/protected-qualification-checkpoint.md#completed-compatible-host-review) passed twelve isolated cases (six scenarios, two repetitions) and 17 verifier tests on Ubuntu 22.04.5, Linux 6.8.0-1064-azure, bubblewrap 0.6.1 and Python 3.11.16. It is a separate fixed Linux worker fixture with host-owned authority and destination inspection. It does not qualify OpenShell, the TypeScript application, arbitrary agents or real credential isolation. The earlier Ubuntu 24.04 campaign remains blocked in its own evidence.
+The exact requested upstream extension is documented in [docs/control-plane-interface-gap.md](docs/control-plane-interface-gap.md).
 
-[Executor PR #14](https://github.com/cogno-us/moltbot-safe/pull/14) is pending acceptance at this documentation snapshot. Logical-intent prevention is not selected or qualified by the hub. Equivalent intent under different valid proposals can still create multiple effects in the selected reference; effect-ID deduplication is not business-intent deduplication.
+## Destination, attempts and recovery
 
-## Limitations and deployment decisions
+The synthetic destination is SQLite only. It does not touch real accounts, payment services, public chains or production credentials.
 
-Application restrictions do not establish OS confinement of the whole repository. A sufficiently privileged host process can bypass the Python layer. The separately accepted hub bubblewrap campaign qualifies only its fixed worker and recorded environment, not this application generally. Live OpenShell confinement and logical-intent prevention are not hub-supported.
+Each destination submission gets a durable attempt identity. Attempt rows are immutable identities and state changes are append-only attempt events. Reusing an attempt ID is rejected and recorded under a fresh denied attempt; it never overwrites earlier success.
 
-Review original artifacts and their exact source revisions before extending a claim to a new environment. New dependencies, authority sources, destinations or enforcement mechanisms need their own compatibility and qualification. A passing reference case is not a certification of an enterprise deployment.
+SQLite `BEGIN IMMEDIATE` serializes effect deduplication, content binding and cumulative local effect-count checks for processes sharing one database file. The test suite exercises **separate processes**, not only threads.
 
-## Repository guide
+A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state. Partial delivery remains partial/held rather than being blindly re-applied.
 
-Use these sources for details; their historical checkpoints retain the status and scope of the work they recorded:
+Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
-- [docs/executor-producer-profile.md](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/executor-producer-profile.md)
-- [docs/openshell-adapter.md](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/openshell-adapter.md)
-- [docs/workstreams/live-openshell-qualification-checkpoint.md](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/workstreams/live-openshell-qualification-checkpoint.md)
-- [docs/workstreams/executor-observation-checkpoint.md](https://github.com/cogno-us/moltbot-safe/blob/31cd5dc5bc5cc4bf8d3c62e69737ec7a74e1f28d/docs/workstreams/executor-observation-checkpoint.md)
+## Opt-in atomic local authority/effect profile
 
-For a nontechnical introduction, read the [business overview](collateral/business-collateral.md) and [one-page overview](collateral/one-page-overview.md). Both describe this component's role and evidence limits, not additional runtime features.
+Merged executor PR #25 adds an **opt-in local profile** for synthetic SQLite effects. It is separate from the default `PinnedControlPlaneExecutor` path.
 
-## Contributing and attribution
+The enforceable path begins with the Control Plane's trusted authority handoff:
+final resolution, coherent active/current snapshot validation and exact claim
+provisioning occur while the source excludes its invalidating writers. After
+that provisioning commits, one SQLite file becomes authoritative for the local
+profile's mutable grant, approval, policy and evidence state, exact execution
+claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders
+invalidating writes against claim consumption and effect insertion. Trusted time
+is evaluated after the write transaction is acquired.
 
-[Contribution guidance](CONTRIBUTING.md) describes review and validation expectations. Keep evidence-linked claims, preserve historical records and separate proposed features from accepted implementation.
+The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement and later recovery reconcile only when the caller supplies
+the exact original execution envelope: retained claim decision/effect IDs,
+canonical operation commitment, and transaction-retained destination operation
+digest must all match. Substituted decision IDs, target, amount or payload remain
+hold/unknown and are never attributed the historical effect. A consumed claim is
+never reopened automatically.
 
-The Cognous Python execution layer uses [Apache 2.0](LICENSE-APACHE-2.0); the retained upstream application remains [MIT](LICENSE). See [NOTICE](NOTICE) for scope and third-party attribution. No license terms change here.
+See [docs/local-authority-effect-profile.md](docs/local-authority-effect-profile.md). The implementation is merged and selected by the hub. Hub PR #25 exposes it as an explicit optional profile; it does not replace the ordinary revalidation path.
 
----
+## Opt-in refund-intent ownership
+
+[Executor PR #14](https://github.com/cogno-us/cognous-execution-runtime/pull/14) is merged and included in the selected executor revision. The hub exposes `refund-intent` separately from `atomic-authority-effect`. Refund-intent ownership prevents repeated protected effects under its declared stable intent identity, including across distinct authorized operation identities. It is not a general inference engine for recognizing equivalent business meaning.
+
+The intent registry and atomic authority/effect profile remain separate per database; mixed-profile activation is rejected. Combined enforcement is not claimed. The ordinary path's effect-ID deduplication alone does not prevent equivalent business intent under different identities. See [the hub optional-profile guide](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/optional-execution-profiles.md).
+
+## Optional OpenShell environment
+
+[OpenShell adapter 0.1.0](docs/openshell-adapter.md) adds an opt-in dedicated local
+Docker sandbox destination beneath the same Python Control Plane integration.
+It pins OpenShell v0.1.2, exact operation/configuration identity, and conservative
+recovery. Live enforcement remains unverified in the development environment.
+The existing host-local SQLite path remains the default.
+
+## Isolation boundary
+
+Implemented for the default host-local path:
+
+- no subprocess execution;
+- no network calls from the destination adapter;
+- no production credentials;
+- dedicated operator-selected SQLite state root;
+- path traversal and existing symlink-component rejection before path resolution;
+- exact local restrictions on institution, authority domain, adapter, action, target prefix, unit, amount and effect count.
+
+These are application-level restrictions, **not OS confinement**. Filesystem checks still have residual check/use races without an OS-level dirfd/openat-style confinement strategy. A separate host process with sufficient permissions can bypass this Python package. No container, VM, seccomp/AppArmor, network namespace or whole-upstream bypass-resistance claim is made.
+
+## Evidence and deployment scope
+
+Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) and [release ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) for the selected integrated reference and exact qualification evidence. The accepted atomic-profile qualification and optional-profile runners do not establish distributed execution, remote revocation, external-destination atomicity, hostile-host resistance, production identity or production readiness.
+
+The separately accepted [protected-worker campaign](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/workstreams/protected-qualification-checkpoint.md) applies to its fixed Linux/bubblewrap worker and recorded host. It does not qualify this entire repository, arbitrary agents or live OpenShell. Historical checkpoints retain the status of their original observations.
+
+For stakeholder orientation, see the [business overview](collateral/business-collateral.md) and [one-page overview](collateral/one-page-overview.md).
+
+## Tests
+
+Focused and pinned integration tests run with:
+
+```bash
+PYTHONPATH=".:pinned/control-plane/src" \
+MOLTBOT_SAFE_CONTROL_PLANE_ROOT="pinned/control-plane" \
+MOLTBOT_SAFE_MANIFEST_FIXTURE="pinned/action-manifest/examples/refund_integration_v1_1.manifest.json" \
+pytest -q tests
+```
+
+The retained TypeScript Moltbot test suite is upstream application coverage and is reported separately from this Python execution-boundary evidence.
+
+## License and attribution
+
+The Cognous Python execution layer is licensed under [Apache 2.0](LICENSE-APACHE-2.0); see [NOTICE](NOTICE) for scope. The retained upstream Moltbot application remains [MIT-licensed](LICENSE), with all third-party notices preserved. Licensing does not change the reviewed execution boundary or establish an audit of the upstream application.
+
+## Repository locations
+
+See the [repository rename map and compatibility notes](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/repository-renames.md) for current component URLs. Existing package names, schema identifiers and retained producer identities are unchanged.
 
 ## Bibliography
 
@@ -105,15 +176,15 @@ Component links are navigation, not a requirement to install every component. Th
 
 | Component | Responsibility |
 |---|---|
-| [Agent Action Manifest](https://github.com/cogno-us/cognous-agent-action-manifest) | Declare the action before evaluating permission |
-| [Agent Control Plane](https://github.com/cogno-us/cognous-agent-control-plane) | Evaluate proposals against authority and preserve the decision record |
-| [Agent Replay Bundle](https://github.com/cogno-us/cognous-agent-replay-bundle) | Reconstruct what the retained records support |
-| [Agent Governance Evidence Pack](https://github.com/cogno-us/cognous-agent-governance-evidence-pack) | Turn traceable runtime records into reviewable governance evidence |
+| [Cognous Action Manifest](https://github.com/cogno-us/cognous-action-manifest) | Declare the action before evaluating permission |
+| [Cognous Control Plane](https://github.com/cogno-us/cognous-control-plane) | Evaluate proposals against authority and preserve the decision record |
+| [Cognous Replay Bundle](https://github.com/cogno-us/cognous-replay-bundle) | Reconstruct what the retained records support |
+| [Cognous Governance Evidence Pack](https://github.com/cogno-us/cognous-governance-evidence-pack) | Turn traceable runtime records into reviewable governance evidence |
 | [Open Decision Evidence Standard](https://github.com/cogno-us/open-decision-evidence-standard) | Portable decision evidence across system and organizational boundaries |
-| [Alvorada Experimental Workbench](https://github.com/cogno-us/alvorada) | Governed exchange and continuity for a bounded synthetic workflow |
-| [BitRep](https://github.com/cogno-us/bitrep) | Verify issuer signatures under explicit trust assumptions |
-| [The Index](https://github.com/cogno-us/the-index) | A local blockchain reference for claims, evidence commitments and lifecycle history |
-| [Portable Reasoning Protocol v1.0](https://github.com/cogno-us/portable-reasoning-protocol) | Portable instructions for evidence-bounded reasoning |
+| [Cognous Governed Exchange](https://github.com/cogno-us/cognous-governed-exchange) | Governed exchange and continuity for a bounded synthetic workflow |
+| [Cognous Evidence Attestation](https://github.com/cogno-us/cognous-evidence-attestation) | Verify issuer signatures under explicit trust assumptions |
+| [Cognous Evidence Registry](https://github.com/cogno-us/cognous-evidence-registry) | A local blockchain reference for claims, evidence commitments and lifecycle history |
+| [Portable Reasoning Protocol](https://github.com/cogno-us/portable-reasoning-protocol) | Portable instructions for evidence-bounded reasoning |
 | [Research Intelligence Protocol v1.0](https://github.com/cogno-us/research-intelligence-protocol) | Disciplined discovery and cross-domain abstraction, kept separate |
 | [TFA Protocol (S43)](https://github.com/cogno-us/truth-freedom-agency-protocol) | Truth · Freedom · Agency |
-| [Constitutional Governance for Institutions](https://github.com/cogno-us/constitutional-governance-for-institutions) | Alvorada: authority, challenge and correction for institutions |
+| [Cognous Institutional Governance](https://github.com/cogno-us/cognous-institutional-governance) | Alvorada: authority, challenge and correction for institutions |
