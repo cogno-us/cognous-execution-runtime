@@ -1,0 +1,43 @@
+name: Worker21 local authority-effect profile
+on:
+  pull_request:
+    paths:
+      - 'engine/local_authority_effect.py'
+      - 'engine/atomic_local_control_plane_executor.py'
+      - 'engine/local_authority_effect_recovery.py'
+      - 'engine/safe_executor.py'
+      - 'engine/refund_intent.py'
+      - 'tests/test_profile_exclusivity.py'
+      - 'tests/test_refund_intent.py'
+      - 'tests/test_local_authority_effect.py'
+      - 'docs/local-authority-effect-profile.md'
+      - 'docs/workstreams/local-authority-effect-checkpoint.md'
+      - '.github/workflows/worker21-authority-effect.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: cogno-us/cognous-control-plane
+          ref: 73e3c65acc47dc43593dcb0420d14032ed410b14
+          path: pinned/control-plane
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -q pytest pydantic
+      - name: Run profile compatibility batch
+        timeout-minutes: 2
+        env:
+          PYTHONPATH: .:pinned/control-plane/src
+        run: python -m pytest -q tests/test_profile_exclusivity.py tests/test_refund_intent.py
+      - name: Run focused atomic profile suite
+        timeout-minutes: 2
+        env:
+          PYTHONPATH: .:pinned/control-plane/src
+        run: python -m pytest -q tests/test_local_authority_effect.py

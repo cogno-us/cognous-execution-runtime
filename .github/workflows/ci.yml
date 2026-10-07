@@ -35,6 +35,21 @@ jobs:
               "scripts/docker/install-sh-nonroot/run.sh",
               "docs/workstreams/external-installer-smoke-checkpoint.md",
           }
+          # Exact Python-profile paths are covered by Python safety and Worker21 workflows.
+          installer_only.update({
+              ".github/workflows/worker21-authority-effect.yml",
+              "CHANGELOG.md",
+              "README.md",
+              "docs/local-authority-effect-profile.md",
+              "docs/workstreams/local-authority-effect-checkpoint.md",
+              "engine/atomic_local_control_plane_executor.py",
+              "engine/local_authority_effect.py",
+              "engine/local_authority_effect_recovery.py",
+              "engine/refund_intent.py",
+              "engine/safe_executor.py",
+              "tests/test_local_authority_effect.py",
+              "tests/test_profile_exclusivity.py",
+          })
           def application_required(paths):
               return not paths or any(p not in installer_only for p in paths)
           assert not application_required(["scripts/docker/install-sh-smoke/run.sh"])
@@ -54,7 +69,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"application={str(required).lower()}\n")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
-              out.write("Application tests: " + ("required" if required else "not applicable: installer/CI-only changes") + "\n")
+              out.write("Application tests: " + ("required" if required else "not applicable: installer/CI or dedicated Python-profile changes") + "\n")
               out.write("\n".join(paths) + "\n")
           PY
 
