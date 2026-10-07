@@ -79,19 +79,39 @@ Read-only opt-in readiness gate. It:
 - requires an explicit `--authorized-isolated-environment` operator assertion;
 - requires an existing dedicated client HOME, existing sandbox config and
   immutable `name@sha256` worker image;
-- when those inputs exist, uses the accepted adapter's read-only gateway/sandbox
-  inspection path to capture actual runtime, sandbox UUID, effective policy,
-  configuration-admission revisions, resource settings, workdir and worker argv;
+- **does not contact the gateway at all unless**
+  `--authorized-isolated-environment` is explicitly supplied;
+- when opt-in and all local inputs exist, uses the accepted adapter's read-only
+  gateway/sandbox inspection path;
+- applies the same accepted adapter comparison semantics for sandbox UUID, name,
+  workspace, `Ready` phase, policy source/version/revision/content, and
+  configuration-admission state/policy hash/config/provider revisions;
 - returns exit code 2 when prerequisites are blocked;
-- never provisions, executes, stops, deletes or mutates a sandbox.
+- never constructs `OpenShellRefundDestination`, creates destination records,
+  dispatches effects, provisions, stops, deletes or mutates a sandbox.
 
-A configuration file alone is not treated as enforcement evidence.
+The readiness record separates two evidence classes:
+
+1. **Observed live values** returned by `gateway info` / `sandbox get`:
+   gateway runtime, sandbox UUID/name/workspace/readiness, effective policy and
+   configuration-admission state/revisions.
+2. **Configured or provisioning-attributed values** retained from the trusted
+   config/creation receipt: image digest, CPU/memory request, worker argv and
+   workdir.
+
+OpenShell v0.1.2 `sandbox get` does not independently attest the configured
+image, CPU/memory limits, worker argv or workdir. A `ready` result therefore
+does **not** establish those identities independently. A configuration file alone
+is not treated as enforcement evidence.
 
 ### Focused tests and readiness-only CI
 
 `tests/test_live_openshell_readiness.py` checks immutable image syntax,
-fail-closed prerequisite handling, explicit authorization and inspected-image
-binding.
+fail-closed prerequisite handling, no gateway contact without explicit opt-in,
+wrong/missing sandbox UUID, name/workspace/readiness changes, policy mismatch,
+missing/rejected/mismatched configuration admission, configured versus observed
+evidence separation, provisioning-attributed image mismatch, and a valid matching
+inspection.
 
 `.github/workflows/live-openshell-readiness.yml` runs those focused tests and
 the non-mutating readiness gate. It is **readiness CI only**. A passing workflow
@@ -157,6 +177,20 @@ PYTHONPATH=. python tools/live_openshell_readiness.py \
 A nonzero result is a blocker. Required missing/failed checks must not be
 overridden or relabeled as qualified.
 
+A zero/ready result establishes only that:
+
+- the operator explicitly opted into an isolated qualification environment;
+- the pinned CLI and usable local Docker runtime are available;
+- the dedicated client HOME/config and immutable image assertion are supplied;
+- the supplied image digest matches the provisioning-attributed config value;
+- the live gateway reports the pinned healthy local Docker runtime; and
+- the observed sandbox identity/readiness/effective policy/admission state matches
+  the trusted config using the accepted adapter semantics.
+
+It does **not** independently observe the actual sandbox image, CPU/memory limits,
+worker executable or workdir, and it does not establish any execution or
+confinement claim.
+
 ### 5. Run the existing opt-in live tests
 
 ```bash
@@ -205,11 +239,14 @@ missing or skipped required cases cannot produce a qualified result.
 Machine-readable evidence must retain:
 
 - source, dependency and OpenShell revisions;
-- immutable image manifest digest;
+- immutable image manifest digest, labeled as configured/provisioning-attributed
+  unless independently established by some separately reviewed mechanism;
 - CLI binary SHA-256;
-- sandbox UUID/name/workspace;
-- effective policy plus policy/config/provider revisions;
-- worker argv, workdir, CPU/memory settings and operation commitment;
+- observed sandbox UUID/name/workspace;
+- observed effective policy plus policy/config/provider revisions;
+- configured/provisioning-attributed worker argv, workdir and CPU/memory settings,
+  never mislabeled as observed by the pinned API;
+- operation commitment when a later live execution harness actually runs effects;
 - commands, UTC timestamps and exit codes;
 - decision/effect/attempt identities with executor and Control Plane namespaces
   kept separate;
