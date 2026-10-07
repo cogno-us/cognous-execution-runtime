@@ -536,6 +536,13 @@ class DurableRefundDestination:
         payload_json = op.payload_json
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='authority_effect_profile_v1'"
+            ).fetchone():
+                conn.execute("ROLLBACK")
+                raise PermissionError(
+                    "authority-effect-profile destination requires atomic claim execution"
+                )
             self._check_commit_profile(conn, snapshot)
             existing = conn.execute(
                 "SELECT operation_digest,state FROM effects WHERE effect_id = ?",

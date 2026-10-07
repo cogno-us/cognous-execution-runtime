@@ -83,6 +83,30 @@ A duplicate same-operation delivery is observed/reconciled and reports `newly_ex
 
 Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
+## Opt-in atomic local authority/effect profile
+
+Worker 21 adds a **proposed opt-in local profile** for synthetic SQLite effects. It is separate from the default `PinnedControlPlaneExecutor` path.
+
+The enforceable path begins with the Control Plane's trusted authority handoff:
+final resolution, coherent active/current snapshot validation and exact claim
+provisioning occur while the source excludes its invalidating writers. After
+that provisioning commits, one SQLite file becomes authoritative for the local
+profile's mutable grant, approval, policy and evidence state, exact execution
+claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders
+invalidating writes against claim consumption and effect insertion. Trusted time
+is evaluated after the write transaction is acquired.
+
+The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement and later recovery reconcile only when the caller supplies
+the exact original execution envelope: retained claim decision/effect IDs,
+canonical operation commitment, and transaction-retained destination operation
+digest must all match. Substituted decision IDs, target, amount or payload remain
+hold/unknown and are never attributed the historical effect. A consumed claim is
+never reopened automatically.
+
+See [docs/local-authority-effect-profile.md](docs/local-authority-effect-profile.md). This branch is implemented/tested as a proposal, not merged or hub-selected.
+
+Refund-intent PR #14 is merged. Its registry and this authority/effect profile remain separate per database; mixed-profile activation is rejected. Combined enforcement is not claimed.
+
 ## Optional OpenShell environment
 
 [OpenShell adapter 0.1.0](docs/openshell-adapter.md) adds an opt-in dedicated local

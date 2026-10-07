@@ -73,6 +73,10 @@ claim remains consumed even if the caller crashes before performing any effect.
         self.path = destination.path
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            # Activation is serialized with other profile activation on this database.
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                            "AND name='authority_effect_profile_v1'").fetchone():
+                raise PermissionError("intent profile cannot share an authority-effect database")
             initialized = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
                                        "AND name='refund_intent_registry_v1'").fetchone()
             claims_exist = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
