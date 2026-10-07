@@ -6,7 +6,7 @@
  / /   / / / / / __/  |/ / / / / / / /\__ \
 / /___/ /_/ / /_/ / /|  / /_/ / /_/ /___/ /
 \____/\____/\____/_/ |_/\____/\____//____/
-           CONSTRAINED AGENT EXECUTION
+            COGNOUS EXECUTION RUNTIME
        g o v e r n e d   b y   d e s i g n
   github.com/cogno-us/cognous-open-control-stack
 ──────────────────────────────────────────────────
