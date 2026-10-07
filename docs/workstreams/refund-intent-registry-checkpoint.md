@@ -61,9 +61,16 @@ profile, and existing envelope/profile versions remain unchanged.
 - Local integration: Control Plane `248d899634d9db3518e831bc7ab568a48733f825`,
   Manifest `46c950bed37fe3812000895430bc0312d29e37ce`. Existing CI tests its own older
   supported Control Plane pin; that outcome must be checked independently.
-- Repository-wide Node lint/tests previously failed during dependency bootstrap
-  with `ERR_PNPM_EXOTIC_SUBDEP` on existing git-based libsignal. No dependency or
-  supply-chain policy was changed. No Node gate pass is claimed.
+- The initial local Node bootstrap used the environment's pnpm 11 fallback and
+  rejected existing git-based libsignal. Installing the repository-pinned pnpm
+  10.23.0 completed the frozen dependency install without dependency or policy
+  changes. Full Node lint passes (2,516 files, zero warnings/errors).
+- Linux and Windows CI timed out in the workspace-path test's first invocation,
+  which loaded unrelated plugins; timeout cleanup then disrupted the next test's
+  working directory. The suite now imports the existing `fast-coding-tools`
+  isolation helper used by neighboring suites. All six real filesystem/exec
+  assertions remain, with unchanged timeouts. Focused local validation passes all
+  six tests (69 ms test time); final-head cross-platform CI remains required.
 
 ## Remaining acceptance
 
