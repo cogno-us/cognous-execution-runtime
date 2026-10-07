@@ -60,3 +60,23 @@ Worker 20 PR #11 is merged at
 silently consume it as runtime authority. Its record remains non-authorizing and
 is referenced only through optional opaque linkage fields pending a separately
 reviewed integration.
+
+
+## Hardened validation checkpoint
+
+At hardened head `1e84d01c3861a94f6d512a651e95b3606ffefe66`:
+
+- Worker21 focused run `37640305700`: **19 passed**, zero failures/skips.
+- Existing Python safety boundary run `37640305792`: **223 passed, 21 skipped**.
+  The skips are profile tests under the intentionally older accepted Control
+  Plane used by that legacy workflow, not reclassified passes.
+- Workflow Sanity and the OpenShell worker-image qualification also completed
+  successfully at this head.
+
+The focused suite retains the earlier successful transaction, separate-process
+concurrency, shared-budget and crash-boundary tests while adding governor
+regressions for non-active projections, exact reconciliation binding and
+deterministic expiry while waiting for the SQLite transaction boundary.
+
+This result precedes this evidence-only checkpoint commit. Final PR-head
+validation is recorded separately in the PR handoff.
