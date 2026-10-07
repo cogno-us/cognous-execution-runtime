@@ -13,9 +13,9 @@
 ```
 <!-- cognous-banner:end -->
 
-# moltbot-safe
+# Cognous Execution Runtime
 
-Moltbot Safe is the **single-agent constrained execution boundary** in the Cognous Open Source Stack.
+Cognous Execution Runtime is the **single-agent constrained execution boundary** in the Cognous Open Source Stack.
 
 ## Supported runtime
 
@@ -28,7 +28,7 @@ The supported path is:
 ```text
 Pinned Control Plane BoundedAuthorizationWorkflow.execute()
         -> current grant / approval / policy / evidence revalidation
-        -> Moltbot Safe ControlPlaneRefundDestinationAdapter
+        -> Cognous Execution Runtime ControlPlaneRefundDestinationAdapter
         -> strict local execution policy
         -> durable synthetic SQLite refund
         -> destination observation / reconciliation
@@ -38,8 +38,8 @@ A persisted historical `authorized` decision is not an execution credential. An 
 
 ## Pinned integration baseline
 
-- Agent Control Plane: `cogno-us/cognous-control-plane` at `283500652d47a692fb0b99a1172a6d5faffbd9a7`
-- Agent Action Manifest v1.1: `cogno-us/cognous-action-manifest` at `46c950bed37fe3812000895430bc0312d29e37ce`
+- Cognous Control Plane: `cogno-us/cognous-control-plane` at `283500652d47a692fb0b99a1172a6d5faffbd9a7`
+- Cognous Action Manifest v1.1: `cogno-us/cognous-action-manifest` at `46c950bed37fe3812000895430bc0312d29e37ce`
 - Alvorada Authority Context 0.1.0: `cogno-us/cognous-institutional-governance` at `fb3d97938969a89e149e8ff8db2756091d1233fc`
 
 CI checks out the exact pinned Control Plane and Manifest revisions and executes integration tests against their real Python implementation and refund fixture.
@@ -54,7 +54,7 @@ revision provenance and does not construct authority or policy. See
 
 ## Execution Envelope 0.2.0
 
-At API entry Moltbot Safe deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
+At API entry Cognous Execution Runtime deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
 
 For the single-refund adapter:
 
@@ -67,7 +67,7 @@ For the single-refund adapter:
 
 The pinned Control Plane checks institution and authority domain but does not export them in `AuthorizationBinding`.
 
-Until the upstream contract is extended, Moltbot Safe derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
+Until the upstream contract is extended, Cognous Execution Runtime derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
 
 The exact requested upstream extension is documented in [docs/control-plane-interface-gap.md](docs/control-plane-interface-gap.md).
 
