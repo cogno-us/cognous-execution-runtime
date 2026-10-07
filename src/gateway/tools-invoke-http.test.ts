@@ -9,6 +9,24 @@ import { resetTestPluginRegistry, setTestPluginRegistry, testState } from "./tes
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import { CONFIG_PATH } from "../config/config.js";
 
+
+// These HTTP routing tests own their plugin registry. Loading installed plugins
+// both replaces that fixture and makes startup depend on unrelated plugin imports.
+vi.mock("./server-plugins.js", async () => {
+  const { requireActivePluginRegistry } = await import("../plugins/runtime.js");
+  return {
+    loadGatewayPlugins: ({ baseMethods }: { baseMethods: string[] }) => {
+      const pluginRegistry = requireActivePluginRegistry();
+      return {
+        pluginRegistry,
+        gatewayMethods: Array.from(
+          new Set([...baseMethods, ...Object.keys(pluginRegistry.gatewayHandlers)]),
+        ),
+      };
+    },
+  };
+});
+
 installGatewayTestHooks({ scope: "suite" });
 
 beforeEach(() => {
@@ -200,6 +218,12 @@ describe("POST /tools/invoke", () => {
 
       expect(res.status).toBe(200);
       expect(pluginHandler).not.toHaveBeenCalled();
+
+      // Prove the handler is installed, rather than passing on an empty registry.
+      const pluginResponse = await fetch(`http://127.0.0.1:${port}/fixture-plugin`);
+      expect(pluginResponse.status).toBe(418);
+      expect(await pluginResponse.text()).toBe("plugin");
+      expect(pluginHandler).toHaveBeenCalledTimes(1);
     } finally {
       await server.close();
       resetTestPluginRegistry();
