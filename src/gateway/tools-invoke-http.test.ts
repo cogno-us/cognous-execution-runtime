@@ -9,7 +9,6 @@ import { resetTestPluginRegistry, setTestPluginRegistry, testState } from "./tes
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
 import { CONFIG_PATH } from "../config/config.js";
 
-
 // These HTTP routing tests own their plugin registry. Loading installed plugins
 // both replaces that fixture and makes startup depend on unrelated plugin imports.
 vi.mock("./server-plugins.js", async () => {
