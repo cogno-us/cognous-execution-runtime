@@ -322,7 +322,7 @@ def test_lost_ack_reconciles_original_effect_and_never_reopens_claim(tmp_path):
     assert len(effect_rows(destination)) == 1
 
     reopened = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
-    recovery = reopened.reconcile_claim(claim.claim_id, env.effect_id)
+    recovery = reopened.reconcile_claim(claim.claim_id, snapshot_envelope(env))
     assert recovery["status"] == "applied"
     assert recovery["retry_eligible"] is False
     again = AtomicLocalControlPlaneExecutor(
@@ -362,12 +362,12 @@ def test_reconcile_rejects_effect_from_another_claim_and_wrong_operation(tmp_pat
             ),
         )
 
-    wrong_effect = destination.reconcile_claim(claim_a.claim_id, "effect-b")
+    wrong_effect = destination.reconcile_claim(claim_a.claim_id, snapshot_envelope(dataclasses.replace(env_a, effect_id="effect-b")))
     assert wrong_effect["status"] == "hold"
     assert wrong_effect["retry_eligible"] is False
     assert wrong_effect["reason"] == "claim_effect_binding_mismatch"
 
-    correct = destination.reconcile_claim(claim_a.claim_id, env_a.effect_id)
+    correct = destination.reconcile_claim(claim_a.claim_id, snapshot_envelope(env_a))
     assert correct["status"] == "applied"
     assert correct["effect_id"] == env_a.effect_id
     assert correct["operation_digest"] == snapshot_envelope(env_a).operation.digest
@@ -379,10 +379,72 @@ def test_reconcile_rejects_effect_from_another_claim_and_wrong_operation(tmp_pat
             "UPDATE effects SET operation_digest=? WHERE effect_id=?",
             ("sha256:" + "c" * 64, env_a.effect_id),
         )
-    wrong_operation = destination.reconcile_claim(claim_a.claim_id, env_a.effect_id)
+    wrong_operation = destination.reconcile_claim(claim_a.claim_id, snapshot_envelope(env_a))
     assert wrong_operation["status"] == "hold"
     assert wrong_operation["retry_eligible"] is False
     assert wrong_operation["reason"] == "retained_effect_operation_binding_mismatch"
+
+
+@pytest.mark.parametrize("mutation", ["decision_id", "target", "amount", "payload"])
+def test_executor_reconcile_rejects_substituted_envelope_with_original_effect_id(tmp_path, mutation):
+    _, env, destination, claim = setup_atomic(tmp_path)
+    executor = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    )
+    executed = executor.execute(envelope=env, claim_id=claim.claim_id)
+    assert executed.status == "executed"
+
+    if mutation == "decision_id":
+        substituted = dataclasses.replace(env, decision_id="decision-substituted")
+        expected = "claim_decision_binding_mismatch"
+    elif mutation == "target":
+        substituted = dataclasses.replace(
+            env,
+            operation=dataclasses.replace(
+                env.operation, target="urn:cognous:synthetic-account:substituted"
+            ),
+        )
+        expected = "claim_operation_binding_mismatch"
+    elif mutation == "amount":
+        substituted = dataclasses.replace(
+            env, operation=dataclasses.replace(env.operation, amount=51.0)
+        )
+        expected = "claim_operation_binding_mismatch"
+    else:
+        from engine.safe_executor import commitment
+        payload = {"reason": "substituted", "effect_no": 1}
+        substituted = dataclasses.replace(
+            env,
+            operation=dataclasses.replace(
+                env.operation,
+                payload=payload,
+                payload_commitment=commitment(payload),
+            ),
+        )
+        expected = "claim_operation_binding_mismatch"
+
+    recovered = executor.reconcile(claim_id=claim.claim_id, envelope=substituted)
+    assert recovered.status == "observed"
+    assert recovered.observed_state == "unknown"
+    assert recovered.observation["status"] == "hold"
+    assert recovered.observation["reason"] == expected
+    assert recovered.observation["retry_eligible"] is False
+
+
+def test_executor_reconcile_preserves_exact_original_envelope_recovery(tmp_path):
+    _, env, destination, claim = setup_atomic(tmp_path)
+    executor = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    )
+    executed = executor.execute(envelope=env, claim_id=claim.claim_id)
+    assert executed.status == "executed"
+
+    recovered = executor.reconcile(claim_id=claim.claim_id, envelope=env)
+    assert recovered.status == "observed"
+    assert recovered.observed_state == "applied"
+    assert recovered.observation["status"] == "applied"
+    assert recovered.observation["effect_id"] == env.effect_id
+    assert recovered.observation["operation_digest"] == snapshot_envelope(env).operation.digest
 
 
 def test_provision_rejects_non_active_projected_statuses(tmp_path):
@@ -534,7 +596,7 @@ def test_process_termination_transaction_boundaries(tmp_path, stage, expected_cl
     reopened = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
     assert reopened.claim_state(claim.claim_id) == expected_claim
     assert len(effect_rows(reopened)) == expected_effects
-    recovery = reopened.reconcile_claim(claim.claim_id, env.effect_id)
+    recovery = reopened.reconcile_claim(claim.claim_id, snapshot_envelope(env))
     assert recovery["retry_eligible"] is False
     if expected_effects:
         assert recovery["status"] == "applied"
