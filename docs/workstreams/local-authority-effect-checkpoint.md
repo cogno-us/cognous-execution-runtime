@@ -80,3 +80,26 @@ deterministic expiry while waiting for the SQLite transaction boundary.
 
 This result precedes this evidence-only checkpoint commit. Final PR-head
 validation is recorded separately in the PR handoff.
+
+
+## Recovery-envelope substitution hardening
+
+Recovery now consumes the supplied frozen execution envelope rather than only
+`claim_id` plus `effect_id`. Before `applied` or `partial` can be
+reported, it verifies:
+
+- supplied decision ID equals the retained claim decision ID;
+- supplied effect ID equals the retained claim effect ID;
+- the canonical supplied operation commitment equals the claim's committed
+  operation;
+- the supplied frozen operation digest equals the digest retained
+  transactionally when the claim was consumed; and
+- the durable destination effect row carries that same retained digest.
+
+A mismatch returns `hold` and the executor exposes `observed_state=unknown`
+with an explicit reason. Historical execution is not attributed to the caller's
+substituted operation.
+
+Focused regressions cover changed decision ID, target, amount and payload while
+retaining the original effect ID, plus successful recovery of the exact original
+envelope. Earlier claim/effect and retained-digest corruption tests remain.
