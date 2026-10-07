@@ -36,7 +36,7 @@ else
 fi
 CLI_NAME="$PACKAGE_NAME"
 CMD_PATH="$(command -v "$CLI_NAME" || true)"
-if [[ -z "$CMD_PATH" ]]; then
+if [[ -z "$CMD_PATH" && -z "${CLAWDBOT_INSTALL_PACKAGE:-}" ]]; then
   CLI_NAME="$ALT_PACKAGE_NAME"
   CMD_PATH="$(command -v "$CLI_NAME" || true)"
 fi
@@ -44,7 +44,7 @@ if [[ -z "$CMD_PATH" && -x "$HOME/.npm-global/bin/$PACKAGE_NAME" ]]; then
   CLI_NAME="$PACKAGE_NAME"
   CMD_PATH="$HOME/.npm-global/bin/$PACKAGE_NAME"
 fi
-if [[ -z "$CMD_PATH" && -x "$HOME/.npm-global/bin/$ALT_PACKAGE_NAME" ]]; then
+if [[ -z "$CMD_PATH" && -z "${CLAWDBOT_INSTALL_PACKAGE:-}" && -x "$HOME/.npm-global/bin/$ALT_PACKAGE_NAME" ]]; then
   CLI_NAME="$ALT_PACKAGE_NAME"
   CMD_PATH="$HOME/.npm-global/bin/$ALT_PACKAGE_NAME"
 fi

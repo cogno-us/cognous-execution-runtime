@@ -17,3 +17,14 @@ workspace. Shell syntax is checked locally; GitHub CI must validate execution.
 The job tests a published third-party installer, not the PR's built package.
 
 PRP is outside this workstream. Worker 21 runtime and hub pins are unchanged.
+
+## Follow-up after run 37654389072
+
+The noninteractive installer completed and installed OpenClaw 2026.9.8. The
+harness then failed because it expected clawdbot/moltbot. The workflow now
+explicitly selects the upstream `openclaw` package, and the Docker wrapper
+forwards that selection to both root and non-root checks. An explicit package
+selection cannot fall back to another product. Exact version equality and CLI
+help execution remain mandatory; this checks the external upstream installer,
+not the Cognous build. Shell syntax can be checked locally; the revised Docker
+execution remains pending CI. No accepted component pins are advanced.

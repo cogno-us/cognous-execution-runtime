@@ -78,12 +78,12 @@ fi
 echo "==> Verify installed version"
 CLI_NAME="$PACKAGE_NAME"
 if ! command -v "$CLI_NAME" >/dev/null 2>&1; then
-  if command -v "$ALT_PACKAGE_NAME" >/dev/null 2>&1; then
+  if [[ -z "${CLAWDBOT_INSTALL_PACKAGE:-}" ]] && command -v "$ALT_PACKAGE_NAME" >/dev/null 2>&1; then
     CLI_NAME="$ALT_PACKAGE_NAME"
     LATEST_VERSION="$(timeout 30s npm view "$CLI_NAME" version)"
     echo "==> Detected alternate CLI: $CLI_NAME"
   else
-    echo "ERROR: neither $PACKAGE_NAME nor $ALT_PACKAGE_NAME is on PATH" >&2
+    echo "ERROR: expected CLI $PACKAGE_NAME is unavailable (legacy fallback: $ALT_PACKAGE_NAME)" >&2
     exit 1
   fi
 fi
