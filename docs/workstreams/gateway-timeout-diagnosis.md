@@ -25,3 +25,15 @@ is pending the focused three-platform run; no timeout was increased.
 
 Scoped lint: zero warnings/errors. Local live tests remain unavailable due to
 network interface enumeration restrictions. Existing assertions are preserved.
+
+## Independent OS workflows
+
+The matrix workflow is replaced by gateway-test-linux.yml, gateway-test-macos.yml
+and gateway-test-windows.yml. Each has its own result, concurrency group and logs;
+there are no dependencies between OS jobs. Each runs only the gateway HTTP file
+with one worker and a four-minute test-step limit. These are focused tests, not
+full-repository CI. Linux retains Bun; macOS and Windows retain Node.
+
+At head cae5603e856511e9bf36de23764472120f5ff00e, run 37665832785 reported
+Linux success, macOS success and Windows failure. The split does not reclassify
+that failure or claim a Windows repair. Source assertions and limits are unchanged.
