@@ -536,6 +536,7 @@ class DurableRefundDestination:
         payload_json = op.payload_json
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            self._check_commit_profile(conn, snapshot)
             existing = conn.execute(
                 "SELECT operation_digest,state FROM effects WHERE effect_id = ?",
                 (snapshot.effect_id,),
@@ -578,6 +579,13 @@ class DurableRefundDestination:
         if simulate in {"lost_ack", "crash_after_commit"}:
             raise TimeoutError("synthetic acknowledgement unavailable after durable commit")
         return {"duplicate": False, "observation": self.observe_bound(snapshot)}
+
+    def _check_commit_profile(self, conn, snapshot: FrozenEnvelope) -> None:
+        # Opting a database into intent ownership disables its legacy write path.
+        # Current authorization is still the responsibility of the trusted host.
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='refund_intent_registry_v1'").fetchone():
+            raise PermissionError("intent-profile destination requires bound dispatch")
 
 
 class LocalDestinationExecutor:

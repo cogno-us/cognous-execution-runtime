@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from engine.refund_intent import RefundIntent, RefundIntentRegistry
+from engine.refund_intent import IntentRefundDestination, RefundIntent, RefundIntentRegistry
 from engine.safe_executor import DurableRefundDestination, snapshot_envelope
 from test_safe_executor import envelope, make_operation
 
@@ -160,7 +160,7 @@ def test_absence_does_not_release_original_before_late_commit(tmp_path):
     assert not r.reserve(i, replace(s, effect_id='replacement')).newly_reserved
     assert not r.mark_dispatch_started(i, s)
     # Simulates the already-running original, not a registry-authorized retry.
-    d.commit(s)
+    DurableRefundDestination.commit(IntentRefundDestination(d, i), s)
     assert d.effect_count(s.operation.grant_id) == 1
     assert rows(d) == [('effect-1', 1)]
 
@@ -193,3 +193,183 @@ def test_key_encoding_and_validation():
         replace(a, request_id=' ').key
     with pytest.raises(ValueError):
         replace(a, effect_class='transfer').key
+
+
+def test_profile_blocks_legacy_and_unregistered_dispatch(tmp_path):
+    d, r, i, s = fixture(tmp_path)
+    r.provision(i, s)
+    with pytest.raises(PermissionError, match='requires bound dispatch'):
+        d.commit(s)
+    with pytest.raises(PermissionError):
+        IntentRefundDestination(d, replace(i, request_id='fake')).commit(s)
+    assert d.effect_count(s.operation.grant_id) == 0
+
+
+def test_missing_registry_tables_fail_closed_without_recreation(tmp_path):
+    d, r, i, s = fixture(tmp_path)
+    r.provision(i, s)
+    with sqlite3.connect(d.path) as conn:
+        conn.execute('DROP TABLE refund_intent_claims_v1')
+    with pytest.raises(sqlite3.OperationalError):
+        IntentRefundDestination(d, i).commit(s)
+    with pytest.raises(PermissionError, match='incomplete intent schema'):
+        RefundIntentRegistry(d)
+
+
+def test_paused_original_can_commit_but_replan_cannot(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    d, r, i, s = fixture(tmp_path)
+    r.provision(i, s)
+    entered, release = threading.Event(), threading.Event()
+    original = DurableRefundDestination.commit
+
+    def pause(self, snapshot, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return original(self, snapshot, **kwargs)
+
+    monkeypatch.setattr(DurableRefundDestination, 'commit', pause)
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(IntentRefundDestination(d, i).commit, s)
+        try:
+            assert entered.wait(10)
+            assert d.observe(s.effect_id)['state'] == 'absent'
+            with pytest.raises(PermissionError, match='original effect'):
+                IntentRefundDestination(d, i).commit(replace(s, effect_id='new'))
+            with pytest.raises(PermissionError, match='hold without retry'):
+                IntentRefundDestination(d, i).commit(s)
+        finally:
+            release.set()
+        assert future.result()['observation']['state'] == 'applied'
+    assert d.effect_count(s.operation.grant_id) == 1
+
+
+def integrated_profile(tmp_path):
+    from test_safe_executor import _integrated
+    h, p, resolver, workflow, _, d, executor, req = _integrated(tmp_path)
+    manifest = workflow.manifest
+    manifest['actions'][0]['effect_limits']['max_effects'] = 3
+    p = p.model_copy(update={'manifest_digest': h.commitment(manifest)})
+    context = resolver.contexts[p.authority_context_ref]
+    context['requirement']['permissions'][0]['max_effects'] = 3
+    context['grant']['permissions'][0]['max_effects'] = 3
+    executor.policy = replace(executor.policy, max_effects=3)
+    intent = RefundIntent(req.operation.institution_id, req.operation.authority_domain,
+                          p.payload['customer_id'], 'domain-request-1')
+    registry = RefundIntentRegistry(d)
+
+    def authorize(proposal):
+        ref = context['grant']['approval_refs'][0]
+        digest = h.commitment(proposal.model_dump(mode='json', exclude_none=False))
+        resolver.approvals[ref] = resolver.approvals[ref].model_copy(update={'proposal_commitment': digest})
+        decision = workflow.decide(proposal, now=h.NOW)
+        assert decision.result == 'authorized', decision.reasons
+        op = replace(req.operation, manifest_digest=proposal.manifest_digest,
+                     proposal_commitment=digest, effective_max_effects=3,
+                     payload=proposal.payload, payload_commitment=proposal.payload_commitment,
+                     amount=proposal.amount, target=proposal.target, adapter_id=proposal.adapter_id)
+        request = replace(req, decision_id=decision.decision_id, effect_id=decision.effect_id, operation=op)
+        return decision, request
+
+    return h, p, resolver, workflow, d, executor, intent, registry, authorize
+
+
+@pytest.mark.parametrize('same_intent', [True, False])
+def test_independently_approved_replan(tmp_path, same_intent):
+    h, p, resolver, workflow, d, executor, i, registry, authorize = integrated_profile(tmp_path)
+    first_decision, first = authorize(p)
+    registry.provision(i, snapshot_envelope(first))
+    result = executor.execute(envelope=first, proposal=p, decision=first_decision, now=h.NOW, refund_intent=i)
+    assert result.newly_executed, result
+    p2 = p.model_copy(update={'correlation_id': 'another-case'})
+    decision, second = authorize(p2)
+    assert decision.effect_id != first_decision.effect_id
+    chosen = i if same_intent else replace(i, request_id='distinct-domain-request')
+    if not same_intent:
+        registry.provision(chosen, snapshot_envelope(second))
+    result2 = executor.execute(envelope=second, proposal=p2, decision=decision, now=h.NOW, refund_intent=chosen)
+    assert result2.newly_executed is (not same_intent), result2
+    assert d.effect_count(first.operation.grant_id) == (1 if same_intent else 2)
+    if same_intent:
+        assert d.observe(second.effect_id)['state'] == 'absent'
+        assert first.effect_id in (result2.error or '')
+        assert result2.control_plane_evidence['reconciliation']['retry_eligible'] is False
+
+
+@pytest.mark.parametrize('scenario', ['revoked', 'no_intent', 'lost_ack', 'partial'])
+def test_profile_authority_and_recovery(tmp_path, scenario):
+    h, p, resolver, workflow, d, executor, i, registry, authorize = integrated_profile(tmp_path)
+    decision, request = authorize(p)
+    registry.provision(i, snapshot_envelope(request))
+    if scenario == 'revoked':
+        resolver.statuses[request.operation.grant_id].status = 'revoked'
+    kwargs = {} if scenario == 'no_intent' else {'refund_intent': i}
+    if scenario in ('lost_ack', 'partial'):
+        kwargs['simulate'] = scenario
+    result = executor.execute(envelope=request, proposal=p, decision=decision, now=h.NOW, **kwargs)
+    if scenario in ('revoked', 'no_intent'):
+        assert not result.newly_executed
+        assert rows(d) == []
+        assert d.effect_count(request.operation.grant_id) == 0
+    else:
+        assert rows(d) == [(request.effect_id, 1)]
+        assert d.effect_count(request.operation.grant_id) == 1
+        assert result.control_plane_evidence['reconciliation']['retry_eligible'] is False
+        again = executor.execute(envelope=request, proposal=p, decision=decision, now=h.NOW, refund_intent=i)
+        assert not again.newly_executed
+        assert d.effect_count(request.operation.grant_id) == 1
+
+
+def commit_competitor(path, intent, snapshot, barrier, queue):
+    destination = DurableRefundDestination(path)
+    barrier.wait(timeout=15)
+    try:
+        result = IntentRefundDestination(destination, intent).commit(snapshot)
+        queue.put(result['observation']['state'])
+    except PermissionError:
+        queue.put('held')
+
+
+def test_concurrent_destination_dispatch_has_one_effect(tmp_path):
+    d, r, i, s = fixture(tmp_path)
+    r.provision(i, s)
+    ctx = multiprocessing.get_context('spawn')
+    barrier, queue = ctx.Barrier(4), ctx.Queue()
+    processes = [ctx.Process(target=commit_competitor,
+                 args=(str(tmp_path), i, replace(s, effect_id=f'effect-{n}'), barrier, queue))
+                 for n in range(4)]
+    for p in processes:
+        p.start()
+    results = [queue.get(timeout=20) for p in processes]
+    for p in processes:
+        p.join(20)
+        assert p.exitcode == 0
+    assert sorted(results) == ['applied', 'held', 'held', 'held']
+    with sqlite3.connect(d.path.as_uri() + '?mode=ro', uri=True) as conn:
+        effects = conn.execute('SELECT effect_id FROM effects').fetchall()
+    assert len(effects) == 1
+    evidence = r.export_intent(i)
+    assert evidence['original_effect_id'] == effects[0][0]
+    assert evidence['dispatch_started'] and not evidence['retry_eligible']
+    assert evidence['authority_established_by_registry'] is False
+
+
+def test_no_guessed_migration_of_existing_effects(tmp_path):
+    d = DurableRefundDestination(tmp_path)
+    s = snapshot_envelope(envelope())
+    d.commit(s)
+    with pytest.raises(PermissionError, match='no inferred backfill'):
+        RefundIntentRegistry(d)
+    assert d.effect_count(s.operation.grant_id) == 1
+
+
+def test_unclaimed_export_cannot_imply_authorization(tmp_path):
+    d, r, i, s = fixture(tmp_path)
+    r.provision(i, s)
+    evidence = r.export_intent(i)
+    assert evidence['original_effect_id'] is None
+    assert not evidence['dispatch_started']
+    assert not evidence['retry_eligible']
+    assert not evidence['authority_established_by_registry']
+    assert rows(d) == []

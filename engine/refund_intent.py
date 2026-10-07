@@ -1,8 +1,8 @@
-"""Opt-in synthetic intent registry; not yet an execution authorization path.
+"""Opt-in synthetic intent registry and destination ownership enforcement.
 
 Only trusted host code may provision intents or access this database. Reservation
 does not authorize execution. The Control Plane and destination must enforce the
-binding before this primitive can support an end-to-end prevention claim.
+binding. This is not authentication of an external domain service.
 """
 
 from __future__ import annotations
@@ -51,10 +51,11 @@ def business_commitment(intent: RefundIntent, snapshot: FrozenEnvelope) -> str:
     if (op.institution_id != intent.institution_id
             or op.authority_domain != intent.authority_domain
             or payload.get("customer_id") != intent.customer_id
-            or op.action_id != intent.effect_class):
+            or op.action_id not in {"refund.issue", "urn:cognous:action:refund-issue-routine-v1"}):
         raise PermissionError("intent scope does not match operation")
     return commitment({
-        "intent": intent.key, "target": op.target, "adapter_id": op.adapter_id,
+        "intent": intent.key, "action_id": op.action_id,
+        "target": op.target, "adapter_id": op.adapter_id,
         "amount": op.amount, "unit": op.unit, "payload": payload,
         "effects": op.effects,
     })
@@ -65,13 +66,22 @@ class RefundIntentRegistry:
 
 No release, expiry, reassignment or retry operation exists. A consumed dispatch
 claim remains consumed even if the caller crashes before performing any effect.
-The destination's legacy commit API is NOT wired to this registry yet.
+    Creating the registry opts this database out of legacy unbound writes.
 """
 
     def __init__(self, destination: DurableRefundDestination):
         self.path = destination.path
         with self._connect() as conn:
-            conn.executescript("""
+            conn.execute("BEGIN IMMEDIATE")
+            initialized = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                       "AND name='refund_intent_registry_v1'").fetchone()
+            claims_exist = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                        "AND name='refund_intent_claims_v1'").fetchone()
+            if bool(initialized) != bool(claims_exist):
+                raise PermissionError("incomplete intent schema; refuse ownership reconstruction")
+            if not initialized and conn.execute("SELECT 1 FROM effects LIMIT 1").fetchone():
+                raise PermissionError("intent profile requires an empty destination; no inferred backfill")
+            schema = """
                 CREATE TABLE IF NOT EXISTS refund_intent_registry_v1 (
                     intent_key TEXT PRIMARY KEY,
                     business_digest TEXT NOT NULL
@@ -83,7 +93,11 @@ The destination's legacy commit API is NOT wired to this registry yet.
                     dispatch_started INTEGER NOT NULL DEFAULT 0
                         CHECK(dispatch_started IN (0,1))
                 );
-            """)
+            """
+            for statement in schema.split(";"):
+                if statement.strip():
+                    conn.execute(statement)
+            conn.execute("COMMIT")
 
     @contextmanager
     def _connect(self):
@@ -163,3 +177,57 @@ The destination's legacy commit API is NOT wired to this registry yet.
                              "WHERE intent_key=?", (intent.key,))
             conn.execute("COMMIT")
         return started
+
+    def export_intent(self, intent: RefundIntent) -> dict:
+        """Read-only sidecar evidence, not an authorization or Replay profile."""
+        with self._connect() as conn:
+            conn.execute("BEGIN")
+            row = conn.execute(
+                "SELECT r.business_digest,c.effect_id,c.operation_digest,c.dispatch_started "
+                "FROM refund_intent_registry_v1 r LEFT JOIN refund_intent_claims_v1 c "
+                "ON r.intent_key=c.intent_key WHERE r.intent_key=?", (intent.key,)).fetchone()
+            if row is None:
+                raise PermissionError("unregistered intent")
+            evidence = {"profile": PROFILE, "intent_key": json.loads(intent.key),
+                        "business_digest": row["business_digest"],
+                        "original_effect_id": row["effect_id"],
+                        "original_operation_digest": row["operation_digest"],
+                        "dispatch_started": bool(row["dispatch_started"]),
+                        "retry_eligible": False,
+                        "authority_established_by_registry": False}
+        return evidence
+
+
+class IntentRefundDestination(DurableRefundDestination):
+    """Per-request binding used only after current Control Plane authorization.
+
+    Host code, database administration and direct SQL are trusted. This class is
+    a synthetic in-process boundary, not confinement against hostile host code.
+    """
+
+    def __init__(self, destination: DurableRefundDestination, intent: RefundIntent):
+        self.root, self.path = destination.root, destination.path
+        self.intent = intent
+        # Do not create/repair profile tables on the execution path.
+        self.registry = RefundIntentRegistry.__new__(RefundIntentRegistry)
+        self.registry.path = self.path
+
+    def commit(self, snapshot: FrozenEnvelope, *, simulate: str | None = None) -> dict:
+        claim = self.registry.reserve(self.intent, snapshot)
+        if (claim.original_effect_id != snapshot.effect_id
+                or claim.original_operation_digest != snapshot.operation.digest):
+            raise PermissionError("intent already owned by original effect: "
+                                  + claim.original_effect_id)
+        if not self.registry.mark_dispatch_started(self.intent, snapshot):
+            raise PermissionError("original dispatch already started; hold without retry: "
+                                  + claim.original_effect_id)
+        return super().commit(snapshot, simulate=simulate)
+
+    def _check_commit_profile(self, conn, snapshot: FrozenEnvelope) -> None:
+        self.registry._registered(conn, self.intent, snapshot)
+        row = conn.execute("SELECT * FROM refund_intent_claims_v1 WHERE intent_key=?",
+                           (self.intent.key,)).fetchone()
+        if (row is None or row["effect_id"] != snapshot.effect_id
+                or row["operation_digest"] != snapshot.operation.digest
+                or row["dispatch_started"] != 1):
+            raise PermissionError("destination does not retain original dispatch ownership")
