@@ -123,6 +123,7 @@ def make_claim(env, *, claim_id="claim-1", budget_id="budget-1", max_effects=1,
     authority_state = {
         "grant_id": snap.operation.grant_id,
         "grant_revision": snap.operation.grant_revision,
+        "grant_status": "active",
         "requirement_commitment": "sha256:" + "3" * 64,
         "approvals": approval_state,
         "policies": policy_state,
@@ -139,6 +140,7 @@ def make_claim(env, *, claim_id="claim-1", budget_id="budget-1", max_effects=1,
         "principal": snap.operation.principal,
         "grant_id": snap.operation.grant_id,
         "grant_revision": snap.operation.grant_revision,
+        "grant_status": "active",
         "manifest_id": snap.operation.manifest_id,
         "manifest_version": snap.operation.manifest_version,
         "manifest_digest": snap.operation.manifest_digest,
@@ -330,6 +332,78 @@ def test_lost_ack_reconciles_original_effect_and_never_reopens_claim(tmp_path):
     assert len(effect_rows(reopened)) == 1
 
 
+
+def test_reconcile_rejects_effect_from_another_claim(tmp_path):
+    _, env_a, destination, claim_a = setup_atomic(tmp_path, claim_id="claim-a", budget_id="budget-a")
+    executor = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env_a.operation)
+    )
+    first = executor.execute(envelope=env_a, claim_id=claim_a.claim_id)
+    assert first.status == "executed"
+
+    env_b = envelope(effect_no=2, effect_id="effect-b", grant="urn:cognous:grant:b")
+    claim_b = make_claim(env_b, claim_id="claim-b", budget_id="budget-b")
+    destination.provision_claim(claim_b)
+    second = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env_b.operation)
+    ).execute(envelope=env_b, claim_id=claim_b.claim_id)
+    assert second.status == "executed"
+
+    wrong = destination.reconcile_claim(claim_a.claim_id, env_b.effect_id)
+    assert wrong["status"] == "hold"
+    assert wrong["retry_eligible"] is False
+    assert wrong["reason"] == "claim_effect_binding_mismatch"
+
+    correct = destination.reconcile_claim(claim_a.claim_id, env_a.effect_id)
+    assert correct["status"] == "applied"
+    assert correct["effect_id"] == env_a.effect_id
+    assert correct["operation_digest"] == snapshot_envelope(env_a).operation.digest
+
+
+def test_provision_rejects_non_active_projected_statuses(tmp_path):
+    env = envelope()
+    destination = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
+
+    approval_claim = make_claim(env, claim_id="approval-bad")
+    raw = approval_claim.model_dump(mode="json", exclude_none=False)
+    raw["approval_state"][0]["status"] = "revoked"
+    from agent_control_plane.bounded import commitment
+    raw["approval_state_commitment"] = commitment(raw["approval_state"])
+    authority = {
+        "grant_id": raw["grant_id"],
+        "grant_revision": raw["grant_revision"],
+        "grant_status": raw["grant_status"],
+        "requirement_commitment": raw["requirement_commitment"],
+        "approvals": raw["approval_state"],
+        "policies": raw["policy_state"],
+        "evidence": raw["evidence_state"],
+    }
+    raw["authority_state_commitment"] = commitment(authority)
+    protected = {k: v for k, v in raw.items() if k != "claim_commitment"}
+    raw["claim_commitment"] = commitment(protected)
+    with pytest.raises(PermissionError, match="approval projection is not active"):
+        destination.provision_claim(raw)
+
+    policy_claim = make_claim(env, claim_id="policy-bad")
+    raw2 = policy_claim.model_dump(mode="json", exclude_none=False)
+    raw2["policy_state"][0]["status"] = "superseded"
+    raw2["policy_state_commitment"] = commitment(raw2["policy_state"])
+    authority2 = {
+        "grant_id": raw2["grant_id"],
+        "grant_revision": raw2["grant_revision"],
+        "grant_status": raw2["grant_status"],
+        "requirement_commitment": raw2["requirement_commitment"],
+        "approvals": raw2["approval_state"],
+        "policies": raw2["policy_state"],
+        "evidence": raw2["evidence_state"],
+    }
+    raw2["authority_state_commitment"] = commitment(authority2)
+    protected2 = {k: v for k, v in raw2.items() if k != "claim_commitment"}
+    raw2["claim_commitment"] = commitment(protected2)
+    with pytest.raises(PermissionError, match="policy projection is not active"):
+        destination.provision_claim(raw2)
+
+
 def _execute_process(root, env, claim_id, start, queue, attempt_id):
     destination = AtomicAuthorityEffectDestination(root, clock=lambda: BASE)
     start.wait()
@@ -443,11 +517,17 @@ def test_process_termination_transaction_boundaries(tmp_path, stage, expected_cl
         assert recovery["status"] == "hold"
 
 
-def _expiry_wait_worker(root, env, claim_id, start, clock_value, queue):
-    destination = AtomicAuthorityEffectDestination(
+def _expiry_wait_worker(root, env, claim_id, initialized, start, attempting, clock_value, queue):
+    class AttemptSignalDestination(AtomicAuthorityEffectDestination):
+        def _transaction_stage(self, stage):
+            if stage == "before_begin":
+                attempting.set()
+
+    destination = AttemptSignalDestination(
         root,
         clock=lambda: datetime.fromtimestamp(clock_value.value, tz=timezone.utc),
     )
+    initialized.set()
     start.wait()
     try:
         destination.execute_claim_atomic(
@@ -467,19 +547,26 @@ def test_expiry_is_evaluated_after_waiting_for_transaction_lock(tmp_path):
     destination.provision_claim(claim)
 
     ctx = mp.get_context("spawn")
+    initialized = ctx.Event()
     start = ctx.Event()
+    attempting = ctx.Event()
     queue = ctx.Queue()
     clock_value = ctx.Value("d", BASE.timestamp())
     proc = ctx.Process(
         target=_expiry_wait_worker,
-        args=(str(tmp_path), env, claim.claim_id, start, clock_value, queue),
+        args=(
+            str(tmp_path), env, claim.claim_id, initialized, start, attempting,
+            clock_value, queue,
+        ),
     )
     proc.start()
+    assert initialized.wait(10)
 
-    # Hold the same write boundary before allowing the child to execute.
+    # Acquire the competing transaction only after child initialization is done.
     lock_conn = sqlite3.connect(destination.path, timeout=10, isolation_level=None)
     lock_conn.execute("BEGIN IMMEDIATE")
     start.set()
+    assert attempting.wait(10)  # child has reached execute_claim_atomic before BEGIN
     clock_value.value = (expires + timedelta(seconds=1)).timestamp()
     lock_conn.execute("COMMIT")
     lock_conn.close()
