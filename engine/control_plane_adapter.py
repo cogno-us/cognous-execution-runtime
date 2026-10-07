@@ -169,6 +169,7 @@ class PinnedControlPlaneExecutor:
         decision: Any,
         now: Any = None,
         simulate: str | None = None,
+        refund_intent: Any = None,
     ) -> ExecutionResult:
         snapshot = snapshot_envelope(envelope)
 
@@ -232,9 +233,15 @@ class PinnedControlPlaneExecutor:
         if decision.binding.effective_max_effects != snapshot.operation.effective_max_effects:
             return self._denied(snapshot, "effect limit mismatch")
 
+        destination = self.destination
+        if refund_intent is not None:
+            from .refund_intent import IntentRefundDestination, RefundIntent
+            if not isinstance(refund_intent, RefundIntent):
+                return self._denied(snapshot, "invalid refund intent binding")
+            destination = IntentRefundDestination(destination, refund_intent)
         adapter = ControlPlaneRefundDestinationAdapter(
             snapshot=snapshot,
-            destination=self.destination,
+            destination=destination,
             policy=self.policy,
             trusted_institution_id=trusted_institution,
             trusted_authority_domain=trusted_domain,
