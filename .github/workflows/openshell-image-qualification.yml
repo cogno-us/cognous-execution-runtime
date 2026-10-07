@@ -1,0 +1,108 @@
+name: OpenShell worker image qualification
+
+on:
+  pull_request:
+    paths:
+      - "engine/openshell_worker.py"
+      - "engine/openshell_environment.py"
+      - "engine/safe_executor.py"
+      - "examples/openshell/**"
+      - "tests/test_openshell_worker_contract.py"
+      - "tools/openshell_image_qualification.py"
+      - "docs/workstreams/openshell-image-qualification-checkpoint.md"
+      - ".github/workflows/openshell-image-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install focused test dependencies
+        run: python -m pip install pytest==8.3.5 pydantic==2.11.9
+
+      - name: Host source contract checks
+        run: pytest -q tests/test_openshell_worker_contract.py
+
+      - name: Resolve immutable base image identity
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull python:3.12-slim
+          BASE_DIGEST="$(docker image inspect python:3.12-slim --format '{{index .RepoDigests 0}}')"
+          test -n "$BASE_DIGEST"
+          echo "digest=$BASE_DIGEST" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$BASE_DIGEST" > openshell-base-image.txt
+
+      - name: Build worker image from exact source
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BASE_IMAGE="${{ steps.base.outputs.digest }}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            -f examples/openshell/Dockerfile \
+            -t cognous-refund:worker17-qualification .
+          IMAGE_ID="$(docker image inspect cognous-refund:worker17-qualification --format '{{.Id}}')"
+          test -n "$IMAGE_ID"
+          echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$IMAGE_ID" > openshell-worker-image-id.txt
+
+      - name: Execute packaged worker qualification
+        run: |
+          set -euo pipefail
+          python tools/openshell_image_qualification.py \
+            --image cognous-refund:worker17-qualification \
+            --output openshell-image-qualification.json
+
+      - name: Record build evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          path = Path("openshell-image-qualification.json")
+          data = json.loads(path.read_text())
+          data["source_sha"] = os.environ["GITHUB_SHA"]
+          data["base_image"] = Path("openshell-base-image.txt").read_text().strip()
+          data["image_id"] = Path("openshell-worker-image-id.txt").read_text().strip()
+          data["build_inputs"] = {
+              "dockerfile": "examples/openshell/Dockerfile",
+              "worker": "engine/openshell_worker.py",
+              "executor": "engine/safe_executor.py",
+              "probe": "examples/openshell/probe.py",
+              "base_reference": "python:3.12-slim",
+              "base_identity_status": "resolved-at-qualification; not a repository-pinned reviewed digest",
+          }
+          data["boundaries"] = {
+              "host_source_contract_tests": "executed",
+              "container_image_worker": "executed",
+              "mocked_openshell_transport": "not part of this workflow",
+              "live_openshell_execution": "unexecuted",
+              "live_confinement_enforcement": "unexecuted",
+          }
+          path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Upload bounded qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: openshell-worker-image-qualification
+          path: |
+            openshell-image-qualification.json
+            openshell-base-image.txt
+            openshell-worker-image-id.txt
+          if-no-files-found: error
