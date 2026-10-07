@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   install-check:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -72,6 +73,7 @@ jobs:
 
   checks:
     needs: install-check
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -82,8 +84,17 @@ jobs:
             task: lint
             command: pnpm lint
           - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=2
+          - runtime: node
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=2
+          - runtime: node
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=2
+          - runtime: node
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=2
           - runtime: node
             task: build
             command: pnpm build
@@ -94,8 +105,17 @@ jobs:
             task: format
             command: pnpm format
           - runtime: bun
-            task: test
-            command: pnpm canvas:a2ui:bundle && bunx vitest run
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=2
+          - runtime: bun
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=2
+          - runtime: bun
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=2
+          - runtime: bun
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && bunx vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=2
           - runtime: bun
             task: build
             command: bunx tsc -p tsconfig.json
@@ -164,9 +184,11 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
+        timeout-minutes: 12
         run: ${{ matrix.command }}
 
   secrets:
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -193,6 +215,8 @@ jobs:
 
   checks-windows:
     needs: checks
+    if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
+    timeout-minutes: 30
     runs-on: windows-2025
     env:
       NODE_OPTIONS: --max-old-space-size=4096
@@ -209,8 +233,17 @@ jobs:
             task: lint
             command: pnpm lint
           - runtime: node
-            task: test
-            command: pnpm canvas:a2ui:bundle && pnpm test
+            task: test-1-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
+          - runtime: node
+            task: test-2-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
+          - runtime: node
+            task: test-3-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
+          - runtime: node
+            task: test-4-of-4
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
           - runtime: node
             task: build
             command: pnpm build
@@ -282,19 +315,27 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
+        timeout-minutes: 12
         run: ${{ matrix.command }}
 
   checks-macos:
     needs: android
-    if: github.event_name == 'pull_request'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    timeout-minutes: 30
     runs-on: macos-latest
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
         include:
-          - task: test
-            command: pnpm test
+          - task: test-1-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
+          - task: test-2-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
+          - task: test-3-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
+          - task: test-4-of-4
+            command: pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -354,13 +395,15 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true || pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
       - name: Run ${{ matrix.task }}
+        timeout-minutes: 20
         env:
           NODE_OPTIONS: --max-old-space-size=4096
         run: ${{ matrix.command }}
 
   macos-app:
     needs: checks-macos
-    if: github.event_name == 'pull_request'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    timeout-minutes: 30
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -428,9 +471,11 @@ jobs:
           swift --version
 
       - name: Run ${{ matrix.task }}
+        timeout-minutes: 20
         run: ${{ matrix.command }}
   ios:
     if: false # ignore iOS in CI for now
+    timeout-minutes: 30
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -604,6 +649,8 @@ jobs:
 
   android:
     needs: checks-windows
+    if: ${{ !cancelled() && needs.checks-windows.result != 'skipped' }}
+    timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

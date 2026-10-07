@@ -103,3 +103,34 @@ assertions remain. Local shell fixtures exercised success, failed download (28),
 and installer timeout (124), with no success reported in the failure cases. These
 fixtures do not establish that the live external installer works. Final-head CI
 and live installer results remain pending.
+
+## Four-shard CI follow-up
+
+The completed `d21f2cd` campaign passed Python safety and OpenShell image
+qualification, but failed Node safe-bins and Bun tools-invoke HTTP tests at their
+120-second limits. External installer smoke exited 124 during upstream build-tool
+installation. Windows, Android and macOS were skipped behind the failed Linux gate.
+These outcomes remain failures/skips, not passes.
+
+The new campaign replaces each monolithic JavaScript test job with four Vitest
+shards on Linux Node, Linux Bun, Windows Node and macOS Node. Native Vitest test
+file discovery confirms the default configuration covers exactly the union of the
+previous unit, extension and gateway configurations: 899 files. The installed
+Vitest sequencer partitions them into 225, 225, 225 and 224 files without overlap
+or omission. Existing test exclusions are retained; no new test exclusion is added.
+Each matrix retains fail-fast=false and max-parallel=2. Linux/Windows command steps
+are capped at 12 minutes, macOS commands at 20, and jobs at 30. Downstream platforms
+continue after a failed preceding platform batch unless cancelled; the failed jobs
+still fail the workflow. This supersedes the earlier fail-blocking platform order.
+
+The safe-bins test now uses the existing fast-coding-tools helper to isolate
+unrelated plugin/image/web initialization while retaining its real exec allowlist
+assertions. Before isolation it timed out locally at a diagnostic 15-second limit;
+after isolation it passes (one test, 26 ms). Repository lint passes with zero
+warnings/errors. The local gateway test cannot initialize because this execution
+environment rejects os.networkInterfaces(); its nine skipped tests are not a pass.
+The gateway test remains unchanged for diagnosis in its CI shard.
+
+Installer smoke remains a separate bounded workflow with its previous failure
+preserved. This change does not fix or suppress the external installer timeout.
+Final-head CI must establish the new batch results before acceptance.
