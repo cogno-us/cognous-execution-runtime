@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: cogno-us/cognous-agent-control-plane
-          ref: 6c7b49138134eeb0d6e37e1b99a36a49cc42218e
+          ref: 73e3c65acc47dc43593dcb0420d14032ed410b14
           path: pinned/control-plane
       - uses: actions/setup-python@v5
         with:
