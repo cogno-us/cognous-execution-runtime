@@ -1,0 +1,88 @@
+{
+  "schema": "cognous.live-openshell-readiness.v1",
+  "recorded_at": "2026-10-07T05:52:48Z",
+  "classification": "blocked",
+  "live_qualification_executed": false,
+  "source": {
+    "repository": "cogno-us/moltbot-safe",
+    "starting_sha": "ff4eab5228c19f73aeb2a61d48046dd29111c6a9",
+    "accepted_image_qualification_merge": "ff4eab5228c19f73aeb2a61d48046dd29111c6a9",
+    "reviewed_image_source": "112a5c4b8a3337f6afbf52c399e5e1286625876f"
+  },
+  "contracts": {
+    "executor_producer_profile": "2.0.0",
+    "execution_envelope": "0.2.0",
+    "control_plane_commit": "2ea9528eeb87e14ff10f05de06473122b9df540f",
+    "manifest_commit": "46c950bed37fe3812000895430bc0312d29e37ce",
+    "alvorada_commit": "fb3d97938969a89e149e8ff8db2756091d1233fc",
+    "openshell_version": "0.1.2",
+    "openshell_commit": "6648bd0c290efbc41ba131ee9831ee45cd431f94"
+  },
+  "accepted_packaged_image_evidence": {
+    "workflow_run_id": 37563119581,
+    "qualified_source_sha": "112a5c4b8a3337f6afbf52c399e5e1286625876f",
+    "resolved_base_image": "python@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f",
+    "built_local_image_id": "sha256:3bfc362dccae2e217a720a219a6159f5f78ae96b24030778c9fa9a27d0cec7cd",
+    "limitation": "local image ID is not an OpenShell-consumable repository manifest digest; live provisioning still requires an immutable name@sha256 image available to the authorized gateway"
+  },
+  "current_execution_environment": {
+    "platform": "Linux x86_64",
+    "kernel_release": "6.18.44",
+    "commands": [
+      {
+        "command": "command -v docker",
+        "exit_code": 1,
+        "observed": "missing"
+      },
+      {
+        "command": "command -v podman",
+        "exit_code": 1,
+        "observed": "missing"
+      },
+      {
+        "command": "command -v openshell",
+        "exit_code": 1,
+        "observed": "missing"
+      },
+      {
+        "command": "test -e /dev/kvm",
+        "exit_code": 1,
+        "observed": "missing"
+      }
+    ],
+    "pinned_openshell_cli": "unavailable",
+    "usable_docker": "unavailable",
+    "usable_podman": "unavailable",
+    "dev_kvm": "unavailable",
+    "authorized_isolated_gateway_or_sandbox": "not available to this worker",
+    "production_credentials_used": false,
+    "paid_infrastructure_provisioned": false
+  },
+  "blockers": [
+    "pinned OpenShell CLI/runtime is unavailable",
+    "Docker and Podman are unavailable",
+    "no authorized isolated OpenShell gateway/sandbox is available to this worker",
+    "no immutable gateway-accessible worker image manifest digest was supplied",
+    "live effective policy and sandbox identity therefore cannot be inspected"
+  ],
+  "qualification_matrix": {
+    "source_tests": "not yet executed for this readiness branch",
+    "accepted_packaged_worker_compatibility": "passed previously in workflow 37563119581",
+    "live_environment_binding": "unexecuted",
+    "live_authorized_operation": "unexecuted",
+    "live_revocation_denial": "unexecuted",
+    "live_duplicate_delivery": "unexecuted",
+    "live_restart_observation": "unexecuted",
+    "live_conflicting_binding": "unexecuted",
+    "live_lost_ack_reconciliation": "unexecuted",
+    "live_partial_delivery": "unexecuted",
+    "live_prior_attempt_fresh_absence": "unexecuted",
+    "live_nonroot_identity": "unexecuted",
+    "live_filesystem_confinement": "unexecuted",
+    "live_network_egress_denial": "unexecuted",
+    "live_resource_limits": "unexecuted",
+    "live_timeout_and_cancellation": "unexecuted",
+    "live_inspection_to_stop_race": "unexecuted"
+  },
+  "disposition": "bounded readiness PR; no live qualification claim"
+}
