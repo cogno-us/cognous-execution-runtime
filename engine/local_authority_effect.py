@@ -71,10 +71,11 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             ).fetchone()
             if exists is None:
                 effect_count = int(conn.execute("SELECT COUNT(*) FROM effects").fetchone()[0])
-                if effect_count:
+                attempt_count = int(conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0])
+                if effect_count or attempt_count:
                     conn.execute("ROLLBACK")
                     raise PermissionError(
-                        "atomic authority/effect profile cannot activate over legacy effects"
+                        "atomic authority/effect profile cannot activate over legacy effects or attempts"
                     )
                 statements = [
                     f"""CREATE TABLE {MARKER_TABLE} (
