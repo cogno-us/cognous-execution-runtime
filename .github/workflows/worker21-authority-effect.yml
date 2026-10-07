@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'engine/local_authority_effect.py'
+      - 'engine/atomic_local_control_plane_executor.py'
+      - 'engine/local_authority_effect_recovery.py'
       - 'engine/safe_executor.py'
       - 'tests/test_local_authority_effect.py'
       - 'docs/local-authority-effect-profile.md'
