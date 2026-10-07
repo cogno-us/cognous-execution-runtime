@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   install-check:
@@ -66,9 +71,11 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
   checks:
+    needs: install-check
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runtime: node
@@ -185,6 +192,7 @@ jobs:
           fi
 
   checks-windows:
+    needs: checks
     runs-on: windows-2025
     env:
       NODE_OPTIONS: --max-old-space-size=4096
@@ -194,6 +202,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runtime: node
@@ -276,10 +285,12 @@ jobs:
         run: ${{ matrix.command }}
 
   checks-macos:
+    needs: android
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - task: test
@@ -348,10 +359,12 @@ jobs:
         run: ${{ matrix.command }}
 
   macos-app:
+    needs: checks-macos
     if: github.event_name == 'pull_request'
     runs-on: macos-latest
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - task: lint
@@ -590,9 +603,11 @@ jobs:
           PY
 
   android:
+    needs: checks-windows
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - task: test

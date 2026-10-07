@@ -79,3 +79,27 @@ in the hub before selecting any new component revision. Preserve the existing
 legacy equivalent-intent duplicate characterization. Real institutional identity
 issuance, distributed reservation, safe release/cancellation, live OpenShell intent
 propagation and Replay schema adoption are not established by this batch.
+
+## CI batching and smoke follow-up
+
+The Node workspace-path suite passed after isolation; the next Linux run failed
+only the CLI command-routing smoke test during unrelated plugin initialization.
+That suite now stubs plugin loading while asserting that routing requests it.
+Both affected suites pass locally: 19 tests. Full Node lint and focused formatting
+pass. No test timeout was increased and no assertions were removed.
+
+CI now runs one PR campaign rather than duplicate branch-push and PR campaigns.
+Platform batches run in order: install, Linux, Windows, Android, macOS JavaScript,
+macOS app. Each matrix has at most two concurrent jobs. Failed prerequisite batches
+block later batches; blocked jobs are not passes. All existing test commands remain.
+
+The installer smoke checks the external published upstream installer, not this
+PR's Python package. It invokes the existing shell harness directly; host pnpm
+bootstrap and dependency installation were unused by that harness and are removed.
+The job has a 15-minute limit, its harness step 12 minutes, installer download 60
+seconds, installer execution 5 minutes, and npm/version/help probes 30 seconds.
+The installer is downloaded completely before execution. Existing version and CLI
+assertions remain. Local shell fixtures exercised success, failed download (28),
+and installer timeout (124), with no success reported in the failure cases. These
+fixtures do not establish that the live external installer works. Final-head CI
+and live installer results remain pending.
