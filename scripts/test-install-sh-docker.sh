@@ -17,9 +17,10 @@ docker build \
   "$ROOT_DIR/scripts/docker/install-sh-smoke"
 
 echo "==> Run installer smoke test (root): $INSTALL_URL"
-docker run --rm -t \
+docker run --rm \
   -v "${LATEST_DIR}:/out" \
   -e CLAWDBOT_INSTALL_URL="$INSTALL_URL" \
+  -e CLAWDBOT_INSTALL_PACKAGE="${CLAWDBOT_INSTALL_PACKAGE:-}" \
   -e CLAWDBOT_INSTALL_LATEST_OUT="/out/latest" \
   -e CLAWDBOT_INSTALL_SMOKE_PREVIOUS="${CLAWDBOT_INSTALL_SMOKE_PREVIOUS:-}" \
   -e CLAWDBOT_INSTALL_SMOKE_SKIP_PREVIOUS="${CLAWDBOT_INSTALL_SMOKE_SKIP_PREVIOUS:-0}" \
@@ -42,8 +43,9 @@ else
     "$ROOT_DIR/scripts/docker/install-sh-nonroot"
 
   echo "==> Run installer non-root test: $INSTALL_URL"
-  docker run --rm -t \
+  docker run --rm \
     -e CLAWDBOT_INSTALL_URL="$INSTALL_URL" \
+  -e CLAWDBOT_INSTALL_PACKAGE="${CLAWDBOT_INSTALL_PACKAGE:-}" \
     -e CLAWDBOT_INSTALL_EXPECT_VERSION="$LATEST_VERSION" \
     -e CLAWDBOT_NO_ONBOARD=1 \
     -e DEBIAN_FRONTEND=noninteractive \
@@ -61,9 +63,10 @@ if [[ "$SKIP_NONROOT" == "1" ]]; then
 fi
 
 echo "==> Run CLI installer non-root test (same image)"
-docker run --rm -t \
+docker run --rm \
   --entrypoint /bin/bash \
   -e CLAWDBOT_INSTALL_URL="$INSTALL_URL" \
+  -e CLAWDBOT_INSTALL_PACKAGE="${CLAWDBOT_INSTALL_PACKAGE:-}" \
   -e CLAWDBOT_INSTALL_CLI_URL="$CLI_INSTALL_URL" \
   -e CLAWDBOT_NO_ONBOARD=1 \
   -e DEBIAN_FRONTEND=noninteractive \

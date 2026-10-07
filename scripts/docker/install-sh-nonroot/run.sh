@@ -36,7 +36,7 @@ else
 fi
 CLI_NAME="$PACKAGE_NAME"
 CMD_PATH="$(command -v "$CLI_NAME" || true)"
-if [[ -z "$CMD_PATH" ]]; then
+if [[ -z "$CMD_PATH" && -z "${CLAWDBOT_INSTALL_PACKAGE:-}" ]]; then
   CLI_NAME="$ALT_PACKAGE_NAME"
   CMD_PATH="$(command -v "$CLI_NAME" || true)"
 fi
@@ -44,7 +44,7 @@ if [[ -z "$CMD_PATH" && -x "$HOME/.npm-global/bin/$PACKAGE_NAME" ]]; then
   CLI_NAME="$PACKAGE_NAME"
   CMD_PATH="$HOME/.npm-global/bin/$PACKAGE_NAME"
 fi
-if [[ -z "$CMD_PATH" && -x "$HOME/.npm-global/bin/$ALT_PACKAGE_NAME" ]]; then
+if [[ -z "$CMD_PATH" && -z "${CLAWDBOT_INSTALL_PACKAGE:-}" && -x "$HOME/.npm-global/bin/$ALT_PACKAGE_NAME" ]]; then
   CLI_NAME="$ALT_PACKAGE_NAME"
   CMD_PATH="$HOME/.npm-global/bin/$ALT_PACKAGE_NAME"
 fi
@@ -57,6 +57,13 @@ if [[ -z "$EXPECTED_VERSION" && "$CLI_NAME" != "$PACKAGE_NAME" ]]; then
 fi
 echo "==> Verify CLI installed: $CLI_NAME"
 INSTALLED_VERSION="$("$CMD_PATH" --version 2>/dev/null | head -n 1 | tr -d '\r')"
+
+# OpenClaw reports a product label and build revision; compare the version itself.
+if [[ "$CLI_NAME" == "openclaw" ]]; then
+  if [[ "$INSTALLED_VERSION" =~ ^OpenClaw[[:space:]]+([^[:space:]]+)[[:space:]]+\([[:xdigit:]]+\)$ ]]; then
+    INSTALLED_VERSION="${BASH_REMATCH[1]}"
+  fi
+fi
 
 echo "cli=$CLI_NAME installed=$INSTALLED_VERSION expected=$LATEST_VERSION"
 if [[ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]]; then
