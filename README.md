@@ -96,9 +96,12 @@ claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders
 invalidating writes against claim consumption and effect insertion. Trusted time
 is evaluated after the write transaction is acquired.
 
-The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement reconciles only to the effect bound to that exact claim and
-its transaction-retained operation digest; a consumed claim is never reopened
-automatically.
+The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement and later recovery reconcile only when the caller supplies
+the exact original execution envelope: retained claim decision/effect IDs,
+canonical operation commitment, and transaction-retained destination operation
+digest must all match. Substituted decision IDs, target, amount or payload remain
+hold/unknown and are never attributed the historical effect. A consumed claim is
+never reopened automatically.
 
 See [docs/local-authority-effect-profile.md](docs/local-authority-effect-profile.md). This branch is implemented/tested as a proposal, not merged or hub-selected.
 
