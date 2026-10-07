@@ -103,3 +103,28 @@ substituted operation.
 Focused regressions cover changed decision ID, target, amount and payload while
 retaining the original effect ID, plus successful recovery of the exact original
 envelope. Earlier claim/effect and retained-digest corruption tests remain.
+
+## Governor current-main compatibility repair
+
+Integrated executor main `e0c127178247fbe33ec2c80997c464575738be1e`,
+including accepted refund-intent PR #14 and repository-location changes.
+The transaction-entry conflict preserves the authority/effect marker rejection
+and the existing `_check_commit_profile()` ownership check.
+
+Both profile activation paths now reject the other profile under the SQLite
+write transaction. The profiles remain mutually exclusive per database; no
+combined guarantee or automatic migration is introduced. Four regression cases
+cover both activation orders with empty stores and retained claims, asserting
+all durable rows remain unchanged after rejection and same-profile reopening.
+
+Local bounded validation against proposed Control Plane
+`73e3c65acc47dc43593dcb0420d14032ed410b14`:
+- Compatibility + refund-intent batch: 37 passed (includes 4 new cases).
+- Authority/effect batch: 24 passed.
+- Remaining Python safety batch: 223 passed, 2 live OpenShell skips.
+
+The first compatibility command lacked the Control Plane fixture environment
+and reported 31 passed / 6 skipped; the configured rerun above executed all 37.
+The initial Python environment lacked pytest; no test pass was claimed until
+an isolated environment was installed. Full JavaScript/platform CI remains a
+separate gate; these Python results do not substitute for it.

@@ -37,14 +37,14 @@ jobs:
       - name: Checkout pinned Control Plane
         uses: actions/checkout@v4
         with:
-          repository: cogno-us/cognous-agent-control-plane
+          repository: cogno-us/cognous-control-plane
           ref: 2ea9528eeb87e14ff10f05de06473122b9df540f
           path: pinned/control-plane
 
       - name: Checkout pinned Action Manifest
         uses: actions/checkout@v4
         with:
-          repository: cogno-us/cognous-agent-action-manifest
+          repository: cogno-us/cognous-action-manifest
           ref: 46c950bed37fe3812000895430bc0312d29e37ce
           path: pinned/action-manifest
 

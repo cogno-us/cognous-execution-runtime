@@ -94,3 +94,12 @@ Same-host SQLite only. No production identity/key custody, remote revocation,
 distributed transactions, external destination enforcement, OpenShell
 confinement, universal mediation, distributed exactly-once, EBL-Core conformance
 or production readiness.
+
+## Database profile exclusivity
+
+The authority/effect profile and synthetic refund-intent profile require separate
+SQLite databases. Activation rejects the other profile's marker while holding
+`BEGIN IMMEDIATE`, in either activation order, including an empty opted-in
+store. Rejection preserves existing ownership and execution claims. Reopening
+the same profile remains supported. This is explicit separation, not combined
+intent ownership plus authority/effect enforcement for one operation.

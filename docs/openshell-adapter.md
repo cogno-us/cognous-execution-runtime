@@ -235,7 +235,7 @@ The retained TypeScript lint/build/test suites are not reported as passed.
 ## Adapter change history
 
 - 0.1.0: optional pinned OpenShell synthetic destination, durable environment
-  binding, conservative recovery and opt-in live qualification ([PR #5](https://github.com/cogno-us/moltbot-safe/pull/5)).
+  binding, conservative recovery and opt-in live qualification ([PR #5](https://github.com/cogno-us/cognous-execution-runtime/pull/5)).
   Thanks @titanicprime for the integration requirements and review boundaries.
 
 ### PR 5 targeted correction pass

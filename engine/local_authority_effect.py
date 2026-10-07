@@ -65,6 +65,12 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
     def _activate_profile(self) -> None:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            # Profiles have separate ownership contracts; do not implicitly combine them.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name IN ('refund_intent_registry_v1', 'refund_intent_claims_v1')"
+            ).fetchone():
+                raise PermissionError("authority-effect profile cannot share an intent-profile database")
             exists = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                 (MARKER_TABLE,),

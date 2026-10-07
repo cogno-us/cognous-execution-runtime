@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const ensurePluginRegistryLoaded = vi.fn();
 const messageCommand = vi.fn();
 const statusCommand = vi.fn();
 const configureCommand = vi.fn();
@@ -49,6 +50,8 @@ vi.mock("../gateway/call.js", () => ({
     message: "Gateway target: ws://127.0.0.1:1234",
   }),
 }));
+// Command routing is under test; plugin initialization has separate coverage.
+vi.mock("./plugin-registry.js", () => ({ ensurePluginRegistryLoaded }));
 vi.mock("./deps.js", () => ({ createDefaultDeps: () => ({}) }));
 
 const { buildProgram } = await import("./program.js");
@@ -64,6 +67,7 @@ describe("cli program (smoke)", () => {
     await program.parseAsync(["message", "send", "--target", "+1", "--message", "hi"], {
       from: "user",
     });
+    expect(ensurePluginRegistryLoaded).toHaveBeenCalled();
     expect(messageCommand).toHaveBeenCalled();
   });
 
@@ -86,6 +90,7 @@ describe("cli program (smoke)", () => {
       ],
       { from: "user" },
     );
+    expect(ensurePluginRegistryLoaded).toHaveBeenCalled();
     expect(messageCommand).toHaveBeenCalled();
   });
 
