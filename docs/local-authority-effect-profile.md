@@ -60,10 +60,13 @@ Claim consumption, budget use and effect insertion share one transaction.
 - crash before transaction: no atomic profile state changes;
 - crash during transaction: SQLite rollback leaves claim issued and no effect;
 - crash after commit: claim remains consumed and the effect remains durable;
-- lost acknowledgement: restart observes the original effect only when the
-  requested claim owns that exact effect and the retained destination operation
-  digest matches the digest committed with claim consumption; a different
-  claim/effect pair remains held;
+- lost acknowledgement or later recovery reports applied/partial only when the
+  caller supplies the exact original execution envelope: decision ID and effect
+  ID must equal the retained claim, the supplied canonical operation commitment
+  must equal the claim's committed operation, and the supplied/destination
+  operation digest must equal the digest transactionally retained when the
+  claim was consumed. Substituted decision IDs, targets, amounts or payloads
+  remain hold/unknown with an explicit binding reason;
 - observation of absence alone does not produce retry permission.
 
 ## Legacy and intent-registry compatibility
