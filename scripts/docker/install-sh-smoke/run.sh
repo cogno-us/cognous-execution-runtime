@@ -61,8 +61,19 @@ echo "==> Download official installer (60-second limit)"
 INSTALLER_FILE="$(mktemp)"
 trap 'rm -f "$INSTALLER_FILE"' EXIT
 curl -fsSL --connect-timeout 10 --max-time 60 "$INSTALL_URL" -o "$INSTALLER_FILE"
-echo "==> Execute official installer (5-minute limit)"
-timeout --kill-after=10s 300s bash "$INSTALLER_FILE"
+echo "==> Installer SHA-256"
+sha256sum "$INSTALLER_FILE"
+echo "==> Execute official installer non-interactively (5-minute limit)"
+# Preserve the actual exit code, including timeout 124; never turn a timeout into a pass.
+INSTALLER_STATUS=0
+CI=1 TERM=dumb timeout --kill-after=10s 300s bash "$INSTALLER_FILE" || INSTALLER_STATUS=$?
+if [[ "$INSTALLER_STATUS" -ne 0 ]]; then
+  echo "ERROR: external installer exited with status $INSTALLER_STATUS" >&2
+  if [[ "$INSTALLER_STATUS" -eq 124 || "$INSTALLER_STATUS" -eq 137 ]]; then
+    echo "ERROR: external installer exceeded its bounded execution time" >&2
+  fi
+  exit "$INSTALLER_STATUS"
+fi
 
 echo "==> Verify installed version"
 CLI_NAME="$PACKAGE_NAME"
