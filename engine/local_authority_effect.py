@@ -76,13 +76,12 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     raise PermissionError(
                         "atomic authority/effect profile cannot activate over legacy effects"
                     )
-                conn.executescript(
-                    f"""
-                    CREATE TABLE {MARKER_TABLE} (
+                statements = [
+                    f"""CREATE TABLE {MARKER_TABLE} (
                         profile TEXT PRIMARY KEY,
                         activated_at TEXT NOT NULL
-                    );
-                    CREATE TABLE authority_grants_v1 (
+                    )""",
+                    """CREATE TABLE authority_grants_v1 (
                         grant_id TEXT PRIMARY KEY,
                         revision TEXT NOT NULL,
                         status TEXT NOT NULL CHECK(status IN ('active','suspended','revoked','unknown')),
@@ -90,8 +89,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         authority_domain TEXT NOT NULL,
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL
-                    );
-                    CREATE TABLE authority_approvals_v1 (
+                    )""",
+                    """CREATE TABLE authority_approvals_v1 (
                         approval_ref TEXT PRIMARY KEY,
                         role_id TEXT NOT NULL,
                         approver TEXT NOT NULL,
@@ -100,13 +99,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         grant_revision TEXT NOT NULL,
                         proposal_commitment TEXT NOT NULL,
                         policy_versions_json TEXT NOT NULL
-                    );
-                    CREATE TABLE authority_policies_v1 (
+                    )""",
+                    """CREATE TABLE authority_policies_v1 (
                         ref TEXT PRIMARY KEY,
                         version TEXT NOT NULL,
                         status TEXT NOT NULL CHECK(status IN ('active','superseded','unknown'))
-                    );
-                    CREATE TABLE authority_evidence_v1 (
+                    )""",
+                    """CREATE TABLE authority_evidence_v1 (
                         obligation_id TEXT PRIMARY KEY,
                         source_ref TEXT NOT NULL,
                         required INTEGER NOT NULL,
@@ -115,8 +114,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         unknown_behavior TEXT NOT NULL,
                         state TEXT NOT NULL CHECK(state IN ('current','stale','unknown')),
                         observed_at TEXT NOT NULL
-                    );
-                    CREATE TABLE execution_claims_v1 (
+                    )""",
+                    """CREATE TABLE execution_claims_v1 (
                         claim_id TEXT PRIMARY KEY,
                         claim_commitment TEXT NOT NULL,
                         claim_json TEXT NOT NULL,
@@ -130,14 +129,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL,
                         state TEXT NOT NULL CHECK(state IN ('issued','consumed'))
-                    );
-                    CREATE TABLE effect_budgets_v1 (
+                    )""",
+                    """CREATE TABLE effect_budgets_v1 (
                         budget_id TEXT PRIMARY KEY,
                         max_effects INTEGER NOT NULL,
                         used_effects INTEGER NOT NULL
-                    );
-                    """
-                )
+                    )""",
+                ]
+                for statement in statements:
+                    conn.execute(statement)
                 conn.execute(
                     f"INSERT INTO {MARKER_TABLE}(profile,activated_at) VALUES(?,?)",
                     (PROFILE, self._trusted_now().isoformat()),
