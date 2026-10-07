@@ -1,0 +1,32 @@
+name: Worker21 local authority-effect profile
+on:
+  pull_request:
+    paths:
+      - 'engine/local_authority_effect.py'
+      - 'engine/safe_executor.py'
+      - 'tests/test_local_authority_effect.py'
+      - 'docs/local-authority-effect-profile.md'
+      - 'docs/workstreams/local-authority-effect-checkpoint.md'
+      - '.github/workflows/worker21-authority-effect.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: cogno-us/cognous-agent-control-plane
+          ref: b670dd471eb7793ff796fd627d3c60628ed679f6
+          path: pinned/control-plane
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -q pytest pydantic
+      - name: Run focused atomic profile suite
+        env:
+          PYTHONPATH: .:pinned/control-plane/src
+        run: python -m pytest -q tests/test_local_authority_effect.py
