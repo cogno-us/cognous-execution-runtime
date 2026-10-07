@@ -1,0 +1,53 @@
+name: Gateway timeout diagnosis
+on:
+  push:
+    branches: [governor/gateway-timeout-diagnosis]
+permissions:
+  contents: read
+jobs:
+  focused:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            runtime: bun
+          - os: macos-latest
+            runtime: node
+          - os: windows-latest
+            runtime: node
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install frozen dependencies
+        timeout-minutes: 8
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.23.0 --activate
+          pnpm install --frozen-lockfile --config.engine-strict=false
+      - name: Run the gateway HTTP file only
+        timeout-minutes: 4
+        run: |
+          set -o pipefail
+          mkdir -p diagnostic-results
+          if [[ "${{ matrix.runtime }}" == "bun" ]]; then
+            bunx vitest run src/gateway/tools-invoke-http.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee diagnostic-results/gateway.log
+          else
+            pnpm exec vitest run src/gateway/tools-invoke-http.test.ts --maxWorkers=1 --reporter=verbose 2>&1 | tee diagnostic-results/gateway.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gateway-diagnostic-${{ matrix.os }}-${{ matrix.runtime }}
+          path: diagnostic-results

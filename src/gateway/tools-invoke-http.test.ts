@@ -37,10 +37,13 @@ describe("POST /tools/invoke", () => {
       ],
     } as any;
 
+    console.info("[gateway-diagnostic] allocating port");
     const port = await getFreePort();
+    console.info("[gateway-diagnostic] starting server");
     const server = await startGatewayServer(port, {
       bind: "loopback",
     });
+    console.info("[gateway-diagnostic] server started");
     const token = resolveGatewayToken();
 
     const res = await fetch(`http://127.0.0.1:${port}/tools/invoke`, {
@@ -49,12 +52,15 @@ describe("POST /tools/invoke", () => {
       body: JSON.stringify({ tool: "sessions_list", action: "json", args: {}, sessionKey: "main" }),
     });
 
+    console.info("[gateway-diagnostic] response received", res.status);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body).toHaveProperty("result");
 
+    console.info("[gateway-diagnostic] closing server");
     await server.close();
+    console.info("[gateway-diagnostic] server closed");
   });
 
   it("supports tools.alsoAllow as additive allowlist (profile stage)", async () => {
