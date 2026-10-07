@@ -58,6 +58,13 @@ fi
 echo "==> Verify CLI installed: $CLI_NAME"
 INSTALLED_VERSION="$("$CMD_PATH" --version 2>/dev/null | head -n 1 | tr -d '\r')"
 
+# OpenClaw reports a product label and build revision; compare the version itself.
+if [[ "$CLI_NAME" == "openclaw" ]]; then
+  if [[ "$INSTALLED_VERSION" =~ ^OpenClaw[[:space:]]+([^[:space:]]+)[[:space:]]+\([[:xdigit:]]+\)$ ]]; then
+    INSTALLED_VERSION="${BASH_REMATCH[1]}"
+  fi
+fi
+
 echo "cli=$CLI_NAME installed=$INSTALLED_VERSION expected=$LATEST_VERSION"
 if [[ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]]; then
   echo "ERROR: expected ${CLI_NAME}@${LATEST_VERSION}, got ${CLI_NAME}@${INSTALLED_VERSION}" >&2

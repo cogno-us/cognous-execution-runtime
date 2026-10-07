@@ -91,6 +91,13 @@ if [[ -n "${CLAWDBOT_INSTALL_LATEST_OUT:-}" ]]; then
   printf "%s" "$LATEST_VERSION" > "$CLAWDBOT_INSTALL_LATEST_OUT"
 fi
 INSTALLED_VERSION="$(timeout 30s "$CLI_NAME" --version 2>/dev/null | head -n 1 | tr -d '\r')"
+# OpenClaw reports a product label and build revision; compare the version itself.
+if [[ "$CLI_NAME" == "openclaw" ]]; then
+  if [[ "$INSTALLED_VERSION" =~ ^OpenClaw[[:space:]]+([^[:space:]]+)[[:space:]]+\([[:xdigit:]]+\)$ ]]; then
+    INSTALLED_VERSION="${BASH_REMATCH[1]}"
+  fi
+fi
+
 echo "cli=$CLI_NAME installed=$INSTALLED_VERSION expected=$LATEST_VERSION"
 
 if [[ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]]; then

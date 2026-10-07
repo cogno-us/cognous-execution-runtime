@@ -28,3 +28,9 @@ selection cannot fall back to another product. Exact version equality and CLI
 help execution remain mandatory; this checks the external upstream installer,
 not the Cognous build. Shell syntax can be checked locally; the revised Docker
 execution remains pending CI. No accepted component pins are advanced.
+
+Run 37662349253 completed installation in under one minute but rejected the
+upstream version banner `OpenClaw 2026.9.8 (fc23bc8)` against `2026.9.8`.
+The harness now recognizes only the named OpenClaw banner with a hexadecimal
+build revision, then retains exact version equality. Wrong products, malformed
+banners and mismatched versions remain failures. CLI help must still succeed.
