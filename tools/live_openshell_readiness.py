@@ -119,6 +119,111 @@ def _validate_image_digest(value: str | None) -> bool:
     return bool(prefix) and len(digest) == 64 and all(c in "0123456789abcdef" for c in digest)
 
 
+def _validate_inspected_environment(config: Any, info: dict[str, Any]) -> dict[str, Any]:
+    """Apply the accepted adapter's read-only sandbox validation semantics.
+
+    This mirrors OpenShellRefundDestination._inspect after its durable binding
+    check, but deliberately omits destination construction and event writes.
+    """
+    configured_policy = json.loads(config.policy_json)
+    expected = {
+        "id": config.sandbox_id,
+        "name": config.sandbox,
+        "workspace": config.workspace,
+        "phase": "Ready",
+        "current_policy_version": config.policy_version,
+        "policy_source": "sandbox",
+        "revision": config.policy_version,
+        "policy": configured_policy,
+    }
+    mismatches = {
+        key: {"expected": value, "observed": info.get(key)}
+        for key, value in expected.items()
+        if info.get(key) != value
+    }
+    if mismatches:
+        raise PermissionError(
+            "sandbox identity, readiness or policy changed: "
+            + ",".join(sorted(mismatches))
+        )
+
+    admission_expected = {
+        "state": "accepted",
+        "policy_version": config.policy_version,
+        "policy_hash": config.policy_hash,
+        "config_revision": config.config_revision,
+        "provider_env_revision": config.provider_env_revision,
+    }
+    admission = info.get("configuration_admission") or {}
+    admission_mismatches = {
+        key: {"expected": value, "observed": admission.get(key)}
+        for key, value in admission_expected.items()
+        if admission.get(key) != value
+    }
+    if admission_mismatches:
+        raise PermissionError(
+            "sandbox configuration is not the pinned admitted revision: "
+            + ",".join(sorted(admission_mismatches))
+        )
+
+    return {
+        "configured_or_provisioning_attributed": {
+            "sandbox_id": config.sandbox_id,
+            "sandbox_name": config.sandbox,
+            "workspace": config.workspace,
+            "image": config.image,
+            "worker_executable": list(config.executable),
+            "workdir": config.workdir,
+            "cpu": config.cpu,
+            "memory": config.memory,
+            "policy_version": config.policy_version,
+            "policy_hash": config.policy_hash,
+            "config_revision": config.config_revision,
+            "provider_env_revision": config.provider_env_revision,
+            "policy": configured_policy,
+            "config_digest": config.digest,
+            "evidence_meaning": (
+                "values retained from the trusted provisioning/config receipt; "
+                "the pinned sandbox get API does not independently attest image, "
+                "CPU or memory identity"
+            ),
+        },
+        "observed": {
+            "sandbox_id": info.get("id"),
+            "sandbox_name": info.get("name"),
+            "workspace": info.get("workspace"),
+            "phase": info.get("phase"),
+            "current_policy_version": info.get("current_policy_version"),
+            "policy_source": info.get("policy_source"),
+            "revision": info.get("revision"),
+            "policy": info.get("policy"),
+            "configuration_admission": info.get("configuration_admission"),
+            "runtime_evidence": info.get("runtime_evidence"),
+        },
+        "validation": {
+            "adapter_semantics_matched": True,
+            "independently_observed": [
+                "sandbox_id",
+                "sandbox_name",
+                "workspace",
+                "phase",
+                "policy_source",
+                "policy_version",
+                "policy_content",
+                "configuration_admission",
+                "gateway_runtime",
+            ],
+            "not_independently_observed_by_pinned_api": [
+                "image_identity",
+                "cpu_limit",
+                "memory_limit",
+                "worker_executable",
+                "workdir",
+            ],
+        },
+    }
+
+
 def _inspect_existing_environment(
     *,
     binary: str,
@@ -132,24 +237,10 @@ def _inspect_existing_environment(
     config = OpenShellConfig(**value)
     cli = OpenShellCLI(binary, home)
     info = cli.inspect(config)
+    validated = _validate_inspected_environment(config, info)
     return {
-        "status": "inspected",
-        "config_digest": config.digest,
-        "sandbox_id": info.get("id"),
-        "sandbox_name": info.get("name"),
-        "workspace": info.get("workspace"),
-        "phase": info.get("phase"),
-        "current_policy_version": info.get("current_policy_version"),
-        "policy_source": info.get("policy_source"),
-        "revision": info.get("revision"),
-        "policy": info.get("policy"),
-        "configuration_admission": info.get("configuration_admission"),
-        "runtime_evidence": info.get("runtime_evidence"),
-        "image": config.image,
-        "worker_executable": list(config.executable),
-        "workdir": config.workdir,
-        "cpu": config.cpu,
-        "memory": config.memory,
+        "status": "inspected_and_matched",
+        **validated,
     }
 
 
@@ -189,7 +280,8 @@ def assess(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     inspection: dict[str, Any] = {"status": "unexecuted"}
     if (
-        openshell["status"] == "present"
+        args.authorized_isolated_environment
+        and openshell["status"] == "present"
         and args.config
         and args.home
         and Path(args.config).is_file()
@@ -201,8 +293,9 @@ def assess(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 home=args.home,
                 config_path=args.config,
             )
-            if args.image and inspection.get("image") != args.image:
-                blockers.append("supplied image digest does not match inspected sandbox config")
+            configured = inspection["configured_or_provisioning_attributed"]
+            if args.image and configured.get("image") != args.image:
+                blockers.append("supplied image digest does not match configured/provisioning-attributed image")
         except Exception as exc:
             inspection = {
                 "status": "failed",
@@ -237,7 +330,7 @@ def assess(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "authorized_isolated_environment": bool(args.authorized_isolated_environment),
             "config_supplied": bool(args.config),
             "home": home_status,
-            "image": args.image,
+            "configured_image_assertion": args.image,
         },
         "prerequisites": {
             "openshell": openshell,
@@ -252,6 +345,26 @@ def assess(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         "read_only_environment_inspection": inspection,
         "blockers": blockers,
+        "readiness_meaning": {
+            "ready_establishes": [
+                "explicit operator opt-in for an isolated qualification environment",
+                "pinned OpenShell CLI path/hash is locally available",
+                "usable local Docker runtime is available",
+                "dedicated client HOME and existing config are available",
+                "supplied immutable image digest matches provisioning-attributed config",
+                "live gateway reports pinned healthy local Docker runtime",
+                "live sandbox identity/readiness/effective policy match config",
+                "live configuration admission state/hash/revisions match config",
+            ],
+            "ready_does_not_establish": [
+                "actual sandbox image identity independently observed by OpenShell",
+                "actual CPU or memory limits independently observed by OpenShell",
+                "worker executable/workdir independently attested by OpenShell",
+                "live execution behavior",
+                "filesystem or network confinement enforcement",
+                "rollback, exactly-once delivery, or production readiness",
+            ],
+        },
         "qualification_matrix": {
             "packaged_worker_compatibility": "accepted_preexisting_evidence",
             "live_openshell_adapter_execution": "unexecuted",
