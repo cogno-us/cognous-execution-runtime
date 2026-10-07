@@ -83,6 +83,18 @@ A duplicate same-operation delivery is observed/reconciled and reports `newly_ex
 
 Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
+## Opt-in atomic local authority/effect profile
+
+Worker 21 adds a **proposed opt-in local profile** for synthetic SQLite effects. It is separate from the default `PinnedControlPlaneExecutor` path.
+
+For an opted-in database, one SQLite file becomes authoritative for the local profile's mutable grant, approval, policy and evidence state, exact execution claims, shared effect budgets and protected effects. `BEGIN IMMEDIATE` orders invalidating writes against claim consumption and effect insertion. Trusted time is evaluated after the write transaction is acquired.
+
+The profile refuses activation over prior legacy effects or attempts, and the legacy destination write path refuses to write into an opted-in database. Lost acknowledgement reconciles to the original durable effect; a consumed claim is never reopened automatically.
+
+See [docs/local-authority-effect-profile.md](docs/local-authority-effect-profile.md). This branch is implemented/tested as a proposal, not merged or hub-selected.
+
+Moltbot Safe PR #14's refund-intent registry is a separate unaccepted workstream. Business-intent ownership and authority/effect atomicity solve different problems; neither branch silently consumes the other.
+
 ## Optional OpenShell environment
 
 [OpenShell adapter 0.1.0](docs/openshell-adapter.md) adds an opt-in dedicated local
