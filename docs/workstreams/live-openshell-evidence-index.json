@@ -1,0 +1,91 @@
+{
+  "schema": "cognous.live-openshell-evidence-index.v1",
+  "workstream": "worker17/live-openshell-qualification",
+  "starting_sha": "ff4eab5228c19f73aeb2a61d48046dd29111c6a9",
+  "accepted_image_qualification": {
+    "workflow_run_id": 37563119581,
+    "reviewed_source_sha": "112a5c4b8a3337f6afbf52c399e5e1286625876f",
+    "base_image_sha256": "05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f",
+    "built_local_image_id_sha256": "3bfc362dccae2e217a720a219a6159f5f78ae96b24030778c9fa9a27d0cec7cd",
+    "status": "accepted packaged-worker evidence; not live OpenShell evidence"
+  },
+  "repository_evidence": [
+    {
+      "path": "tools/live_openshell_readiness.py",
+      "hash_type": "git_blob_sha1",
+      "hash": "91ffd2683e530fcbddac7d7cbcf156a856c6d8a2",
+      "role": "read-only prerequisite and effective-environment inspection gate"
+    },
+    {
+      "path": "tests/test_live_openshell_readiness.py",
+      "hash_type": "git_blob_sha1",
+      "hash": "3b833bcf081d3001fae2b77d6c268a7bdb9707e3",
+      "role": "focused readiness classification tests"
+    },
+    {
+      "path": ".github/workflows/live-openshell-readiness.yml",
+      "hash_type": "git_blob_sha1",
+      "hash": "c138e0c5bb5e506909a16f6d386f61e17866248d",
+      "role": "readiness-only CI; not live qualification"
+    },
+    {
+      "path": "docs/workstreams/live-openshell-readiness-results.json",
+      "hash_type": "git_blob_sha1",
+      "hash": "444331d37d27ff28dffc89c610ba807c1fa5f67a",
+      "role": "current environment blocker evidence"
+    },
+    {
+      "path": "docs/workstreams/live-openshell-qualification-checkpoint.md",
+      "hash_type": "git_blob_sha1",
+      "hash": "98aa091e41f7083cec9e3afc0017843a166c0077",
+      "role": "durable workstream checkpoint and continuation commands"
+    }
+  ],
+  "external_revisions": [
+    {
+      "name": "OpenShell v0.1.2",
+      "sha": "6648bd0c290efbc41ba131ee9831ee45cd431f94"
+    },
+    {
+      "name": "Control Plane",
+      "sha": "2ea9528eeb87e14ff10f05de06473122b9df540f"
+    },
+    {
+      "name": "Action Manifest",
+      "sha": "46c950bed37fe3812000895430bc0312d29e37ce"
+    },
+    {
+      "name": "Alvorada",
+      "sha": "fb3d97938969a89e149e8ff8db2756091d1233fc"
+    }
+  ],
+  "live_evidence": {
+    "actual_openshell_runtime": null,
+    "sandbox_uuid": null,
+    "effective_policy": null,
+    "immutable_gateway_image_manifest_digest": null,
+    "live_effect_rows": [],
+    "live_attempts": [],
+    "live_observations": [],
+    "classification": "unexecuted",
+    "blocker": "current worker environment lacks OpenShell CLI/runtime, Docker/Podman, and an explicitly authorized isolated gateway/sandbox"
+  },
+  "readiness_semantics": {
+    "observed_live_values": [
+      "gateway runtime",
+      "sandbox UUID/name/workspace",
+      "Ready phase",
+      "effective policy source/version/revision/content",
+      "configuration admission state/policy hash/config/provider revisions"
+    ],
+    "configured_or_provisioning_attributed": [
+      "image digest",
+      "CPU request",
+      "memory request",
+      "worker executable",
+      "workdir"
+    ],
+    "limitation": "OpenShell v0.1.2 sandbox get does not independently attest image/resource/argv/workdir identity; ready does not imply those were observed.",
+    "opt_in": "gateway/sandbox inspection is forbidden unless --authorized-isolated-environment is explicitly supplied"
+  }
+}

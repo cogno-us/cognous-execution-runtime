@@ -1,0 +1,63 @@
+name: Live OpenShell readiness
+
+on:
+  pull_request:
+    paths:
+      - "tools/live_openshell_readiness.py"
+      - "tests/test_live_openshell_readiness.py"
+      - "docs/workstreams/live-openshell-readiness-results.json"
+      - "docs/workstreams/live-openshell-qualification-checkpoint.md"
+      - "docs/workstreams/live-openshell-evidence-index.json"
+      - ".github/workflows/live-openshell-readiness.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: "."
+      QUALIFICATION_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout submitted source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QUALIFICATION_SOURCE_SHA }}
+
+      - name: Verify source
+        run: test "$(git rev-parse HEAD)" = "$QUALIFICATION_SOURCE_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install focused test dependency
+        run: python -m pip install pytest==8.3.5
+
+      - name: Run focused readiness tests
+        run: pytest -q tests/test_live_openshell_readiness.py
+
+      - name: Execute non-mutating readiness gate
+        shell: bash
+        run: |
+          set +e
+          python tools/live_openshell_readiness.py --output live-openshell-ci-readiness.json
+          status=$?
+          set -e
+          test "$status" -eq 2
+          python - <<'PY'
+          import json
+          value = json.load(open("live-openshell-ci-readiness.json"))
+          assert value["classification"] == "blocked"
+          assert value["live_qualification_executed"] is False
+          assert value["safety"]["mutated_sandbox"] is False
+          PY
+
+      - name: Upload readiness evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-openshell-readiness
+          path: live-openshell-ci-readiness.json
+          if-no-files-found: error
