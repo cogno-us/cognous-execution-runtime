@@ -333,31 +333,56 @@ def test_lost_ack_reconciles_original_effect_and_never_reopens_claim(tmp_path):
 
 
 
-def test_reconcile_rejects_effect_from_another_claim(tmp_path):
-    _, env_a, destination, claim_a = setup_atomic(tmp_path, claim_id="claim-a", budget_id="budget-a")
+def test_reconcile_rejects_effect_from_another_claim_and_wrong_operation(tmp_path):
+    _, env_a, destination, claim_a = setup_atomic(
+        tmp_path, claim_id="claim-a", budget_id="budget-a"
+    )
     executor = AtomicLocalControlPlaneExecutor(
         workflow=object(), destination=destination, policy=policy(env_a.operation)
     )
     first = executor.execute(envelope=env_a, claim_id=claim_a.claim_id)
     assert first.status == "executed"
 
-    env_b = envelope(effect_no=2, effect_id="effect-b", grant="urn:cognous:grant:b")
-    claim_b = make_claim(env_b, claim_id="claim-b", budget_id="budget-b")
-    destination.provision_claim(claim_b)
-    second = AtomicLocalControlPlaneExecutor(
-        workflow=object(), destination=destination, policy=policy(env_b.operation)
-    ).execute(envelope=env_b, claim_id=claim_b.claim_id)
-    assert second.status == "executed"
+    # Retain an unrelated effect B in the same destination. Recovery for claim A
+    # must not classify B as A's applied effect.
+    with sqlite3.connect(destination.path) as conn:
+        conn.execute(
+            """INSERT INTO effects
+            (effect_id,operation_digest,grant_id,target,amount,unit,payload_json,state)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                "effect-b",
+                "sha256:" + "b" * 64,
+                "urn:cognous:grant:b",
+                "urn:cognous:synthetic-account:b",
+                1.0,
+                "USD",
+                '{"reason":"other"}',
+                "applied",
+            ),
+        )
 
-    wrong = destination.reconcile_claim(claim_a.claim_id, env_b.effect_id)
-    assert wrong["status"] == "hold"
-    assert wrong["retry_eligible"] is False
-    assert wrong["reason"] == "claim_effect_binding_mismatch"
+    wrong_effect = destination.reconcile_claim(claim_a.claim_id, "effect-b")
+    assert wrong_effect["status"] == "hold"
+    assert wrong_effect["retry_eligible"] is False
+    assert wrong_effect["reason"] == "claim_effect_binding_mismatch"
 
     correct = destination.reconcile_claim(claim_a.claim_id, env_a.effect_id)
     assert correct["status"] == "applied"
     assert correct["effect_id"] == env_a.effect_id
     assert correct["operation_digest"] == snapshot_envelope(env_a).operation.digest
+
+    # A retained row with the right effect ID but wrong operation digest also
+    # cannot establish applied/partial for the claim.
+    with sqlite3.connect(destination.path) as conn:
+        conn.execute(
+            "UPDATE effects SET operation_digest=? WHERE effect_id=?",
+            ("sha256:" + "c" * 64, env_a.effect_id),
+        )
+    wrong_operation = destination.reconcile_claim(claim_a.claim_id, env_a.effect_id)
+    assert wrong_operation["status"] == "hold"
+    assert wrong_operation["retry_eligible"] is False
+    assert wrong_operation["reason"] == "retained_effect_operation_binding_mismatch"
 
 
 def test_provision_rejects_non_active_projected_statuses(tmp_path):
