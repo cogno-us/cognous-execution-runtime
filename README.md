@@ -38,9 +38,9 @@ A persisted historical `authorized` decision is not an execution credential. An 
 
 ## Pinned integration baseline
 
-- Agent Control Plane: `cogno-us/cognous-agent-control-plane` at `283500652d47a692fb0b99a1172a6d5faffbd9a7`
-- Agent Action Manifest v1.1: `cogno-us/cognous-agent-action-manifest` at `46c950bed37fe3812000895430bc0312d29e37ce`
-- Alvorada Authority Context 0.1.0: `cogno-us/constitutional-governance-for-institutions` at `fb3d97938969a89e149e8ff8db2756091d1233fc`
+- Agent Control Plane: `cogno-us/cognous-control-plane` at `283500652d47a692fb0b99a1172a6d5faffbd9a7`
+- Agent Action Manifest v1.1: `cogno-us/cognous-action-manifest` at `46c950bed37fe3812000895430bc0312d29e37ce`
+- Alvorada Authority Context 0.1.0: `cogno-us/cognous-institutional-governance` at `fb3d97938969a89e149e8ff8db2756091d1233fc`
 
 CI checks out the exact pinned Control Plane and Manifest revisions and executes integration tests against their real Python implementation and refund fixture.
 
@@ -120,3 +120,7 @@ The retained TypeScript Moltbot test suite is upstream application coverage and 
 ## License and attribution
 
 The Cognous Python execution layer is licensed under [Apache 2.0](LICENSE-APACHE-2.0); see [NOTICE](NOTICE) for scope. The retained upstream Moltbot application remains [MIT-licensed](LICENSE), with all third-party notices preserved. Licensing does not change the reviewed execution boundary or establish an audit of the upstream application.
+
+## Repository locations
+
+See the [repository rename map and compatibility notes](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/repository-renames.md) for current component URLs. Existing package names, schema identifiers and retained producer identities are unchanged.
