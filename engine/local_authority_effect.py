@@ -125,6 +125,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         grant_id TEXT NOT NULL,
                         grant_revision TEXT NOT NULL,
                         operation_commitment TEXT NOT NULL,
+                        effect_operation_digest TEXT,
                         budget_id TEXT NOT NULL,
                         max_effects INTEGER NOT NULL,
                         not_before TEXT NOT NULL,
@@ -148,6 +149,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 if row is None or row["profile"] != PROFILE:
                     conn.execute("ROLLBACK")
                     raise PermissionError("unsupported authority/effect profile marker")
+                claim_columns = {
+                    item["name"]
+                    for item in conn.execute("PRAGMA table_info(execution_claims_v1)").fetchall()
+                }
+                if "effect_operation_digest" not in claim_columns:
+                    conn.execute(
+                        "ALTER TABLE execution_claims_v1 ADD COLUMN effect_operation_digest TEXT"
+                    )
             conn.execute("COMMIT")
 
     def _profile_present(self, conn: sqlite3.Connection) -> bool:
@@ -167,6 +176,16 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             raise PermissionError("execution claim commitment is invalid")
         if model.profile != PROFILE or model.authorizing_by_possession is not False:
             raise PermissionError("unsupported execution claim profile")
+        if model.grant_status != "active":
+            raise PermissionError("execution claim grant projection is not active")
+        if any(item.status != "active" for item in model.approval_state):
+            raise PermissionError("execution claim approval projection is not active")
+        if any(item.status != "active" for item in model.policy_state):
+            raise PermissionError("execution claim policy projection is not active")
+        for item in model.evidence_state:
+            decision_critical = item.required or item.unknown_behavior == "hold_effect"
+            if decision_critical and item.state != "current":
+                raise PermissionError("execution claim evidence projection is not current")
         return model
 
     def provision_claim(self, claim: Any) -> None:
@@ -199,7 +218,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     (
                         model.grant_id,
                         model.grant_revision,
-                        "active",
+                        model.grant_status,
                         model.institution_id,
                         model.authority_domain,
                         model.not_before,
@@ -209,7 +228,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             else:
                 expected = (
                     model.grant_revision,
-                    "active",
+                    model.grant_status,
                     model.institution_id,
                     model.authority_domain,
                 )
@@ -231,7 +250,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 expected = (
                     approval.role_id,
                     approval.approver,
-                    "active",
+                    approval.status,
                     approval.grant_id,
                     approval.grant_revision,
                     approval.proposal_commitment,
@@ -259,7 +278,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 prior = conn.execute(
                     "SELECT * FROM authority_policies_v1 WHERE ref=?", (policy.ref,)
                 ).fetchone()
-                expected = (policy.version, "active")
+                expected = (policy.version, policy.status)
                 if prior is None:
                     conn.execute(
                         "INSERT INTO authority_policies_v1(ref,version,status) VALUES(?,?,?)",
@@ -317,9 +336,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             conn.execute(
                 """INSERT INTO execution_claims_v1
                 (claim_id,claim_commitment,claim_json,effect_id,decision_id,grant_id,
-                 grant_revision,operation_commitment,budget_id,max_effects,not_before,
+                 grant_revision,operation_commitment,effect_operation_digest,budget_id,max_effects,not_before,
                  expires_at,state)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     model.claim_id,
                     model.claim_commitment,
@@ -329,6 +348,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     model.grant_id,
                     model.grant_revision,
                     model.operation_commitment,
+                    None,
                     model.budget_id,
                     model.max_effects,
                     model.not_before,
@@ -569,6 +589,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         from agent_control_plane.local_authority_effect import LocalExecutionClaim
 
         with self._connect() as conn:
+            self._transaction_stage("before_begin")
             conn.execute("BEGIN IMMEDIATE")
             self._transaction_stage("after_begin")
             now = self._trusted_now()  # trusted time is evaluated after lock acquisition
@@ -622,8 +643,10 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
 
             state = "partial" if simulate == "partial" else "applied"
             conn.execute(
-                "UPDATE execution_claims_v1 SET state='consumed' WHERE claim_id=?",
-                (claim_id,),
+                """UPDATE execution_claims_v1
+                SET state='consumed', effect_operation_digest=?
+                WHERE claim_id=?""",
+                (snapshot.operation.digest, claim_id),
             )
             conn.execute(
                 "UPDATE effect_budgets_v1 SET used_effects=used_effects+1 WHERE budget_id=?",
@@ -666,21 +689,49 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
     def reconcile_claim(self, claim_id: str, effect_id: str) -> dict[str, Any]:
         with self._connect() as conn:
             claim = conn.execute(
-                "SELECT state,effect_id FROM execution_claims_v1 WHERE claim_id=?",
+                """SELECT state,effect_id,operation_commitment,effect_operation_digest
+                FROM execution_claims_v1 WHERE claim_id=?""",
                 (claim_id,),
             ).fetchone()
+            if claim is None:
+                return {
+                    "status": "hold",
+                    "retry_eligible": False,
+                    "reason": "claim_unavailable",
+                }
+            if claim["effect_id"] != effect_id:
+                return {
+                    "status": "hold",
+                    "claim_state": claim["state"],
+                    "retry_eligible": False,
+                    "effect_id": effect_id,
+                    "reason": "claim_effect_binding_mismatch",
+                }
             effect = conn.execute(
                 "SELECT state,operation_digest FROM effects WHERE effect_id=?",
-                (effect_id,),
+                (claim["effect_id"],),
             ).fetchone()
-        if claim is None:
-            return {"status": "hold", "retry_eligible": False, "reason": "claim_unavailable"}
+
         if effect is not None:
+            retained_digest = claim["effect_operation_digest"]
+            if (
+                claim["state"] != "consumed"
+                or not retained_digest
+                or effect["operation_digest"] != retained_digest
+            ):
+                return {
+                    "status": "hold",
+                    "claim_state": claim["state"],
+                    "retry_eligible": False,
+                    "effect_id": effect_id,
+                    "reason": "retained_effect_operation_binding_mismatch",
+                }
             return {
                 "status": "applied" if effect["state"] == "applied" else "partial",
                 "claim_state": claim["state"],
                 "retry_eligible": False,
                 "effect_id": effect_id,
+                "operation_digest": retained_digest,
             }
         return {
             "status": "hold",
@@ -689,6 +740,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "effect_id": effect_id,
             "reason": "no_durable_effect_for_claim",
         }
+
 
     def claim_state(self, claim_id: str) -> str | None:
         with self._connect() as conn:
@@ -732,12 +784,13 @@ class AtomicLocalControlPlaneExecutor:
         decision_input_commitment: str | None = None,
         decision_input_profile_version: str | None = None,
     ):
-        from agent_control_plane.local_authority_effect import materialize_local_execution_claim
+        from agent_control_plane.local_authority_effect import provision_local_execution_claim
 
-        claim = materialize_local_execution_claim(
+        return provision_local_execution_claim(
             self.workflow,
             proposal,
             decision,
+            provision=self.destination.provision_claim,
             now=now,
             claim_id=claim_id,
             budget_id=budget_id,
@@ -745,8 +798,6 @@ class AtomicLocalControlPlaneExecutor:
             decision_input_commitment=decision_input_commitment,
             decision_input_profile_version=decision_input_profile_version,
         )
-        self.destination.provision_claim(claim)
-        return claim
 
     def execute(
         self,
