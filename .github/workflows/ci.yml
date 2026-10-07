@@ -10,7 +10,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      application: ${{ steps.scope.outputs.application }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          installer_only = {
+              ".github/workflows/ci.yml",
+              ".github/workflows/install-smoke.yml",
+              "scripts/test-install-sh-docker.sh",
+              "scripts/docker/install-sh-smoke/run.sh",
+              "scripts/docker/install-sh-nonroot/run.sh",
+              "docs/workstreams/external-installer-smoke-checkpoint.md",
+          }
+          def application_required(paths):
+              return not paths or any(p not in installer_only for p in paths)
+          assert not application_required(["scripts/docker/install-sh-smoke/run.sh"])
+          assert application_required(["src/gateway/server.ts"])
+          assert application_required(["pnpm-lock.yaml"])
+          assert application_required(["tests/test_safe_executor.py"])
+          assert application_required(["scripts/docker/install-sh-smoke/run.sh", "src/index.ts"])
+          assert application_required([])
+          base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+          result = subprocess.run(
+              ["git", "diff", "--name-only", "--no-renames", "-z", base, head],
+              capture_output=True,
+          )
+          # Missing history or invalid refs must retain full application coverage.
+          paths = [p for p in result.stdout.decode().split("\0") if p]
+          required = result.returncode != 0 or application_required(paths)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"application={str(required).lower()}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("Application tests: " + ("required" if required else "not applicable: installer/CI-only changes") + "\n")
+              out.write("\n".join(paths) + "\n")
+          PY
+
   install-check:
+    needs: scope
+    if: ${{ needs.scope.outputs.application == 'true' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     steps:
@@ -72,7 +122,8 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
 
   checks:
-    needs: install-check
+    if: ${{ needs.scope.outputs.application == 'true' }}
+    needs: [scope, install-check]
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:
@@ -214,8 +265,8 @@ jobs:
           fi
 
   checks-windows:
-    needs: checks
-    if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
+    needs: [scope, checks]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && needs.checks.result != 'skipped' }}
     timeout-minutes: 30
     runs-on: windows-2025
     env:
@@ -319,8 +370,8 @@ jobs:
         run: ${{ matrix.command }}
 
   checks-macos:
-    needs: android
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    needs: [scope, android]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && github.event_name == 'pull_request' }}
     timeout-minutes: 30
     runs-on: macos-latest
     strategy:
@@ -401,8 +452,8 @@ jobs:
         run: ${{ matrix.command }}
 
   macos-app:
-    needs: checks-macos
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    needs: [scope, checks-macos]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && github.event_name == 'pull_request' }}
     timeout-minutes: 30
     runs-on: macos-latest
     strategy:
@@ -648,8 +699,8 @@ jobs:
           PY
 
   android:
-    needs: checks-windows
-    if: ${{ !cancelled() && needs.checks-windows.result != 'skipped' }}
+    needs: [scope, checks-windows]
+    if: ${{ needs.scope.outputs.application == 'true' && !cancelled() && needs.checks-windows.result != 'skipped' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
     strategy:

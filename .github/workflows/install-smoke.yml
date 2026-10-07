@@ -24,8 +24,21 @@ jobs:
         env:
           CLAWDBOT_INSTALL_URL: https://clawd.bot/install.sh
           CLAWDBOT_INSTALL_CLI_URL: https://clawd.bot/install-cli.sh
+          # The legacy URL now serves the upstream OpenClaw installer.
+          CLAWDBOT_INSTALL_PACKAGE: openclaw
           CLAWDBOT_NO_ONBOARD: "1"
           CLAWDBOT_INSTALL_SMOKE_SKIP_CLI: "1"
           CLAWDBOT_INSTALL_SMOKE_SKIP_NONROOT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
           CLAWDBOT_INSTALL_SMOKE_SKIP_PREVIOUS: "1"
-        run: bash scripts/test-install-sh-docker.sh
+        run: |
+          set -o pipefail
+          mkdir -p smoke-results
+          bash scripts/test-install-sh-docker.sh 2>&1 | tee smoke-results/install.log
+
+      - name: Retain installer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-installer-diagnostics
+          path: smoke-results
+          if-no-files-found: warn
