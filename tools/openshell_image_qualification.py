@@ -185,6 +185,13 @@ def qualify(image: str, state: Path) -> dict[str, Any]:
     state.mkdir(parents=True, exist_ok=True)
     os.chmod(state, 0o777)
 
+    absent_request, absent_snapshot = _request("effect-worker17-absent")
+    absent_request["mode"] = "observe"
+    absent = _json_stdout(_worker(image, state, absent_request))
+    OpenShellRefundDestination._validate_observation(absent_snapshot, absent)
+    if absent != {"effect_id": "effect-worker17-absent", "state": "absent", "destination_state": {}}:
+        raise AssertionError("fresh destination observation must be exact absent evidence")
+
     first_request, first_snapshot = _request("effect-worker17-applied")
     first = _json_stdout(_worker(image, state, first_request))
     if first.get("duplicate") is not False:
@@ -267,6 +274,7 @@ def qualify(image: str, state: Path) -> dict[str, Any]:
         "mocked_openshell_transport": "not used; Docker carried exact worker stdin/stdout",
         "live_openshell_execution": "unexecuted",
         "live_confinement_enforcement": "unexecuted",
+        "absent_observation": absent,
         "normal_commit": first,
         "duplicate_same_operation": duplicate,
         "restart_observation": restarted_observation,
