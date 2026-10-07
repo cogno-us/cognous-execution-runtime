@@ -52,14 +52,16 @@ of the public authorization, producer or envelope contracts.
    - validates actual worker output through
      `OpenShellRefundDestination._validate_observation`;
    - asserts exact retained SQLite rows and no replacement effect;
-   - verifies UID/GID 1000, writable `/var/lib/cognous`, non-writable
-     `/opt/cognous`, and required Apache/MIT license and NOTICE files.
+   - runs the image without a `--user` override to establish the configured default UID/GID 1000, writable `/var/lib/cognous`, non-writable `/opt/cognous`, and required Apache/MIT license and NOTICE files;
+   - performs a separately labeled explicit `--user 1000:1000` check that is not used as evidence of the image default;
+   - forwards stdin with `docker run -i` for actual worker requests and partial-state seeding.
 
 3. `.github/workflows/openshell-image-qualification.yml`
-   - runs focused host source-contract tests;
+   - sets repository-root `PYTHONPATH` for focused tests and direct qualification CLI execution;
+   - explicitly checks out `github.event.pull_request.head.sha` for PR runs and verifies `git rev-parse HEAD` equals that submitted head, rather than qualifying GitHub's synthetic merge commit;
    - resolves `python:3.12-slim` to the exact pulled OCI digest and records it;
-   - builds the worker image from the exact PR SHA;
-   - records the resulting image ID and build inputs;
+   - builds the worker image from the verified submitted head SHA;
+   - records submitted head SHA, actual checkout SHA, resulting image ID and build inputs;
    - executes the packaged worker qualification and uploads JSON evidence.
 
 The resolved Python base digest is build evidence only. It is not represented as
@@ -85,11 +87,11 @@ a pre-reviewed repository pin. The Dockerfile continues to require a digest via
 
 | Boundary | Status | Evidence / limitation |
 | --- | --- | --- |
-| Source worker/adapter contract | Added; CI execution pending at checkpoint creation | Focused pytest file uses current worker output and current adapter validator. |
+| Source worker/adapter contract | Pending repaired final-head CI | Run with repository-root `PYTHONPATH`; previous run 37562115766 failed before collection because `engine` was not importable. |
 | Host worker process | Unexecuted | Supported production entry point is the packaged `/opt/cognous` worker; this work does not rewrite its fixed state root for host convenience. |
-| Container image build | Pending final-head CI | Dedicated workflow builds from exact source and records base digest plus image ID. |
-| Packaged worker process | Pending final-head CI | Qualification tool executes the real image entry point via stdin/stdout. |
-| Adapter consumption of real worker bytes | Pending final-head CI | Same bytes are validated through the accepted OpenShell observation validator. |
+| Container image build | Pending repaired final-head CI | Previous run never reached build. Repaired gate verifies submitted head before resolving base digest/building and records checkout SHA, base digest and image ID. |
+| Packaged worker process | Pending repaired final-head CI | Docker now keeps stdin open with `-i`; qualification runs the image default user, not an imposed identity. |
+| Adapter consumption of real worker bytes | Pending repaired final-head CI | Actual packaged stdout is validated through the accepted OpenShell observation validator. |
 | Mocked OpenShell transport | Previously covered by repository tests; not redefined here | Existing tests mock only OpenShell transport and use real worker logic/SQLite. |
 | Live OpenShell execution | Unexecuted | No authorized isolated live environment was available to this worker. |
 | Live confinement enforcement | Unexecuted | Docker execution alone is not OpenShell/Landlock/seccomp qualification. |
@@ -99,7 +101,7 @@ a pre-reviewed repository pin. The Dockerfile continues to require a digest via
 Focused source check:
 
 ```bash
-pytest -q tests/test_openshell_worker_contract.py
+PYTHONPATH=. pytest -q tests/test_openshell_worker_contract.py
 ```
 
 Image qualification performed by the dedicated workflow:
@@ -111,7 +113,7 @@ docker build --build-arg BASE_IMAGE="$BASE_DIGEST" \
   --label org.opencontainers.image.revision="$GITHUB_SHA" \
   -f examples/openshell/Dockerfile \
   -t cognous-refund:worker17-qualification .
-python tools/openshell_image_qualification.py \
+PYTHONPATH=. python tools/openshell_image_qualification.py \
   --image cognous-refund:worker17-qualification \
   --output openshell-image-qualification.json
 ```
@@ -142,6 +144,21 @@ old images.
 
 No OpenShell dependency upgrade, authorization change, retry permission,
 reconciliation relaxation or hub pin update is part of this branch.
+
+## Reviewed failure and targeted repair
+
+Workflow run `37562115766` failed at focused test collection with
+`ModuleNotFoundError: No module named 'engine'`. Because that step failed, base
+resolution, image build, packaged worker execution and artifact recording were
+all skipped. That run therefore supplies no image qualification evidence.
+
+The targeted repair:
+- provides repository-root import resolution for both pytest and direct CLI use;
+- adds `docker run -i` whenever stdin is supplied;
+- removes the unconditional `--user 1000:1000` override from qualification and
+  establishes the Dockerfile's configured default identity separately;
+- explicitly checks out and verifies the submitted PR head SHA instead of
+  implicitly testing the pull-request merge ref.
 
 ## Residual work
 
