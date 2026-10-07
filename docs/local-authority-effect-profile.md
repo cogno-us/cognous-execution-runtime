@@ -6,7 +6,8 @@ Profile: `urn:cognous:profiles:local-authority-effect:0.1.0-proposed`.
 
 ## Authoritative store
 
-The profile uses one local SQLite database as the authoritative store for:
+After the Control Plane trusted handoff completes, the profile uses one local
+SQLite database as the authoritative store for:
 
 - grant status/revision and local validity interval;
 - approval state and bindings;
@@ -16,9 +17,17 @@ The profile uses one local SQLite database as the authoritative store for:
 - shared cumulative effect budgets;
 - protected synthetic effect rows and attempt history.
 
-This is not a cache claim. Once a database is opted into the profile, every
-profile-relevant invalidating writer must use this database. External resolver
-changes that do not participate are outside the guarantee.
+This is not a cache claim. Claim provisioning occurs while the Control Plane
+authority source still holds its mutation-exclusion handoff. The handoff ends
+only after the exact claim is committed into this store; from that point,
+profile-relevant invalidating writers must use this database. External resolver
+changes after handoff are outside the local guarantee rather than silently
+overriding this authority.
+
+Provisioning preserves the projected statuses supplied by Control Plane.
+Non-active grant/approval/policy projections and non-current
+decision-critical evidence are rejected; provisioning never rewrites them to
+`active`.
 
 ## Transaction ordering
 
@@ -51,8 +60,10 @@ Claim consumption, budget use and effect insertion share one transaction.
 - crash before transaction: no atomic profile state changes;
 - crash during transaction: SQLite rollback leaves claim issued and no effect;
 - crash after commit: claim remains consumed and the effect remains durable;
-- lost acknowledgement: restart observes the original effect and never reopens
-  the consumed claim;
+- lost acknowledgement: restart observes the original effect only when the
+  requested claim owns that exact effect and the retained destination operation
+  digest matches the digest committed with claim consumption; a different
+  claim/effect pair remains held;
 - observation of absence alone does not produce retry permission.
 
 ## Legacy and intent-registry compatibility
@@ -68,9 +79,11 @@ must not release or migrate held intent ownership implicitly.
 
 ## Worker 20 coordination
 
-Control Plane Worker 20 PR #11 is proposal-only. This profile does not duplicate
-its Decision Input Commitment Record. Worker 21's Control Plane claim has opaque
-optional fields for a future accepted decision-input commitment.
+Control Plane Worker 20 PR #11 is merged at
+`29337fe900d3b2da5656c77d56d70f18feb190b8`. Its Decision Input
+Commitment Record remains non-authorizing. Worker 21 does not silently adopt its
+semantics into this execution path; the local claim retains only optional opaque
+linkage fields unless a later explicit integration is reviewed.
 
 ## Limits
 
