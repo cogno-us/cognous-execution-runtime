@@ -13,13 +13,13 @@
     {
       "path": "tools/live_openshell_readiness.py",
       "hash_type": "git_blob_sha1",
-      "hash": "7c96300fbc08e721f5cf93395dd94cd5c88184eb",
+      "hash": "91ffd2683e530fcbddac7d7cbcf156a856c6d8a2",
       "role": "read-only prerequisite and effective-environment inspection gate"
     },
     {
       "path": "tests/test_live_openshell_readiness.py",
       "hash_type": "git_blob_sha1",
-      "hash": "7e504f20e09b91be31c3963b54a2f3f24aa02112",
+      "hash": "3b833bcf081d3001fae2b77d6c268a7bdb9707e3",
       "role": "focused readiness classification tests"
     },
     {
@@ -37,7 +37,7 @@
     {
       "path": "docs/workstreams/live-openshell-qualification-checkpoint.md",
       "hash_type": "git_blob_sha1",
-      "hash": "bb316f156064492ab6114430e5a522d07177c5c2",
+      "hash": "98aa091e41f7083cec9e3afc0017843a166c0077",
       "role": "durable workstream checkpoint and continuation commands"
     }
   ],
@@ -69,5 +69,23 @@
     "live_observations": [],
     "classification": "unexecuted",
     "blocker": "current worker environment lacks OpenShell CLI/runtime, Docker/Podman, and an explicitly authorized isolated gateway/sandbox"
+  },
+  "readiness_semantics": {
+    "observed_live_values": [
+      "gateway runtime",
+      "sandbox UUID/name/workspace",
+      "Ready phase",
+      "effective policy source/version/revision/content",
+      "configuration admission state/policy hash/config/provider revisions"
+    ],
+    "configured_or_provisioning_attributed": [
+      "image digest",
+      "CPU request",
+      "memory request",
+      "worker executable",
+      "workdir"
+    ],
+    "limitation": "OpenShell v0.1.2 sandbox get does not independently attest image/resource/argv/workdir identity; ready does not imply those were observed.",
+    "opt_in": "gateway/sandbox inspection is forbidden unless --authorized-isolated-environment is explicitly supplied"
   }
 }
