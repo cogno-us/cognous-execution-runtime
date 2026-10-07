@@ -19,9 +19,22 @@ permissions:
 jobs:
   worker-image:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: "."
+      QUALIFICATION_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Checkout exact source
+      - name: Checkout submitted PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.QUALIFICATION_SOURCE_SHA }}
+
+      - name: Verify exact submitted source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_SHA" = "$QUALIFICATION_SOURCE_SHA"
+          printf '%s\n' "$ACTUAL_SHA" > openshell-source-sha.txt
 
       - uses: actions/setup-python@v5
         with:
@@ -51,7 +64,7 @@ jobs:
           set -euo pipefail
           docker build \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.digest }}" \
-            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --label org.opencontainers.image.revision="${QUALIFICATION_SOURCE_SHA}" \
             -f examples/openshell/Dockerfile \
             -t cognous-refund:worker17-qualification .
           IMAGE_ID="$(docker image inspect cognous-refund:worker17-qualification --format '{{.Id}}')"
@@ -76,7 +89,10 @@ jobs:
 
           path = Path("openshell-image-qualification.json")
           data = json.loads(path.read_text())
-          data["source_sha"] = os.environ["GITHUB_SHA"]
+          data["submitted_head_sha"] = os.environ["QUALIFICATION_SOURCE_SHA"]
+          data["checkout_sha"] = Path("openshell-source-sha.txt").read_text().strip()
+          if data["checkout_sha"] != data["submitted_head_sha"]:
+              raise SystemExit("qualification checkout does not match submitted head")
           data["base_image"] = Path("openshell-base-image.txt").read_text().strip()
           data["image_id"] = Path("openshell-worker-image-id.txt").read_text().strip()
           data["build_inputs"] = {
@@ -103,6 +119,7 @@ jobs:
           name: openshell-worker-image-qualification
           path: |
             openshell-image-qualification.json
+            openshell-source-sha.txt
             openshell-base-image.txt
             openshell-worker-image-id.txt
           if-no-files-found: error
