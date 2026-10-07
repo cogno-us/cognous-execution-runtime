@@ -14,9 +14,16 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+# Permit direct execution as `python tools/openshell_image_qualification.py`
+# from the repository root without relying on ambient site configuration.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from engine.openshell_environment import OpenShellRefundDestination
 from engine.safe_executor import (
@@ -71,15 +78,28 @@ def _request(effect_id: str, *, target: str = "urn:cognous:synthetic-account:17"
     }, snapshot
 
 
-def _docker(image: str, state: Path, command: list[str], *, stdin: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _docker(
+    image: str,
+    state: Path,
+    command: list[str],
+    *,
+    stdin: str | None = None,
+    check: bool = True,
+    user: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    argv = ["docker", "run", "--rm"]
+    # docker run requires -i to keep stdin open for the worker JSON protocol.
+    if stdin is not None:
+        argv.append("-i")
+    if user is not None:
+        argv.extend(["--user", user])
+    argv.extend([
+        "--mount", f"type=bind,src={state},dst=/var/lib/cognous",
+        image,
+        *command,
+    ])
     return subprocess.run(
-        [
-            "docker", "run", "--rm",
-            "--user", "1000:1000",
-            "--mount", f"type=bind,src={state},dst=/var/lib/cognous",
-            image,
-            *command,
-        ],
+        argv,
         input=stdin,
         text=True,
         capture_output=True,
@@ -134,10 +154,12 @@ def _rows(state: Path) -> list[dict[str, Any]]:
 
 
 def _packaging_checks(image: str, state: Path) -> dict[str, Any]:
+    # Do not override --user here: these checks establish the image's configured
+    # default identity and permissions.
     uid = _docker(image, state, ["/usr/bin/id", "-u"]).stdout.strip()
     gid = _docker(image, state, ["/usr/bin/id", "-g"]).stdout.strip()
     if (uid, gid) != ("1000", "1000"):
-        raise AssertionError(f"image must run as 1000:1000, got {uid}:{gid}")
+        raise AssertionError(f"image default must be 1000:1000, got {uid}:{gid}")
 
     writable = _docker(
         image,
@@ -145,7 +167,7 @@ def _packaging_checks(image: str, state: Path) -> dict[str, Any]:
         ["/usr/local/bin/python3", "-c", "from pathlib import Path; p=Path('/var/lib/cognous/worker17-write'); p.write_text('ok'); p.unlink()"],
     )
     if writable.returncode != 0:
-        raise AssertionError("intended state path is not writable")
+        raise AssertionError("intended state path is not writable by image default user")
 
     protected = _docker(
         image,
@@ -154,7 +176,14 @@ def _packaging_checks(image: str, state: Path) -> dict[str, Any]:
         check=False,
     )
     if protected.returncode == 0:
-        raise AssertionError("/opt/cognous unexpectedly writable by configured nonroot user")
+        raise AssertionError("/opt/cognous unexpectedly writable by image default user")
+
+    # Separate override-based identity check. This does not establish the image
+    # default; it only confirms the explicit qualification identity behaves as expected.
+    override_uid = _docker(image, state, ["/usr/bin/id", "-u"], user="1000:1000").stdout.strip()
+    override_gid = _docker(image, state, ["/usr/bin/id", "-g"], user="1000:1000").stdout.strip()
+    if (override_uid, override_gid) != ("1000", "1000"):
+        raise AssertionError("explicit 1000:1000 override did not take effect")
 
     license_paths = [
         "/opt/cognous/LICENSE",
@@ -173,10 +202,18 @@ def _packaging_checks(image: str, state: Path) -> dict[str, Any]:
         raise AssertionError("required license/notice files missing")
 
     return {
-        "configured_uid": int(uid),
-        "configured_gid": int(gid),
-        "state_path_writable": True,
-        "code_path_nonwritable": True,
+        "default_identity": {
+            "uid": int(uid),
+            "gid": int(gid),
+            "state_path_writable": True,
+            "code_path_nonwritable": True,
+        },
+        "explicit_user_override_check": {
+            "user": "1000:1000",
+            "uid": int(override_uid),
+            "gid": int(override_gid),
+            "meaning": "override behavior only; not evidence of configured image default",
+        },
         "license_paths": license_paths,
     }
 
