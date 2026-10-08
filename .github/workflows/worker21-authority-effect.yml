@@ -10,6 +10,7 @@ on:
       - 'tests/test_profile_exclusivity.py'
       - 'tests/test_refund_intent.py'
       - 'tests/test_local_authority_effect.py'
+      - 'tests/test_w2_refusal_history.py'
       - 'docs/local-authority-effect-profile.md'
       - 'docs/workstreams/local-authority-effect-checkpoint.md'
       - '.github/workflows/worker21-authority-effect.yml'
@@ -40,4 +41,4 @@ jobs:
         timeout-minutes: 2
         env:
           PYTHONPATH: .:pinned/control-plane/src
-        run: python -m pytest -q tests/test_local_authority_effect.py
+        run: python -m pytest -q tests/test_local_authority_effect.py tests/test_w2_refusal_history.py
