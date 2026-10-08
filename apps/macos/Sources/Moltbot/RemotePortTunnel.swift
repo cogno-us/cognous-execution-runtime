@@ -166,7 +166,9 @@ final class RemotePortTunnel {
     private static func hostKey(_ host: String) -> String {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return "" }
-        if trimmed.contains(":") { return trimmed }
+        if trimmed.contains(":") {
+            return trimmed
+        }
         let digits = CharacterSet(charactersIn: "0123456789.")
         if trimmed.rangeOfCharacter(from: digits.inverted) == nil {
             return trimmed
@@ -175,7 +177,9 @@ final class RemotePortTunnel {
     }
 
     private static func findPort(preferred: UInt16?, allowRandom: Bool) async throws -> UInt16 {
-        if let preferred, self.portIsFree(preferred) { return preferred }
+        if let preferred, self.portIsFree(preferred) {
+            return preferred
+        }
         if let preferred, !allowRandom {
             throw NSError(
                 domain: "RemotePortTunnel",

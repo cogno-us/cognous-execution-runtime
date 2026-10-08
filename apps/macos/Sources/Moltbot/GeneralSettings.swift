@@ -16,8 +16,13 @@ struct GeneralSettings: View {
     @State private var remoteStatus: RemoteStatus = .idle
     @State private var showRemoteAdvanced = false
     private let isPreview = ProcessInfo.processInfo.isPreview
-    private var isNixMode: Bool { ProcessInfo.processInfo.isNixMode }
-    private var remoteLabelWidth: CGFloat { 88 }
+    private var isNixMode: Bool {
+        ProcessInfo.processInfo.isNixMode
+    }
+
+    private var remoteLabelWidth: CGFloat {
+        88
+    }
 
     var body: some View {
         ScrollView(.vertical) {
@@ -425,10 +430,14 @@ struct GeneralSettings: View {
 
             if let snap = snapshot {
                 let linkId = snap.channelOrder?.first(where: {
-                    if let summary = snap.channels[$0] { return summary.linked != nil }
+                    if let summary = snap.channels[$0] {
+                        return summary.linked != nil
+                    }
                     return false
                 }) ?? snap.channels.keys.first(where: {
-                    if let summary = snap.channels[$0] { return summary.linked != nil }
+                    if let summary = snap.channels[$0] {
+                        return summary.linked != nil
+                    }
                     return false
                 })
                 let linkLabel =

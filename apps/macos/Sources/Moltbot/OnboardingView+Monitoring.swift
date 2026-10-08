@@ -1,5 +1,5 @@
-import MoltbotIPC
 import Foundation
+import MoltbotIPC
 
 extension OnboardingView {
     @MainActor
@@ -145,9 +145,15 @@ extension OnboardingView {
     func verifyAnthropicOAuthIfNeeded(force: Bool = false) async {
         guard self.state.connectionMode == .local else { return }
         guard self.anthropicAuthDetectedStatus.isConnected else { return }
-        if self.anthropicAuthVerified, !force { return }
-        if self.anthropicAuthVerifying { return }
-        if self.anthropicAuthVerificationAttempted, !force { return }
+        if self.anthropicAuthVerified, !force {
+            return
+        }
+        if self.anthropicAuthVerifying {
+            return
+        }
+        if self.anthropicAuthVerificationAttempted, !force {
+            return
+        }
 
         self.anthropicAuthVerificationAttempted = true
         self.anthropicAuthVerifying = true

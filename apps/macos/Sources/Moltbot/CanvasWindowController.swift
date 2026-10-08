@@ -1,7 +1,7 @@
 import AppKit
+import Foundation
 import MoltbotIPC
 import MoltbotKit
-import Foundation
 import WebKit
 
 @MainActor
@@ -174,7 +174,9 @@ final class CanvasWindowController: NSWindowController, WKNavigationDelegate, NS
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
 
     @MainActor deinit {
         self.webView.configuration.userContentController
@@ -349,7 +351,9 @@ final class CanvasWindowController: NSWindowController, WKNavigationDelegate, NS
 
     func shouldAutoNavigateToA2UI(lastAutoTarget: String?) -> Bool {
         let trimmed = (self.currentTarget ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed == "/" { return true }
+        if trimmed.isEmpty || trimmed == "/" {
+            return true
+        }
         if let lastAuto = lastAutoTarget?.trimmingCharacters(in: .whitespacesAndNewlines),
            !lastAuto.isEmpty,
            trimmed == lastAuto

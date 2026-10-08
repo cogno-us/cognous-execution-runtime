@@ -99,7 +99,9 @@ final class TalkOverlayController {
     // MARK: - Private
 
     private func ensureWindow() {
-        if self.window != nil { return }
+        if self.window != nil {
+            return
+        }
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.overlaySize, height: Self.overlaySize),
             styleMask: [.nonactivatingPanel, .borderless],

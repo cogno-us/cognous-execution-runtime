@@ -12,110 +12,186 @@ extension ChannelsSettings {
     var whatsAppTint: Color {
         guard let status = self.channelStatus("whatsapp", as: ChannelsStatusSnapshot.WhatsAppStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if !status.linked { return .red }
-        if status.lastError != nil { return .orange }
-        if status.connected { return .green }
-        if status.running { return .orange }
+        if !status.configured {
+            return .secondary
+        }
+        if !status.linked {
+            return .red
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.connected {
+            return .green
+        }
+        if status.running {
+            return .orange
+        }
         return .orange
     }
 
     var telegramTint: Color {
         guard let status = self.channelStatus("telegram", as: ChannelsStatusSnapshot.TelegramStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if status.lastError != nil { return .orange }
-        if status.probe?.ok == false { return .orange }
-        if status.running { return .green }
+        if !status.configured {
+            return .secondary
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.probe?.ok == false {
+            return .orange
+        }
+        if status.running {
+            return .green
+        }
         return .orange
     }
 
     var discordTint: Color {
         guard let status = self.channelStatus("discord", as: ChannelsStatusSnapshot.DiscordStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if status.lastError != nil { return .orange }
-        if status.probe?.ok == false { return .orange }
-        if status.running { return .green }
+        if !status.configured {
+            return .secondary
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.probe?.ok == false {
+            return .orange
+        }
+        if status.running {
+            return .green
+        }
         return .orange
     }
 
     var googlechatTint: Color {
         guard let status = self.channelStatus("googlechat", as: ChannelsStatusSnapshot.GoogleChatStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if status.lastError != nil { return .orange }
-        if status.probe?.ok == false { return .orange }
-        if status.running { return .green }
+        if !status.configured {
+            return .secondary
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.probe?.ok == false {
+            return .orange
+        }
+        if status.running {
+            return .green
+        }
         return .orange
     }
 
     var signalTint: Color {
         guard let status = self.channelStatus("signal", as: ChannelsStatusSnapshot.SignalStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if status.lastError != nil { return .orange }
-        if status.probe?.ok == false { return .orange }
-        if status.running { return .green }
+        if !status.configured {
+            return .secondary
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.probe?.ok == false {
+            return .orange
+        }
+        if status.running {
+            return .green
+        }
         return .orange
     }
 
     var imessageTint: Color {
         guard let status = self.channelStatus("imessage", as: ChannelsStatusSnapshot.IMessageStatus.self)
         else { return .secondary }
-        if !status.configured { return .secondary }
-        if status.lastError != nil { return .orange }
-        if status.probe?.ok == false { return .orange }
-        if status.running { return .green }
+        if !status.configured {
+            return .secondary
+        }
+        if status.lastError != nil {
+            return .orange
+        }
+        if status.probe?.ok == false {
+            return .orange
+        }
+        if status.running {
+            return .green
+        }
         return .orange
     }
 
     var whatsAppSummary: String {
         guard let status = self.channelStatus("whatsapp", as: ChannelsStatusSnapshot.WhatsAppStatus.self)
         else { return "Checking…" }
-        if !status.linked { return "Not linked" }
-        if status.connected { return "Connected" }
-        if status.running { return "Running" }
+        if !status.linked {
+            return "Not linked"
+        }
+        if status.connected {
+            return "Connected"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Linked"
     }
 
     var telegramSummary: String {
         guard let status = self.channelStatus("telegram", as: ChannelsStatusSnapshot.TelegramStatus.self)
         else { return "Checking…" }
-        if !status.configured { return "Not configured" }
-        if status.running { return "Running" }
+        if !status.configured {
+            return "Not configured"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Configured"
     }
 
     var discordSummary: String {
         guard let status = self.channelStatus("discord", as: ChannelsStatusSnapshot.DiscordStatus.self)
         else { return "Checking…" }
-        if !status.configured { return "Not configured" }
-        if status.running { return "Running" }
+        if !status.configured {
+            return "Not configured"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Configured"
     }
 
     var googlechatSummary: String {
         guard let status = self.channelStatus("googlechat", as: ChannelsStatusSnapshot.GoogleChatStatus.self)
         else { return "Checking…" }
-        if !status.configured { return "Not configured" }
-        if status.running { return "Running" }
+        if !status.configured {
+            return "Not configured"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Configured"
     }
 
     var signalSummary: String {
         guard let status = self.channelStatus("signal", as: ChannelsStatusSnapshot.SignalStatus.self)
         else { return "Checking…" }
-        if !status.configured { return "Not configured" }
-        if status.running { return "Running" }
+        if !status.configured {
+            return "Not configured"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Configured"
     }
 
     var imessageSummary: String {
         guard let status = self.channelStatus("imessage", as: ChannelsStatusSnapshot.IMessageStatus.self)
         else { return "Checking…" }
-        if !status.configured { return "Not configured" }
-        if status.running { return "Running" }
+        if !status.configured {
+            return "Not configured"
+        }
+        if status.running {
+            return "Running"
+        }
         return "Configured"
     }
 
@@ -306,7 +382,9 @@ extension ChannelsSettings {
         return channels.sorted { lhs, rhs in
             let lhsEnabled = self.channelEnabled(lhs)
             let rhsEnabled = self.channelEnabled(rhs)
-            if lhsEnabled != rhsEnabled { return lhsEnabled && !rhsEnabled }
+            if lhsEnabled != rhsEnabled {
+                return lhsEnabled && !rhsEnabled
+            }
             return lhs.sortOrder < rhs.sortOrder
         }
     }
@@ -363,8 +441,12 @@ extension ChannelsSettings {
         case "imessage":
             return self.imessageTint
         default:
-            if self.channelHasError(channel) { return .orange }
-            if self.channelEnabled(channel) { return .green }
+            if self.channelHasError(channel) {
+                return .orange
+            }
+            if self.channelEnabled(channel) {
+                return .green
+            }
             return .secondary
         }
     }
@@ -384,8 +466,12 @@ extension ChannelsSettings {
         case "imessage":
             return self.imessageSummary
         default:
-            if self.channelHasError(channel) { return "Error" }
-            if self.channelEnabled(channel) { return "Active" }
+            if self.channelHasError(channel) {
+                return "Error"
+            }
+            if self.channelEnabled(channel) {
+                return "Active"
+            }
             return "Not configured"
         }
     }
@@ -490,7 +576,9 @@ extension ChannelsSettings {
 
     private func resolveChannelTitle(_ id: String) -> String {
         let label = self.store.resolveChannelLabel(id)
-        if label != id { return label }
+        if label != id {
+            return label
+        }
         return id.prefix(1).uppercased() + id.dropFirst()
     }
 
