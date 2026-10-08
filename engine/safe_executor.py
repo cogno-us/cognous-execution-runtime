@@ -56,6 +56,7 @@ class ExecutionOperation:
     grant_id: str
     grant_revision: str
     effective_max_effects: int
+    tenant_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class FrozenOperation:
     grant_id: str
     grant_revision: str
     effective_max_effects: int
+    tenant_id: str | None = None
 
     def payload(self) -> dict:
         value = json.loads(self.payload_json)
@@ -99,7 +101,7 @@ class FrozenOperation:
         return value
 
     def canonical_dict(self) -> dict:
-        return {
+        value = {
             "actor": self.actor,
             "principal": self.principal,
             "institution_id": self.institution_id,
@@ -123,6 +125,9 @@ class FrozenOperation:
             "grant_revision": self.grant_revision,
             "effective_max_effects": self.effective_max_effects,
         }
+        if self.tenant_id is not None:
+            value["tenant_id"] = self.tenant_id
+        return value
 
     @property
     def digest(self) -> str:
@@ -174,6 +179,7 @@ def snapshot_envelope(envelope: ExecutionEnvelope) -> FrozenEnvelope:
         grant_id=copy.deepcopy(op.grant_id),
         grant_revision=copy.deepcopy(op.grant_revision),
         effective_max_effects=op.effective_max_effects,
+        tenant_id=copy.deepcopy(op.tenant_id),
     )
     snap = FrozenEnvelope(
         version=copy.deepcopy(envelope.version),
@@ -236,6 +242,10 @@ def validate_snapshot(envelope: FrozenEnvelope) -> None:
     _strict_finite_number(op.amount, name="amount")
     _strict_positive_int(op.effects, name="effects", exactly_one=True)
     _strict_positive_int(op.effective_max_effects, name="effective_max_effects")
+    if op.tenant_id is not None and (
+        not isinstance(op.tenant_id, str) or not (1 <= len(op.tenant_id) <= 128)
+    ):
+        raise ValueError("tenant_id must be an exact non-empty string up to 128 characters")
     required = [
         op.actor,
         op.principal,

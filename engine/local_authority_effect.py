@@ -94,6 +94,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         status TEXT NOT NULL CHECK(status IN ('active','suspended','revoked','unknown')),
                         institution_id TEXT NOT NULL,
                         authority_domain TEXT NOT NULL,
+                        tenant_id TEXT,
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL
                     )""",
@@ -105,12 +106,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         grant_id TEXT NOT NULL,
                         grant_revision TEXT NOT NULL,
                         proposal_commitment TEXT NOT NULL,
-                        policy_versions_json TEXT NOT NULL
+                        policy_versions_json TEXT NOT NULL,
+                        tenant_id TEXT
                     )""",
                     """CREATE TABLE authority_policies_v1 (
                         ref TEXT PRIMARY KEY,
                         version TEXT NOT NULL,
-                        status TEXT NOT NULL CHECK(status IN ('active','superseded','unknown'))
+                        status TEXT NOT NULL CHECK(status IN ('active','superseded','unknown')),
+                        tenant_id TEXT
                     )""",
                     """CREATE TABLE authority_evidence_v1 (
                         obligation_id TEXT PRIMARY KEY,
@@ -136,6 +139,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         max_effects INTEGER NOT NULL,
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL,
+                        tenant_id TEXT,
                         state TEXT NOT NULL CHECK(state IN ('issued','consumed'))
                     )""",
                     """CREATE TABLE effect_budgets_v1 (
@@ -163,6 +167,18 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     conn.execute(
                         "ALTER TABLE execution_claims_v1 ADD COLUMN effect_operation_digest TEXT"
                     )
+                for table in (
+                    "authority_grants_v1",
+                    "authority_approvals_v1",
+                    "authority_policies_v1",
+                    "execution_claims_v1",
+                ):
+                    columns = {
+                        item["name"]
+                        for item in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                    }
+                    if "tenant_id" not in columns:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT")
             conn.execute("COMMIT")
 
     def _profile_present(self, conn: sqlite3.Connection) -> bool:
@@ -174,10 +190,18 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
     def _claim_model(self, claim: Any):
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
+            TenantLocalExecutionClaim,
             verify_local_execution_claim,
         )
 
-        model = claim if isinstance(claim, LocalExecutionClaim) else LocalExecutionClaim.model_validate(claim)
+        if isinstance(claim, LocalExecutionClaim):
+            model = claim
+        elif isinstance(claim, dict) and (
+            "tenant_id" in claim or "authorization_generation" in claim
+        ):
+            model = TenantLocalExecutionClaim.model_validate(claim)
+        else:
+            model = LocalExecutionClaim.model_validate(claim)
         if not verify_local_execution_claim(model):
             raise PermissionError("execution claim commitment is invalid")
         if model.profile != PROFILE or model.authorizing_by_possession is not False:
@@ -188,6 +212,12 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             raise PermissionError("execution claim approval projection is not active")
         if any(item.status != "active" for item in model.policy_state):
             raise PermissionError("execution claim policy projection is not active")
+        tenant_id = getattr(model, "tenant_id", None)
+        if tenant_id is not None:
+            if any(getattr(item, "tenant_id", None) != tenant_id for item in model.approval_state):
+                raise PermissionError("execution claim approval tenant projection mismatch")
+            if any(getattr(item, "tenant_id", None) != tenant_id for item in model.policy_state):
+                raise PermissionError("execution claim policy tenant projection mismatch")
         for item in model.evidence_state:
             decision_critical = item.required or item.unknown_behavior == "hold_effect"
             if decision_critical and item.state != "current":
@@ -219,14 +249,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if grant is None:
                 conn.execute(
                     """INSERT INTO authority_grants_v1
-                    (grant_id,revision,status,institution_id,authority_domain,not_before,expires_at)
-                    VALUES(?,?,?,?,?,?,?)""",
+                    (grant_id,revision,status,institution_id,authority_domain,tenant_id,not_before,expires_at)
+                    VALUES(?,?,?,?,?,?,?,?)""",
                     (
                         model.grant_id,
                         model.grant_revision,
                         model.grant_status,
                         model.institution_id,
                         model.authority_domain,
+                        getattr(model, "tenant_id", None),
                         model.not_before,
                         model.expires_at,
                     ),
@@ -237,12 +268,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     model.grant_status,
                     model.institution_id,
                     model.authority_domain,
+                    getattr(model, "tenant_id", None),
                 )
                 actual = (
                     grant["revision"],
                     grant["status"],
                     grant["institution_id"],
                     grant["authority_domain"],
+                    grant["tenant_id"],
                 )
                 if actual != expected:
                     conn.execute("ROLLBACK")
@@ -261,13 +294,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     approval.grant_revision,
                     approval.proposal_commitment,
                     json.dumps(approval.policy_versions, sort_keys=True, separators=(",", ":")),
+                    getattr(approval, "tenant_id", None),
                 )
                 if prior is None:
                     conn.execute(
                         """INSERT INTO authority_approvals_v1
                         (approval_ref,role_id,approver,status,grant_id,grant_revision,
-                         proposal_commitment,policy_versions_json)
-                        VALUES(?,?,?,?,?,?,?,?)""",
+                         proposal_commitment,policy_versions_json,tenant_id)
+                        VALUES(?,?,?,?,?,?,?,?,?)""",
                         (approval.approval_ref, *expected),
                     )
                 else:
@@ -275,6 +309,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         prior["role_id"], prior["approver"], prior["status"],
                         prior["grant_id"], prior["grant_revision"],
                         prior["proposal_commitment"], prior["policy_versions_json"],
+                        prior["tenant_id"],
                     )
                     if actual != expected:
                         conn.execute("ROLLBACK")
@@ -284,13 +319,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 prior = conn.execute(
                     "SELECT * FROM authority_policies_v1 WHERE ref=?", (policy.ref,)
                 ).fetchone()
-                expected = (policy.version, policy.status)
+                expected = (policy.version, policy.status, getattr(policy, "tenant_id", None))
                 if prior is None:
                     conn.execute(
-                        "INSERT INTO authority_policies_v1(ref,version,status) VALUES(?,?,?)",
+                        "INSERT INTO authority_policies_v1(ref,version,status,tenant_id) VALUES(?,?,?,?)",
                         (policy.ref, *expected),
                     )
-                elif (prior["version"], prior["status"]) != expected:
+                elif (prior["version"], prior["status"], prior["tenant_id"]) != expected:
                     conn.execute("ROLLBACK")
                     raise PermissionError("existing authoritative policy state rejects claim provisioning")
 
@@ -343,8 +378,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 """INSERT INTO execution_claims_v1
                 (claim_id,claim_commitment,claim_json,effect_id,decision_id,grant_id,
                  grant_revision,operation_commitment,effect_operation_digest,budget_id,max_effects,not_before,
-                 expires_at,state)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 expires_at,tenant_id,state)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     model.claim_id,
                     model.claim_commitment,
@@ -359,6 +394,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     model.max_effects,
                     model.not_before,
                     model.expires_at,
+                    getattr(model, "tenant_id", None),
                     "issued",
                 ),
             )
@@ -394,7 +430,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT version,status FROM authority_policies_v1 WHERE ref=?", (ref,)
+                "SELECT version,status,tenant_id FROM authority_policies_v1 WHERE ref=?", (ref,)
             ).fetchone()
             if row is None:
                 conn.execute("ROLLBACK")
@@ -487,6 +523,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "grant_id": op.grant_id,
             "grant_revision": op.grant_revision,
         }
+        if op.tenant_id is not None:
+            value["tenant_id"] = op.tenant_id
         return commitment(value)
 
     def _validate_claim_state(self, conn: sqlite3.Connection, claim: Any, snapshot: FrozenEnvelope, now: datetime) -> None:
@@ -500,6 +538,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "principal": claim.principal == op.principal,
             "grant_id": claim.grant_id == op.grant_id,
             "grant_revision": claim.grant_revision == op.grant_revision,
+            "tenant_id": getattr(claim, "tenant_id", None) == op.tenant_id,
             "manifest_id": claim.manifest_id == op.manifest_id,
             "manifest_version": claim.manifest_version == op.manifest_version,
             "manifest_digest": claim.manifest_digest == op.manifest_digest,
@@ -530,6 +569,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             or grant["status"] != "active"
             or grant["institution_id"] != claim.institution_id
             or grant["authority_domain"] != claim.authority_domain
+            or grant["tenant_id"] != getattr(claim, "tenant_id", None)
         ):
             raise PermissionError("authoritative grant state invalid")
         if not (_parse_time(grant["not_before"]) <= now < _parse_time(grant["expires_at"])):
@@ -549,17 +589,22 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 or row["proposal_commitment"] != expected.proposal_commitment
                 or row["policy_versions_json"]
                 != json.dumps(expected.policy_versions, sort_keys=True, separators=(",", ":"))
+                or row["tenant_id"] != getattr(expected, "tenant_id", None)
             ):
                 raise PermissionError("authoritative approval state invalid")
 
         for expected in claim.policy_state:
             row = conn.execute(
-                "SELECT version,status FROM authority_policies_v1 WHERE ref=?",
+                "SELECT version,status,tenant_id FROM authority_policies_v1 WHERE ref=?",
                 (expected.ref,),
             ).fetchone()
             if row is None:
                 raise PermissionError("authoritative policy state unavailable")
-            if row["version"] != expected.version or row["status"] != "active":
+            if (
+                row["version"] != expected.version
+                or row["status"] != "active"
+                or row["tenant_id"] != getattr(expected, "tenant_id", None)
+            ):
                 raise PermissionError("authoritative policy state invalid")
 
         for expected in claim.evidence_state:
@@ -592,7 +637,10 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         attempt_id: str,
         simulate: str | None = None,
     ) -> dict[str, Any]:
-        from agent_control_plane.local_authority_effect import LocalExecutionClaim
+        from agent_control_plane.local_authority_effect import (
+            LocalExecutionClaim,
+            TenantLocalExecutionClaim,
+        )
 
         with self._connect() as conn:
             self._transaction_stage("before_begin")
@@ -610,7 +658,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 conn.execute("ROLLBACK")
                 raise PermissionError("execution claim is not usable")
 
-            claim = LocalExecutionClaim.model_validate(json.loads(row["claim_json"]))
+            claim_raw = json.loads(row["claim_json"])
+            claim_type = (
+                TenantLocalExecutionClaim
+                if row["tenant_id"] is not None
+                else LocalExecutionClaim
+            )
+            claim = claim_type.model_validate(claim_raw)
             self._validate_claim_state(conn, claim, snapshot, now)
 
             budget = conn.execute(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import multiprocessing as mp
 import os
 import sqlite3
@@ -664,3 +665,164 @@ def test_expiry_is_evaluated_after_waiting_for_transaction_lock(tmp_path):
     assert "validity" in outcome
     assert destination.claim_state(claim.claim_id) == "issued"
     assert effect_rows(destination) == []
+
+
+# ---------------------------------------------------------------------------
+# W1 tenant-aware local SQLite refund qualification
+# ---------------------------------------------------------------------------
+
+TENANT = "tenant-alpha"
+
+
+def tenant_envelope(*, tenant_id=TENANT, effect_id="effect-tenant"):
+    base = envelope(effect_id=effect_id)
+    return dataclasses.replace(
+        base,
+        decision_id="decision-tenant",
+        operation=dataclasses.replace(base.operation, tenant_id=tenant_id),
+    )
+
+
+def make_tenant_claim(env, *, claim_id="claim-tenant", budget_id="budget-tenant"):
+    from agent_control_plane.bounded import commitment
+    from agent_control_plane.local_authority_effect import TenantLocalExecutionClaim
+
+    historical = make_claim(env, claim_id=claim_id, budget_id=budget_id)
+    raw = historical.model_dump(mode="json", exclude_none=False)
+    raw["authorization_generation"] = "bounded-authorization-effect/0.2"
+    raw["tenant_id"] = env.operation.tenant_id
+    for item in raw["approval_state"]:
+        item["tenant_id"] = env.operation.tenant_id
+    for item in raw["policy_state"]:
+        item["tenant_id"] = env.operation.tenant_id
+    raw["approval_state_commitment"] = commitment(raw["approval_state"])
+    raw["policy_state_commitment"] = commitment(raw["policy_state"])
+    authority = {
+        "grant_id": raw["grant_id"],
+        "grant_revision": raw["grant_revision"],
+        "grant_status": raw["grant_status"],
+        "requirement_commitment": raw["requirement_commitment"],
+        "approvals": raw["approval_state"],
+        "policies": raw["policy_state"],
+        "evidence": raw["evidence_state"],
+    }
+    raw["authority_state_commitment"] = commitment(authority)
+    raw.pop("claim_commitment", None)
+    raw["claim_commitment"] = commitment(raw)
+    return TenantLocalExecutionClaim.model_validate(raw)
+
+
+def setup_tenant_atomic(tmp_path):
+    env = tenant_envelope()
+    destination = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
+    claim = make_tenant_claim(env)
+    destination.provision_claim(claim)
+    return env, destination, claim
+
+
+def test_tenant_refund_commits_under_exact_tenant(tmp_path):
+    env, destination, claim = setup_tenant_atomic(tmp_path)
+    result = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    ).execute(envelope=env, claim_id=claim.claim_id)
+    assert result.status == "executed"
+    assert destination.claim_state(claim.claim_id) == "consumed"
+    assert len(effect_rows(destination)) == 1
+
+
+@pytest.mark.parametrize("tenant_id", [None, "tenant-beta"])
+def test_missing_or_substituted_effect_tenant_is_denied(tmp_path, tenant_id):
+    env, destination, claim = setup_tenant_atomic(tmp_path)
+    changed = dataclasses.replace(
+        env,
+        operation=dataclasses.replace(env.operation, tenant_id=tenant_id),
+    )
+    result = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    ).execute(envelope=changed, claim_id=claim.claim_id)
+    assert result.status == "denied"
+    assert "tenant_id" in result.error or "operation mismatch" in result.error
+    assert destination.claim_state(claim.claim_id) == "issued"
+    assert effect_rows(destination) == []
+
+
+@pytest.mark.parametrize(
+    ("table", "key_column", "key_value"),
+    [
+        ("authority_grants_v1", "grant_id", GRANT),
+        ("authority_approvals_v1", "approval_ref", APPROVAL),
+        ("authority_policies_v1", "ref", POLICY_REF),
+    ],
+)
+def test_wrong_tenant_authoritative_state_is_denied_at_effect_time(
+    tmp_path, table, key_column, key_value
+):
+    env, destination, claim = setup_tenant_atomic(tmp_path)
+    with sqlite3.connect(destination.path) as conn:
+        conn.execute(
+            f"UPDATE {table} SET tenant_id=? WHERE {key_column}=?",
+            ("tenant-beta", key_value),
+        )
+    result = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    ).execute(envelope=env, claim_id=claim.claim_id)
+    assert result.status == "denied"
+    assert "state invalid" in result.error
+    assert destination.claim_state(claim.claim_id) == "issued"
+    assert effect_rows(destination) == []
+
+
+def test_tenant_lost_ack_restart_recovery_preserves_original_tenant_effect(tmp_path):
+    env, destination, claim = setup_tenant_atomic(tmp_path)
+    executor = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    )
+    result = executor.execute(envelope=env, claim_id=claim.claim_id, simulate="lost_ack")
+    assert result.status == "unknown"
+    assert destination.claim_state(claim.claim_id) == "consumed"
+    assert len(effect_rows(destination)) == 1
+
+    reopened = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
+    exact = reopened.reconcile_claim(claim.claim_id, snapshot_envelope(env))
+    assert exact["status"] == "applied"
+    assert exact["retry_eligible"] is False
+
+    wrong = dataclasses.replace(
+        env,
+        operation=dataclasses.replace(env.operation, tenant_id="tenant-beta"),
+    )
+    substituted = reopened.reconcile_claim(claim.claim_id, snapshot_envelope(wrong))
+    assert substituted["status"] == "hold"
+    assert substituted["retry_eligible"] is False
+
+
+def test_historical_tenant_unaware_claim_remains_supported_without_assurance_upgrade(tmp_path):
+    env = envelope(effect_id="effect-historical")
+    destination = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: BASE)
+    claim = make_claim(env, claim_id="claim-historical", budget_id="budget-historical")
+    destination.provision_claim(claim)
+
+    with sqlite3.connect(destination.path) as conn:
+        conn.row_factory = sqlite3.Row
+        stored = conn.execute(
+            "SELECT tenant_id FROM execution_claims_v1 WHERE claim_id=?",
+            (claim.claim_id,),
+        ).fetchone()
+        grant = conn.execute(
+            "SELECT tenant_id FROM authority_grants_v1 WHERE grant_id=?",
+            (claim.grant_id,),
+        ).fetchone()
+    assert stored["tenant_id"] is None
+    assert grant["tenant_id"] is None
+
+    result = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    ).execute(envelope=env, claim_id=claim.claim_id)
+    assert result.status == "executed"
+
+
+def test_w1_tenant_claim_sample_bytes_match_live_model():
+    sample_path = Path(__file__).parent / "fixtures" / "w1_tenant_execution_claim_v0_2.json"
+    sample = json.loads(sample_path.read_text(encoding="utf-8"))
+    live = make_tenant_claim(tenant_envelope()).model_dump(mode="json", exclude_none=False)
+    assert sample == live
