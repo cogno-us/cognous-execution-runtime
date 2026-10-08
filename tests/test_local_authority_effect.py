@@ -818,3 +818,10 @@ def test_historical_tenant_unaware_claim_remains_supported_without_assurance_upg
         workflow=object(), destination=destination, policy=policy(env.operation)
     ).execute(envelope=env, claim_id=claim.claim_id)
     assert result.status == "executed"
+
+
+def test_w1_tenant_claim_sample_bytes_match_live_model():
+    sample_path = Path(__file__).parent / "fixtures" / "w1_tenant_execution_claim_v0_2.json"
+    sample = json.loads(sample_path.read_text(encoding="utf-8"))
+    live = make_tenant_claim(tenant_envelope()).model_dump(mode="json", exclude_none=False)
+    assert sample == live
