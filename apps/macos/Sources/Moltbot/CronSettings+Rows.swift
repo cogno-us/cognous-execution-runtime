@@ -221,12 +221,20 @@ extension CronSettings {
                         .font(.callout)
                         .textSelection(.enabled)
                     HStack(spacing: 8) {
-                        if let thinking, !thinking.isEmpty { StatusPill(text: "think \(thinking)", tint: .secondary) }
-                        if let timeoutSeconds { StatusPill(text: "\(timeoutSeconds)s", tint: .secondary) }
+                        if let thinking, !thinking.isEmpty {
+                            StatusPill(text: "think \(thinking)", tint: .secondary)
+                        }
+                        if let timeoutSeconds {
+                            StatusPill(text: "\(timeoutSeconds)s", tint: .secondary)
+                        }
                         if deliver ?? false {
                             StatusPill(text: "deliver", tint: .secondary)
-                            if let provider, !provider.isEmpty { StatusPill(text: provider, tint: .secondary) }
-                            if let to, !to.isEmpty { StatusPill(text: to, tint: .secondary) }
+                            if let provider, !provider.isEmpty {
+                                StatusPill(text: provider, tint: .secondary)
+                            }
+                            if let to, !to.isEmpty {
+                                StatusPill(text: to, tint: .secondary)
+                            }
                         }
                     }
                 }

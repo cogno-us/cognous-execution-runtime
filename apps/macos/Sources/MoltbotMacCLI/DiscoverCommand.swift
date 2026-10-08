@@ -1,5 +1,5 @@
-import MoltbotDiscovery
 import Foundation
+import MoltbotDiscovery
 
 struct DiscoveryOptions {
     var timeoutMs: Int = 2000
@@ -126,7 +126,9 @@ func runDiscover(_ args: [String]) async {
     print("Gateway Discovery (macOS NWBrowser)")
     print("Status: \(status)")
     print("Found \(gateways.count) gateway(s)\(opts.includeLocal ? "" : " (local filtered)")")
-    if gateways.isEmpty { return }
+    if gateways.isEmpty {
+        return
+    }
 
     for gateway in gateways {
         let hosts = [gateway.tailnetDns, gateway.lanHost]

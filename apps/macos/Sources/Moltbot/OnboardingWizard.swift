@@ -1,6 +1,6 @@
+import Foundation
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 import Observation
 import OSLog
 import SwiftUI
@@ -41,8 +41,13 @@ final class OnboardingWizardModel {
     private var restartAttempts = 0
     private let maxRestartAttempts = 1
 
-    var isComplete: Bool { self.status == "done" }
-    var isRunning: Bool { self.status == "running" }
+    var isComplete: Bool {
+        self.status == "done"
+    }
+
+    var isRunning: Bool {
+        self.status == "running"
+    }
 
     func reset() {
         self.sessionId = nil
@@ -144,7 +149,9 @@ final class OnboardingWizardModel {
         if self.currentStep == nil, res.step != nil {
             onboardingWizardLogger.error("wizard step decode failed")
         }
-        if res.done { self.currentStep = nil }
+        if res.done {
+            self.currentStep = nil
+        }
         self.restartAttempts = 0
     }
 
@@ -156,7 +163,9 @@ final class OnboardingWizardModel {
         if self.currentStep == nil, res.step != nil {
             onboardingWizardLogger.error("wizard step decode failed")
         }
-        if res.done { self.currentStep = nil }
+        if res.done {
+            self.currentStep = nil
+        }
         if res.done || status == "done" || status == "cancelled" || status == "error" {
             self.sessionId = nil
         }
@@ -371,8 +380,12 @@ struct OnboardingWizardStepView: View {
 
     private var isBlocked: Bool {
         let type = wizardStepType(step)
-        if type == "select" { return self.optionItems.isEmpty }
-        if type == "multiselect" { return self.optionItems.isEmpty }
+        if type == "select" {
+            return self.optionItems.isEmpty
+        }
+        if type == "multiselect" {
+            return self.optionItems.isEmpty
+        }
         return false
     }
 
@@ -408,5 +421,7 @@ private struct WizardOptionItem: Identifiable {
     let index: Int
     let option: WizardOption
 
-    var id: Int { self.index }
+    var id: Int {
+        self.index
+    }
 }

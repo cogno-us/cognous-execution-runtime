@@ -1,5 +1,5 @@
-import MoltbotProtocol
 import Foundation
+import MoltbotProtocol
 
 extension ChannelsStore {
     func loadConfigSchema() async {

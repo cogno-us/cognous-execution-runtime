@@ -25,7 +25,9 @@ final class VoicePushToTalkHotkey: @unchecked Sendable {
     }
 
     func setEnabled(_ enabled: Bool) {
-        if ProcessInfo.processInfo.isRunningTests { return }
+        if ProcessInfo.processInfo.isRunningTests {
+            return
+        }
         self.withMainThread { [weak self] in
             guard let self else { return }
             if enabled {
@@ -122,7 +124,7 @@ actor VoicePushToTalk {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var tapInstalled = false
 
-    // Session token used to drop stale callbacks when a new capture starts.
+    /// Session token used to drop stale callbacks when a new capture starts.
     private var sessionID = UUID()
 
     private var committed: String = ""
@@ -301,7 +303,9 @@ actor VoicePushToTalk {
     }
 
     private func finalize(transcriptOverride: String?, reason: String, sessionID: UUID?) async {
-        if self.finalized { return }
+        if self.finalized {
+            return
+        }
         if let sessionID, sessionID != self.sessionID {
             self.logger.debug("push-to-talk drop finalize for stale session")
             return
@@ -390,8 +394,12 @@ actor VoicePushToTalk {
     }
 
     private static func join(_ prefix: String, _ suffix: String) -> String {
-        if prefix.isEmpty { return suffix }
-        if suffix.isEmpty { return prefix }
+        if prefix.isEmpty {
+            return suffix
+        }
+        if suffix.isEmpty {
+            return prefix
+        }
         return "\(prefix) \(suffix)"
     }
 

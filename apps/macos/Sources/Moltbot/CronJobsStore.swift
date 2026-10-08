@@ -1,6 +1,6 @@
+import Foundation
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 import Observation
 import OSLog
 
@@ -148,7 +148,9 @@ final class CronJobsStore {
             guard let self else { return }
             let stream = await GatewayConnection.shared.subscribe()
             for await push in stream {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 await MainActor.run { [weak self] in
                     self?.handle(push: push)
                 }

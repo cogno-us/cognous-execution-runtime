@@ -1,7 +1,7 @@
-import MoltbotKit
-import MoltbotProtocol
 import CoreGraphics
 import Foundation
+import MoltbotKit
+import MoltbotProtocol
 import OSLog
 
 @MainActor
@@ -33,7 +33,9 @@ final class ExecApprovalsGatewayPrompter {
     private func run() async {
         let stream = await GatewayConnection.shared.subscribe(bufferingNewest: 200)
         for await push in stream {
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             await self.handle(push: push)
         }
     }
@@ -98,7 +100,9 @@ final class ExecApprovalsGatewayPrompter {
     private static func lastInputSeconds() -> Int? {
         let anyEvent = CGEventType(rawValue: UInt32.max) ?? .null
         let seconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
-        if seconds.isNaN || seconds.isInfinite || seconds < 0 { return nil }
+        if seconds.isNaN || seconds.isInfinite || seconds < 0 {
+            return nil
+        }
         return Int(seconds.rounded())
     }
 }

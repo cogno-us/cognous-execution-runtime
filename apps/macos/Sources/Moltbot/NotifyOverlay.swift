@@ -10,7 +10,9 @@ final class NotifyOverlayController {
     static let shared = NotifyOverlayController()
 
     private(set) var model = Model()
-    var isVisible: Bool { self.model.isVisible }
+    var isVisible: Bool {
+        self.model.isVisible
+    }
 
     struct Model {
         var title: String = ""
@@ -89,7 +91,9 @@ final class NotifyOverlayController {
     }
 
     private func ensureWindow() {
-        if self.window != nil { return }
+        if self.window != nil {
+            return
+        }
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: self.width, height: self.minHeight),
             styleMask: [.nonactivatingPanel, .borderless],

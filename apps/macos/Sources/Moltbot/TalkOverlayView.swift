@@ -99,8 +99,13 @@ private final class OrbInteractionNSView: NSView {
     private var didDrag = false
     private var suppressSingleClick = false
 
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
 
     override func mouseDown(with event: NSEvent) {
         self.mouseDownEvent = event
@@ -116,7 +121,9 @@ private final class OrbInteractionNSView: NSView {
         if !self.didDrag {
             let dx = event.locationInWindow.x - startEvent.locationInWindow.x
             let dy = event.locationInWindow.y - startEvent.locationInWindow.y
-            if abs(dx) + abs(dy) < 2 { return }
+            if abs(dx) + abs(dy) < 2 {
+                return
+            }
             self.didDrag = true
             self.onDragStart?()
             self.window?.performDrag(with: startEvent)

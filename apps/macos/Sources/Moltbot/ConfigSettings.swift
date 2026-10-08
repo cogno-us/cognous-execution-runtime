@@ -28,7 +28,9 @@ struct ConfigSettings: View {
         }
         .onAppear { self.ensureSelection() }
         .onChange(of: self.store.configSchemaLoading) { _, loading in
-            if !loading { self.ensureSelection() }
+            if !loading {
+                self.ensureSelection()
+            }
         }
     }
 }
@@ -45,7 +47,9 @@ extension ConfigSettings {
         let help: String?
         let node: ConfigSchemaNode
 
-        var id: String { self.key }
+        var id: String {
+            self.key
+        }
     }
 
     private struct ConfigSubsection: Identifiable {
@@ -55,7 +59,9 @@ extension ConfigSettings {
         let node: ConfigSchemaNode
         let path: ConfigPath
 
-        var id: String { self.key }
+        var id: String {
+            self.key
+        }
     }
 
     private var sections: [ConfigSection] {
@@ -297,7 +303,9 @@ extension ConfigSettings {
         case .all:
             return
         case let .key(key):
-            if subsections.contains(where: { $0.key == key }) { return }
+            if subsections.contains(where: { $0.key == key }) {
+                return
+            }
         case .none:
             break
         }
@@ -324,7 +332,9 @@ extension ConfigSettings {
         let keys = node.properties.keys.sorted { lhs, rhs in
             let orderA = hintForPath([.key(lhs)], hints: hints)?.order ?? 0
             let orderB = hintForPath([.key(rhs)], hints: hints)?.order ?? 0
-            if orderA != orderB { return orderA < orderB }
+            if orderA != orderB {
+                return orderA < orderB
+            }
             return lhs < rhs
         }
 
@@ -347,7 +357,9 @@ extension ConfigSettings {
         let keys = node.properties.keys.sorted { lhs, rhs in
             let orderA = hintForPath([.key(section.key), .key(lhs)], hints: hints)?.order ?? 0
             let orderB = hintForPath([.key(section.key), .key(rhs)], hints: hints)?.order ?? 0
-            if orderA != orderB { return orderA < orderB }
+            if orderA != orderB {
+                return orderA < orderB
+            }
             return lhs < rhs
         }
 
@@ -372,7 +384,9 @@ extension ConfigSettings {
         let variants = node.anyOf.isEmpty ? node.oneOf : node.anyOf
         if !variants.isEmpty {
             let nonNull = variants.filter { !$0.isNullSchema }
-            if nonNull.count == 1, let only = nonNull.first { return only }
+            if nonNull.count == 1, let only = nonNull.first {
+                return only
+            }
         }
         return node
     }

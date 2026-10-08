@@ -1,5 +1,5 @@
-import MoltbotProtocol
 import Foundation
+import MoltbotProtocol
 
 enum MoltbotConfigFile {
     private static let logger = Logger(subsystem: "bot.molt", category: "config")
@@ -34,7 +34,9 @@ enum MoltbotConfigFile {
 
     static func saveDict(_ dict: [String: Any]) {
         // Nix mode disables config writes in production, but tests rely on saving temp configs.
-        if ProcessInfo.processInfo.isNixMode, !ProcessInfo.processInfo.isRunningTests { return }
+        if ProcessInfo.processInfo.isNixMode, !ProcessInfo.processInfo.isRunningTests {
+            return
+        }
         do {
             let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
             let url = self.url()
@@ -123,7 +125,9 @@ enum MoltbotConfigFile {
     static func gatewayPort() -> Int? {
         let root = self.loadDict()
         guard let gateway = root["gateway"] as? [String: Any] else { return nil }
-        if let port = gateway["port"] as? Int, port > 0 { return port }
+        if let port = gateway["port"] as? Int, port > 0 {
+            return port
+        }
         if let number = gateway["port"] as? NSNumber, number.intValue > 0 {
             return number.intValue
         }
@@ -192,7 +196,9 @@ enum MoltbotConfigFile {
     private static func hostKey(_ host: String) -> String {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return "" }
-        if trimmed.contains(":") { return trimmed }
+        if trimmed.contains(":") {
+            return trimmed
+        }
         let digits = CharacterSet(charactersIn: "0123456789.")
         if trimmed.rangeOfCharacter(from: digits.inverted) == nil {
             return trimmed

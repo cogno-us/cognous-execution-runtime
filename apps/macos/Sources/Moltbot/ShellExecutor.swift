@@ -1,5 +1,5 @@
-import MoltbotIPC
 import Foundation
+import MoltbotIPC
 
 enum ShellExecutor {
     struct ShellResult {
@@ -30,8 +30,12 @@ enum ShellExecutor {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = command
-        if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
-        if let env { process.environment = env }
+        if let cwd {
+            process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        }
+        if let env {
+            process.environment = env
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -69,11 +73,13 @@ enum ShellExecutor {
 
         if let timeout, timeout > 0 {
             let nanos = UInt64(timeout * 1_000_000_000)
-            let result = await withTaskGroup(of: ShellResult.self) { group in
+            return await withTaskGroup(of: ShellResult.self) { group in
                 group.addTask { await waitTask.value }
                 group.addTask {
                     try? await Task.sleep(nanoseconds: nanos)
-                    if process.isRunning { process.terminate() }
+                    if process.isRunning {
+                        process.terminate()
+                    }
                     _ = await waitTask.value // drain pipes after termination
                     return ShellResult(
                         stdout: "",
@@ -87,7 +93,6 @@ enum ShellExecutor {
                 group.cancelAll()
                 return first
             }
-            return result
         }
 
         return await waitTask.value
