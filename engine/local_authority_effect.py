@@ -595,7 +595,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
 
         for expected in claim.policy_state:
             row = conn.execute(
-                "SELECT version,status FROM authority_policies_v1 WHERE ref=?",
+                "SELECT version,status,tenant_id FROM authority_policies_v1 WHERE ref=?",
                 (expected.ref,),
             ).fetchone()
             if row is None:
@@ -637,7 +637,10 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         attempt_id: str,
         simulate: str | None = None,
     ) -> dict[str, Any]:
-        from agent_control_plane.local_authority_effect import LocalExecutionClaim
+        from agent_control_plane.local_authority_effect import (
+            LocalExecutionClaim,
+            TenantLocalExecutionClaim,
+        )
 
         with self._connect() as conn:
             self._transaction_stage("before_begin")
@@ -655,7 +658,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 conn.execute("ROLLBACK")
                 raise PermissionError("execution claim is not usable")
 
-            claim = LocalExecutionClaim.model_validate(json.loads(row["claim_json"]))
+            claim_raw = json.loads(row["claim_json"])
+            claim_type = (
+                TenantLocalExecutionClaim
+                if row["tenant_id"] is not None
+                else LocalExecutionClaim
+            )
+            claim = claim_type.model_validate(claim_raw)
             self._validate_claim_state(conn, claim, snapshot, now)
 
             budget = conn.execute(
