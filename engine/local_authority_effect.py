@@ -378,8 +378,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 """INSERT INTO execution_claims_v1
                 (claim_id,claim_commitment,claim_json,effect_id,decision_id,grant_id,
                  grant_revision,operation_commitment,effect_operation_digest,budget_id,max_effects,not_before,
-                 expires_at,state)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 expires_at,tenant_id,state)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     model.claim_id,
                     model.claim_commitment,
@@ -394,6 +394,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     model.max_effects,
                     model.not_before,
                     model.expires_at,
+                    getattr(model, "tenant_id", None),
                     "issued",
                 ),
             )
@@ -429,7 +430,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT version,status FROM authority_policies_v1 WHERE ref=?", (ref,)
+                "SELECT version,status,tenant_id FROM authority_policies_v1 WHERE ref=?", (ref,)
             ).fetchone()
             if row is None:
                 conn.execute("ROLLBACK")
@@ -522,6 +523,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "grant_id": op.grant_id,
             "grant_revision": op.grant_revision,
         }
+        if op.tenant_id is not None:
+            value["tenant_id"] = op.tenant_id
         return commitment(value)
 
     def _validate_claim_state(self, conn: sqlite3.Connection, claim: Any, snapshot: FrozenEnvelope, now: datetime) -> None:
@@ -535,6 +538,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "principal": claim.principal == op.principal,
             "grant_id": claim.grant_id == op.grant_id,
             "grant_revision": claim.grant_revision == op.grant_revision,
+            "tenant_id": getattr(claim, "tenant_id", None) == op.tenant_id,
             "manifest_id": claim.manifest_id == op.manifest_id,
             "manifest_version": claim.manifest_version == op.manifest_version,
             "manifest_digest": claim.manifest_digest == op.manifest_digest,
@@ -565,6 +569,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             or grant["status"] != "active"
             or grant["institution_id"] != claim.institution_id
             or grant["authority_domain"] != claim.authority_domain
+            or grant["tenant_id"] != getattr(claim, "tenant_id", None)
         ):
             raise PermissionError("authoritative grant state invalid")
         if not (_parse_time(grant["not_before"]) <= now < _parse_time(grant["expires_at"])):
@@ -584,6 +589,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 or row["proposal_commitment"] != expected.proposal_commitment
                 or row["policy_versions_json"]
                 != json.dumps(expected.policy_versions, sort_keys=True, separators=(",", ":"))
+                or row["tenant_id"] != getattr(expected, "tenant_id", None)
             ):
                 raise PermissionError("authoritative approval state invalid")
 
@@ -594,7 +600,11 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             ).fetchone()
             if row is None:
                 raise PermissionError("authoritative policy state unavailable")
-            if row["version"] != expected.version or row["status"] != "active":
+            if (
+                row["version"] != expected.version
+                or row["status"] != "active"
+                or row["tenant_id"] != getattr(expected, "tenant_id", None)
+            ):
                 raise PermissionError("authoritative policy state invalid")
 
         for expected in claim.evidence_state:
