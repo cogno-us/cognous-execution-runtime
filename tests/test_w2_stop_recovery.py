@@ -7,6 +7,13 @@ import time
 
 import pytest
 
+try:
+    import agent_control_plane.local_authority_effect  # noqa: F401
+except ModuleNotFoundError:
+    pytestmark = pytest.mark.skip(
+        reason="W2 atomic qualification requires Control Plane local-authority-effect contract"
+    )
+
 from engine.atomic_local_control_plane_executor import AtomicLocalControlPlaneExecutor
 from engine.local_authority_effect import AtomicAuthorityEffectDestination
 from engine.safe_executor import snapshot_envelope
