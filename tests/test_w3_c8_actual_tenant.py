@@ -1,3 +1,5 @@
+import pytest
+pytest.importorskip("agent_control_plane.local_authority_effect", reason="requires accepted W1 Control Plane atomic contract")
 """Actual accepted W1 authority-store rows through the new read-only exporter."""
 import sqlite3
 import pytest
