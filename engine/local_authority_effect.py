@@ -94,6 +94,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         status TEXT NOT NULL CHECK(status IN ('active','suspended','revoked','unknown')),
                         institution_id TEXT NOT NULL,
                         authority_domain TEXT NOT NULL,
+                        tenant_id TEXT,
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL
                     )""",
@@ -105,12 +106,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         grant_id TEXT NOT NULL,
                         grant_revision TEXT NOT NULL,
                         proposal_commitment TEXT NOT NULL,
-                        policy_versions_json TEXT NOT NULL
+                        policy_versions_json TEXT NOT NULL,
+                        tenant_id TEXT
                     )""",
                     """CREATE TABLE authority_policies_v1 (
                         ref TEXT PRIMARY KEY,
                         version TEXT NOT NULL,
-                        status TEXT NOT NULL CHECK(status IN ('active','superseded','unknown'))
+                        status TEXT NOT NULL CHECK(status IN ('active','superseded','unknown')),
+                        tenant_id TEXT
                     )""",
                     """CREATE TABLE authority_evidence_v1 (
                         obligation_id TEXT PRIMARY KEY,
@@ -136,6 +139,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         max_effects INTEGER NOT NULL,
                         not_before TEXT NOT NULL,
                         expires_at TEXT NOT NULL,
+                        tenant_id TEXT,
                         state TEXT NOT NULL CHECK(state IN ('issued','consumed'))
                     )""",
                     """CREATE TABLE effect_budgets_v1 (
@@ -163,6 +167,18 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     conn.execute(
                         "ALTER TABLE execution_claims_v1 ADD COLUMN effect_operation_digest TEXT"
                     )
+                for table in (
+                    "authority_grants_v1",
+                    "authority_approvals_v1",
+                    "authority_policies_v1",
+                    "execution_claims_v1",
+                ):
+                    columns = {
+                        item["name"]
+                        for item in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                    }
+                    if "tenant_id" not in columns:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT")
             conn.execute("COMMIT")
 
     def _profile_present(self, conn: sqlite3.Connection) -> bool:
