@@ -249,14 +249,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if grant is None:
                 conn.execute(
                     """INSERT INTO authority_grants_v1
-                    (grant_id,revision,status,institution_id,authority_domain,not_before,expires_at)
-                    VALUES(?,?,?,?,?,?,?)""",
+                    (grant_id,revision,status,institution_id,authority_domain,tenant_id,not_before,expires_at)
+                    VALUES(?,?,?,?,?,?,?,?)""",
                     (
                         model.grant_id,
                         model.grant_revision,
                         model.grant_status,
                         model.institution_id,
                         model.authority_domain,
+                        getattr(model, "tenant_id", None),
                         model.not_before,
                         model.expires_at,
                     ),
@@ -267,12 +268,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     model.grant_status,
                     model.institution_id,
                     model.authority_domain,
+                    getattr(model, "tenant_id", None),
                 )
                 actual = (
                     grant["revision"],
                     grant["status"],
                     grant["institution_id"],
                     grant["authority_domain"],
+                    grant["tenant_id"],
                 )
                 if actual != expected:
                     conn.execute("ROLLBACK")
@@ -291,13 +294,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     approval.grant_revision,
                     approval.proposal_commitment,
                     json.dumps(approval.policy_versions, sort_keys=True, separators=(",", ":")),
+                    getattr(approval, "tenant_id", None),
                 )
                 if prior is None:
                     conn.execute(
                         """INSERT INTO authority_approvals_v1
                         (approval_ref,role_id,approver,status,grant_id,grant_revision,
-                         proposal_commitment,policy_versions_json)
-                        VALUES(?,?,?,?,?,?,?,?)""",
+                         proposal_commitment,policy_versions_json,tenant_id)
+                        VALUES(?,?,?,?,?,?,?,?,?)""",
                         (approval.approval_ref, *expected),
                     )
                 else:
@@ -305,6 +309,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                         prior["role_id"], prior["approver"], prior["status"],
                         prior["grant_id"], prior["grant_revision"],
                         prior["proposal_commitment"], prior["policy_versions_json"],
+                        prior["tenant_id"],
                     )
                     if actual != expected:
                         conn.execute("ROLLBACK")
@@ -314,13 +319,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 prior = conn.execute(
                     "SELECT * FROM authority_policies_v1 WHERE ref=?", (policy.ref,)
                 ).fetchone()
-                expected = (policy.version, policy.status)
+                expected = (policy.version, policy.status, getattr(policy, "tenant_id", None))
                 if prior is None:
                     conn.execute(
-                        "INSERT INTO authority_policies_v1(ref,version,status) VALUES(?,?,?)",
+                        "INSERT INTO authority_policies_v1(ref,version,status,tenant_id) VALUES(?,?,?,?)",
                         (policy.ref, *expected),
                     )
-                elif (prior["version"], prior["status"]) != expected:
+                elif (prior["version"], prior["status"], prior["tenant_id"]) != expected:
                     conn.execute("ROLLBACK")
                     raise PermissionError("existing authoritative policy state rejects claim provisioning")
 
