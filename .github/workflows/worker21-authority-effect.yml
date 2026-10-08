@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: cogno-us/cognous-control-plane
-          ref: 73e3c65acc47dc43593dcb0420d14032ed410b14
+          ref: e66e5f163c5d5c112ff345a2f332b4c3893ee183
           path: pinned/control-plane
       - uses: actions/setup-python@v5
         with:
