@@ -190,10 +190,18 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
     def _claim_model(self, claim: Any):
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
+            TenantLocalExecutionClaim,
             verify_local_execution_claim,
         )
 
-        model = claim if isinstance(claim, LocalExecutionClaim) else LocalExecutionClaim.model_validate(claim)
+        if isinstance(claim, LocalExecutionClaim):
+            model = claim
+        elif isinstance(claim, dict) and (
+            "tenant_id" in claim or "authorization_generation" in claim
+        ):
+            model = TenantLocalExecutionClaim.model_validate(claim)
+        else:
+            model = LocalExecutionClaim.model_validate(claim)
         if not verify_local_execution_claim(model):
             raise PermissionError("execution claim commitment is invalid")
         if model.profile != PROFILE or model.authorizing_by_possession is not False:
@@ -204,6 +212,12 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             raise PermissionError("execution claim approval projection is not active")
         if any(item.status != "active" for item in model.policy_state):
             raise PermissionError("execution claim policy projection is not active")
+        tenant_id = getattr(model, "tenant_id", None)
+        if tenant_id is not None:
+            if any(getattr(item, "tenant_id", None) != tenant_id for item in model.approval_state):
+                raise PermissionError("execution claim approval tenant projection mismatch")
+            if any(getattr(item, "tenant_id", None) != tenant_id for item in model.policy_state):
+                raise PermissionError("execution claim policy tenant projection mismatch")
         for item in model.evidence_state:
             decision_critical = item.required or item.unknown_behavior == "hold_effect"
             if decision_critical and item.state != "current":
