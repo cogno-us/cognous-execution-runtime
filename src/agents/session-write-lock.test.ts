@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { __testing, acquireSessionWriteLock } from "./session-write-lock.js";
 
@@ -81,16 +81,35 @@ describe("acquireSessionWriteLock", () => {
         const sessionFile = path.join(root, "sessions.json");
         const lockPath = `${sessionFile}.lock`;
         await acquireSessionWriteLock({ sessionFile, timeoutMs: 500 });
+        // Simulate shutdown without sending a real signal to the Vitest worker.
+        // Windows terminates the process immediately for a re-raised SIGTERM.
+        const originalListeners = process.listeners(signal);
+        const kill = vi.spyOn(process, "kill").mockReturnValue(true);
         const keepAlive = () => {};
         if (signal === "SIGINT") {
           process.on(signal, keepAlive);
         }
 
-        __testing.handleTerminationSignal(signal);
+        try {
+          const shouldReraise = process.listenerCount(signal) === 1;
+          __testing.handleTerminationSignal(signal);
 
-        await expect(fs.stat(lockPath)).rejects.toThrow();
-        if (signal === "SIGINT") {
+          await expect(fs.stat(lockPath)).rejects.toThrow();
+          if (shouldReraise) {
+            expect(kill).toHaveBeenCalledExactlyOnceWith(process.pid, signal);
+          } else {
+            expect(kill).not.toHaveBeenCalled();
+          }
+        } finally {
           process.off(signal, keepAlive);
+          // The handler removes itself before re-raising. Restore it for the
+          // remaining cases rather than leaking test-induced listener changes.
+          for (const listener of originalListeners) {
+            if (!process.listeners(signal).includes(listener)) {
+              process.on(signal, listener);
+            }
+          }
+          kill.mockRestore();
         }
       } finally {
         await fs.rm(root, { recursive: true, force: true });

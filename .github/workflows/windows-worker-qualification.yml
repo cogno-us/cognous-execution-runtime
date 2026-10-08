@@ -1,0 +1,63 @@
+name: Windows worker qualification
+on:
+  pull_request:
+    paths:
+      - 'src/agents/session-write-lock.test.ts'
+      - '.github/workflows/windows-worker-qualification.yml'
+permissions:
+  contents: read
+concurrency:
+  group: windows-worker-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  session-lock:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.23.0'
+      - name: Frozen install
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile
+      - name: Termination cleanup and signal assertions
+        timeout-minutes: 2
+        run: pnpm exec vitest run --config vitest.config.ts src/agents/session-write-lock.test.ts --maxWorkers=1
+  original-shard:
+    needs: session-lock
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      CI: true
+      NODE_OPTIONS: --max-old-space-size=4096
+      CLAWDBOT_TEST_WORKERS: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.23.0'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Frozen install
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile
+      - name: Original Windows shard without exclusions or retries
+        timeout-minutes: 12
+        shell: bash
+        run: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
