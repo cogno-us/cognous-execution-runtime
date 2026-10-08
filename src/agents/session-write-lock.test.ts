@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -114,6 +116,54 @@ describe("acquireSessionWriteLock", () => {
       } finally {
         await fs.rm(root, { recursive: true, force: true });
       }
+    }
+  });
+
+  it("does not double-close shutdown descriptors during garbage collection", () => {
+    const moduleUrl = new URL("./session-write-lock.ts", import.meta.url).href;
+    const script = `
+      import { mkdtemp, rm } from "node:fs/promises";
+      import os from "node:os";
+      import path from "node:path";
+      const { acquireSessionWriteLock, __testing } = await import(${JSON.stringify(moduleUrl)});
+      const root = await mkdtemp(path.join(os.tmpdir(), "moltbot-lock-gc-"));
+      try {
+        for (let i = 0; i < 40; i++) {
+          await acquireSessionWriteLock({ sessionFile: path.join(root, \`session-\${i}.json\`) });
+          __testing.releaseAllLocksSync();
+        }
+        for (let i = 0; i < 12; i++) {
+          global.gc();
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    `;
+    // Use Node explicitly even when the outer suite is launched with bunx.
+    const child = spawnSync(
+      "node",
+      ["--experimental-strip-types", "--expose-gc", "--input-type=module", "-e", script],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stderr).not.toContain("EBADF");
+  });
+
+  it("closes a descriptor once when shutdown is followed by release", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "moltbot-lock-close-"));
+    const close = vi.spyOn(fsSync, "closeSync");
+    try {
+      const sessionFile = path.join(root, "sessions.json");
+      const lock = await acquireSessionWriteLock({ sessionFile, timeoutMs: 500 });
+      __testing.releaseAllLocksSync();
+      await lock.release();
+      expect(close).toHaveBeenCalledTimes(1);
+      await expect(fs.access(`${sessionFile}.lock`)).rejects.toThrow();
+    } finally {
+      close.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
     }
   });
 
