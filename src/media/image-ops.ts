@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { runExec } from "../process/exec.js";
 
-type Sharp = typeof import("sharp");
+type Sharp = typeof import("sharp").default;
 
 export type ImageMetadata = {
   width: number;
