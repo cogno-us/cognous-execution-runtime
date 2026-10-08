@@ -400,13 +400,13 @@ jobs:
       matrix:
         include:
           - task: test-1-of-4
-            command: pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=1/4 --maxWorkers=1
           - task: test-2-of-4
-            command: pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=2/4 --maxWorkers=1
           - task: test-3-of-4
-            command: pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=3/4 --maxWorkers=1
           - task: test-4-of-4
-            command: pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
+            command: pnpm canvas:a2ui:bundle && pnpm exec vitest run --config vitest.config.ts --shard=4/4 --maxWorkers=1
     steps:
       - name: Checkout
         uses: actions/checkout@v4

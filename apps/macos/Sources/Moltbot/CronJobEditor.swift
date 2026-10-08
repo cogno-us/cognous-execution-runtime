@@ -35,14 +35,18 @@ struct CronJobEditor: View {
     @State var wakeMode: CronWakeMode = .nextHeartbeat
     @State var deleteAfterRun: Bool = false
 
-    enum ScheduleKind: String, CaseIterable, Identifiable { case at, every, cron; var id: String { rawValue } }
+    enum ScheduleKind: String, CaseIterable, Identifiable { case at, every, cron; var id: String {
+        rawValue
+    } }
     @State var scheduleKind: ScheduleKind = .every
     @State var atDate: Date = .init().addingTimeInterval(60 * 5)
     @State var everyText: String = "1h"
     @State var cronExpr: String = "0 9 * * 3"
     @State var cronTz: String = ""
 
-    enum PayloadKind: String, CaseIterable, Identifiable { case systemEvent, agentTurn; var id: String { rawValue } }
+    enum PayloadKind: String, CaseIterable, Identifiable { case systemEvent, agentTurn; var id: String {
+        rawValue
+    } }
     @State var payloadKind: PayloadKind = .systemEvent
     @State var systemEventText: String = ""
     @State var agentMessage: String = ""
@@ -66,7 +70,9 @@ struct CronJobEditor: View {
     }
 
     func channelLabel(for id: String) -> String {
-        if id == "last" { return "last" }
+        if id == "last" {
+            return "last"
+        }
         return self.channelsStore.resolveChannelLabel(id)
     }
 

@@ -11,8 +11,13 @@ enum CanvasLayout {
 }
 
 final class CanvasPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeKey: Bool {
+        true
+    }
+
+    override var canBecomeMain: Bool {
+        true
+    }
 }
 
 enum CanvasPresentation {
@@ -20,7 +25,9 @@ enum CanvasPresentation {
     case panel(anchorProvider: () -> NSRect?)
 
     var isPanel: Bool {
-        if case .panel = self { return true }
+        if case .panel = self {
+            return true
+        }
         return false
     }
 }

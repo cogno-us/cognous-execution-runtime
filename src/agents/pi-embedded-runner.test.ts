@@ -105,7 +105,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!tempRoot) return;
-  await fs.rm(tempRoot, { recursive: true, force: true });
+  // Windows may briefly retain directory handles after the agent finishes.
+  // Retry for at most 1.5 seconds; persistent cleanup failures still fail the suite.
+  await fs.rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   tempRoot = undefined;
 });
 

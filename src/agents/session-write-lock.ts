@@ -9,7 +9,7 @@ type LockFilePayload = {
 
 type HeldLock = {
   count: number;
-  handle: fs.FileHandle;
+  fd: number;
   lockPath: string;
 };
 
@@ -35,9 +35,7 @@ function isAlive(pid: number): boolean {
 function releaseAllLocksSync(): void {
   for (const [sessionFile, held] of HELD_LOCKS) {
     try {
-      if (typeof held.handle.fd === "number") {
-        fsSync.closeSync(held.handle.fd);
-      }
+      fsSync.closeSync(held.fd);
     } catch {
       // Ignore errors during cleanup - best effort
     }
@@ -131,7 +129,7 @@ export async function acquireSessionWriteLock(params: {
         current.count -= 1;
         if (current.count > 0) return;
         HELD_LOCKS.delete(normalizedSessionFile);
-        await current.handle.close();
+        fsSync.closeSync(current.fd);
         await fs.rm(current.lockPath, { force: true });
       },
     };
@@ -142,12 +140,25 @@ export async function acquireSessionWriteLock(params: {
   while (Date.now() - startedAt < timeoutMs) {
     attempt += 1;
     try {
-      const handle = await fs.open(lockPath, "wx");
-      await handle.writeFile(
-        JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }, null, 2),
-        "utf8",
-      );
-      HELD_LOCKS.set(normalizedSessionFile, { count: 1, handle, lockPath });
+      // Own a raw descriptor so exit cleanup and normal release share the same
+      // close operation. A FileHandle would try to close it again during GC.
+      const fd = fsSync.openSync(lockPath, "wx");
+      try {
+        fsSync.writeFileSync(
+          fd,
+          JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }, null, 2),
+          "utf8",
+        );
+      } catch (err) {
+        try {
+          fsSync.closeSync(fd);
+          fsSync.rmSync(lockPath, { force: true });
+        } catch {
+          // Preserve the payload write failure.
+        }
+        throw err;
+      }
+      HELD_LOCKS.set(normalizedSessionFile, { count: 1, fd, lockPath });
       return {
         release: async () => {
           const current = HELD_LOCKS.get(normalizedSessionFile);
@@ -155,7 +166,7 @@ export async function acquireSessionWriteLock(params: {
           current.count -= 1;
           if (current.count > 0) return;
           HELD_LOCKS.delete(normalizedSessionFile);
-          await current.handle.close();
+          fsSync.closeSync(current.fd);
           await fs.rm(current.lockPath, { force: true });
         },
       };

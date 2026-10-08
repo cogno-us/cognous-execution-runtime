@@ -83,7 +83,9 @@ extension CanvasFileWatcher {
         guard eventFlags != nil else { return }
 
         // Coalesce rapid changes (common during builds/atomic saves).
-        if self.pending { return }
+        if self.pending {
+            return
+        }
         self.pending = true
         self.queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self else { return }
