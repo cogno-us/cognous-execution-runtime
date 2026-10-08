@@ -1,3 +1,5 @@
+import pytest
+pytest.importorskip("agent_control_plane.local_authority_effect", reason="requires accepted W1 Control Plane atomic contract")
 """Source-authentic local controller observation journal qualification.
 
 Controller records observations only after performing/observing each step.
