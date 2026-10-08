@@ -1,6 +1,6 @@
 # Vitest restart: guard-first redesign
 
-PR #29 now proposes static dependency-upgrade guards only. It does not upgrade
+PR #29 proposes dependency-upgrade guards and narrowly scoped validation/test-harness repairs. It does not upgrade
 Vitest. Root and UI manifests and pnpm-lock.yaml retain the accepted main
 baseline at 6dc7ad10cde3ca7559eec55727c90c4cd2fd58f3; UI Vitest and its
 browser-playwright adapter both remain 4.0.18. This is not a security clearance
@@ -82,3 +82,21 @@ must run the local landing gate before merging.
 The eight static regression tests and three preflight batches remain separate
 from application validation. Pending workflow jobs and intentionally skipped
 individual test cases are never counted as executed passing tests.
+
+## Shared Windows test harness repair
+
+The full application matrix also reaches the same Windows termination and
+temporary-directory tests repaired for PRs #30 and #31. The termination test
+previously re-raised real signals into the Vitest worker. This follow-up uses
+a `process.kill` spy and asserts the exact re-raise call (or its absence), while
+still checking lock-file removal and restoring listeners. It also gives the
+embedded runner temporary-directory cleanup five bounded retries; persistent
+cleanup failures still fail. Production signal behavior remains unchanged.
+
+The two test files and Windows qualification workflow are byte-identical to
+the sibling dependency repairs. The workflow runs all session-lock cases then
+the original Windows shard without exclusions or ignored worker failures.
+Local application test execution remains blocked as documented above. Prior
+head `589fae01b7958e39e055f0f49e858e96e2873d69` passed actual Linux lint
+and build; its test results are historical after this follow-up. Final-head
+Linux and Windows validation must run again before any acceptance.
