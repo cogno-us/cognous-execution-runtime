@@ -40,6 +40,9 @@ jobs:
               ".github/workflows/worker21-authority-effect.yml",
               "CHANGELOG.md",
               "README.md",
+              ".github/workflows/reference-docs.yml",
+              "collateral/business-collateral.md",
+              "collateral/one-page-overview.md",
               "docs/local-authority-effect-profile.md",
               "docs/workstreams/local-authority-effect-checkpoint.md",
               "engine/atomic_local_control_plane_executor.py",
@@ -54,6 +57,8 @@ jobs:
               return not paths or any(p not in installer_only for p in paths)
           assert not application_required(["scripts/docker/install-sh-smoke/run.sh"])
           assert application_required(["src/gateway/server.ts"])
+          assert not application_required(["README.md", "collateral/business-collateral.md", "collateral/one-page-overview.md"])
+          assert application_required(["collateral/business-collateral.md", "src/index.ts"])
           assert application_required(["pnpm-lock.yaml"])
           assert application_required(["tests/test_safe_executor.py"])
           assert application_required(["scripts/docker/install-sh-smoke/run.sh", "src/index.ts"])

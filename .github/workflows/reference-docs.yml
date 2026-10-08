@@ -1,0 +1,55 @@
+name: Reference documentation
+on:
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'collateral/business-collateral.md'
+      - 'collateral/one-page-overview.md'
+      - '.github/workflows/reference-docs.yml'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'collateral/business-collateral.md'
+      - 'collateral/one-page-overview.md'
+      - '.github/workflows/reference-docs.yml'
+      - '.github/workflows/ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: reference-docs-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate reference documentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          from urllib.parse import unquote, urlsplit
+          root = Path.cwd().resolve()
+          files = ['README.md', 'collateral/business-collateral.md', 'collateral/one-page-overview.md']
+          checked = 0
+          for name in files:
+              path = root / name
+              text = path.read_text(encoding='utf-8')
+              assert text.strip(), f'{name}: empty document'
+              assert not re.search(r'^(<<<<<<< |=======|>>>>>>> )', text, re.M), f'{name}: conflict marker'
+              assert '\t' not in text, f'{name}: tab character'
+              assert text.count('```') % 2 == 0, f'{name}: unbalanced code fence'
+              for target in re.findall(r'\]\(([^\s)]+)\)', text):
+                  parsed = urlsplit(target)
+                  if parsed.scheme or parsed.netloc or not parsed.path:
+                      continue
+                  destination = (path.parent / unquote(parsed.path)).resolve()
+                  assert destination.is_relative_to(root), f'{name}: escaping local link {target}'
+                  assert destination.is_file(), f'{name}: missing local link {target}'
+                  checked += 1
+          print(f'PASS: {len(files)} documents and {checked} local link targets')
+          print('Static documentation checks only; external URLs and runtime behavior are not requalified.')
+          PY
