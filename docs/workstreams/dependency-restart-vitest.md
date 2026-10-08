@@ -1,26 +1,56 @@
-# vitest dependency restart
+# Vitest restart: guard-first redesign
 
-Draft replacement for executor PR #3. Base: 6dc7ad10cde3ca7559eec55727c90c4cd2fd58f3.
+PR #29 now proposes static dependency-upgrade guards only. It does not upgrade
+Vitest. Root and UI manifests and pnpm-lock.yaml retain the accepted main
+baseline at 6dc7ad10cde3ca7559eec55727c90c4cd2fd58f3; UI Vitest and its
+browser-playwright adapter both remain 4.0.18. This is not a security clearance
+or a claim that the baseline is current.
 
-## Scope
+## Verified failure
 
-Retain the proposed Vitest 4.1.11 manifest change as an explicitly incomplete draft; do not fabricate a regenerated lock or assume browser-adapter compatibility.
+The earlier head bac59657cf5734dad01d753ad893c64255f8101a changed only the UI
+Vitest requirement to 4.1.11. The lockfile and browser adapter retained 4.0.18.
+GitHub CI run 37707336373, install-check job 113084811514, failed during frozen
+installation with ERR_PNPM_OUTDATED_LOCKFILE. Static UI preflight in run
+37707336423 independently detected the mismatch. These were deterministic
+input failures, not stalled tests.
 
-Existing unrelated package resolutions and snapshot contents are preserved. Older package entries are retained where present; pruning must follow a reviewed package-manager regeneration. No full install or registry-artifact verification is implied by copying previously proposed integrity metadata.
+The separate local dependency-install policy rejection of an existing libsignal
+Git dependency was not the cause of this GitHub failure. That policy remains
+intact; no override or bypass is introduced.
 
-## Validation and blockers
+## Revised process
 
-UI preflight fails on the retained candidate: Vitest 4.1.11 disagrees with the 4.0.18 lockfile and browser adapter. Generate and review a coherent coordinated lock before any install or merge.
+Independent root, UI, graph, and regression jobs run on Linux, with three-minute
+job limits and one-minute parser-install/check steps. No application dependency
+installation is needed for these static checks. Regression tests reject a
+manifest-only upgrade, relabeled specifiers with stale resolved versions,
+missing importer/transitive snapshots, missing package records, and malformed
+input. Alias and workspace-link behavior is retained.
 
-The dedicated Ubuntu workflow runs independent root-manifest, UI-manifest and lock-graph checks with fail-fast disabled and a three-minute timeout per job. Its only added dependency is a pinned YAML parser. It does not install or execute application packages. Existing application/security workflows remain enabled; this preflight does not replace them or certify other operating systems.
+Exact guard-only paths are classified as tooling in the existing application CI
+scope calculation. Package manifests, the lockfile, application source, unknown
+paths, and mixed tooling/application changes still require application checks.
+Existing safety, install-smoke, and CodeQL workflows are not disabled.
 
-Local application installation was previously blocked by blockExoticSubdeps for the existing libsignal Git dependency. This restart does not disable that policy, add an exception, change that dependency, or claim an install/test pass. Resolve the dependency provenance/policy question through a separately reviewed approved path before application qualification.
+Static checks establish manifest/lock consistency and recorded graph closure,
+not package provenance, workspace target existence, semver-range satisfaction,
+peer compatibility, successful installation, or runtime behavior.
 
-## Next bounded validation
+## Executed local validation
 
-1. Resolve the UI manifest/browser-adapter/lock mismatch; rerun static preflight.
-2. Complete a frozen install without weakening dependency safeguards; retain the exact command and source head.
-3. Run the existing UI Markdown sanitizer and chat-rendering browser tests in bounded Linux batches; Vitest changes also require the remaining UI suite.
-4. Record install/runtime evidence and any other-platform gaps before requesting acceptance. Keep this PR draft until those gates pass.
+- Eight regression tests passed.
+- Root, UI, and graph preflight batches passed against the unchanged baseline.
+- Workflow YAML parsing and application-scope assertions passed, including
+  mixed guard/UI-manifest changes and lockfile changes.
+- Final-head GitHub CI must be evaluated separately; local results are not a
+  substitute for that evidence.
 
-No Python execution contract, accepted hub pin, authority mechanism or production deployment changes.
+## Deferred upgrade acceptance
+
+A future Vitest version upgrade must coordinate Vitest, the browser adapter,
+and any coupled workspace dependencies using an approved dependency source.
+It must include a coherent generated lockfile, pass frozen installation, and
+complete bounded UI unit/browser runtime batches before acceptance. Do not
+manufacture integrity values, relax installation policy, remove failing runtime
+coverage, or advance accepted hub pins to make that upgrade appear complete.
