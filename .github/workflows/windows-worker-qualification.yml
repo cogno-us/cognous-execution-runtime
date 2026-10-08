@@ -1,7 +1,9 @@
 name: Windows worker qualification
 on:
-  push:
-    branches: [governor/qualify-dompurify]
+  pull_request:
+    paths:
+      - 'src/agents/session-write-lock.test.ts'
+      - '.github/workflows/windows-worker-qualification.yml'
 permissions:
   contents: read
 concurrency:
