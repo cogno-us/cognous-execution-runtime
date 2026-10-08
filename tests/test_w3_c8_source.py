@@ -3,7 +3,7 @@ import pytest
 
 def test_missing_claim_is_missing_not_approved(tmp_path):
     from engine.local_authority_effect import AtomicAuthorityEffectDestination
-    d=AtomicAuthorityEffectDestination(tmp_path)
+    d=AtomicAuthorityEffectDestination(tmp_path,clock=lambda: __import__('datetime').datetime(2026,10,7,tzinfo=__import__('datetime').timezone.utc))
     out=export_authority_rows(d.path,claim_id="not-present")
     assert out["status"]=="missing_claim" and out["rows"]=={}
 
