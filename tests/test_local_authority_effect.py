@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import multiprocessing as mp
 import os
 import sqlite3
