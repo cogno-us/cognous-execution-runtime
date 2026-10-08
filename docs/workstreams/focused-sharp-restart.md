@@ -23,3 +23,12 @@ checks. Focused success alone is not full repository qualification.
 
 Active predecessor workflow cancellation was unavailable through the connector;
 the browser was signed out. Closing the PR does not prove its active jobs stopped.
+
+## First focused run
+
+Run 37710162293 passed frozen installation and exposed the removed Sharp
+`failOnError` option during type checking; runtime steps did not execute.
+Upstream v0.34.5 input.js maps `failOnError: false` to `failOn: "none"`.
+The restart now uses that equivalent supported option, preserving the prior
+input-tolerance behavior rather than weakening it further. Requalification is
+required on the amended head.
