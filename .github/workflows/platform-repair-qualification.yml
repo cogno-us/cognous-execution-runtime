@@ -46,21 +46,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Format and verify macOS sources
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Verify committed macOS sources
         run: |
           swiftformat --version
-          swiftformat apps/macos/Sources --config .swiftformat
+          swiftlint --config .swiftlint.yml
           swiftformat --lint apps/macos/Sources --config .swiftformat
-      - name: Retain exact formatting patch for review
-        run: |
-          git diff --binary -- apps/macos/Sources > swiftformat.patch
-          python3 - <<'PY'
-          import base64, gzip
-          from pathlib import Path
-          print('FORMAT_PATCH_GZIP_BASE64=' + base64.b64encode(gzip.compress(Path('swiftformat.patch').read_bytes())).decode())
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: swiftformat-review-patch
-          path: swiftformat.patch
-          retention-days: 14
