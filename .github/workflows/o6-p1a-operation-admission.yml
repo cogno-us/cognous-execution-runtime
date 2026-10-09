@@ -24,6 +24,8 @@ concurrency:
 jobs:
   operation-admission:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,5 +35,17 @@ jobs:
         run: python -m pip install pytest==8.3.5
       - name: Compile bounded profile
         run: python -m compileall -q engine/operation_admission.py
+      - name: Verify repository source resolution
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import engine.operation_admission as module
+
+          expected = (Path.cwd() / "engine" / "operation_admission.py").resolve()
+          actual = Path(module.__file__).resolve()
+          print(f"resolved operation admission source: {actual}")
+          if actual != expected:
+              raise SystemExit(f"unexpected operation admission source: {actual} != {expected}")
+          PY
       - name: Run O6-P1A qualification
-        run: pytest -q tests/test_o6_p1a_operation_admission.py
+        run: python -m pytest -q tests/test_o6_p1a_operation_admission.py
