@@ -15,7 +15,7 @@ from pathlib import Path
 
 PROFILE = "cognous-recovery-resolution/synthetic-0.1"
 CANONICALIZATION = "python-json-sort-ascii-compact/1"
-POLICY = "synthetic-structural/1"
+POLICY = "synthetic-structural/2"
 WORK_STATES = (
     "awaiting_observation", "awaiting_finality", "partial_followup",
     "conflict_review", "resolved",
@@ -230,7 +230,6 @@ class SyntheticRecoveryLedger:
                     "predecessor_digest": predecessor_digest}
         body = _json(envelope)
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
-        now = _utc(self.clock())
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
@@ -247,31 +246,48 @@ class SyntheticRecoveryLedger:
                     raise ValueError("HOLD: event ID belongs to another attempt")
                 if current["revision"] != expected_revision or current["head_digest"] != predecessor_digest:
                     raise ValueError("HOLD: stale stream revision; re-read and re-evaluate")
+                # Lock acquisition may wait: assess freshness inside the transaction.
+                # Exact duplicates above retain their original evaluation receipt.
+                now = _utc(self.clock())
                 age = (now - _utc(observation.observed_at)).total_seconds()
                 if not 0 <= age <= 86400:
                     raise ValueError("HOLD: synthetic observation outside 24-hour window")
                 previous = current.get("last_observation")
-                conflict = bool(prior)
+                reasons = ["event_id_reused_with_changed_body"] if prior else []
                 if previous:
-                    if any(previous[k] != data[k] for k in ("adapter_id", "client_reference", "ordering_domain")):
-                        conflict = True
+                    for key in ("adapter_id", "client_reference", "ordering_domain"):
+                        if previous[key] != data[key]:
+                            reasons.append(f"{key}_changed")
                     if data["order"] <= previous["order"]:
-                        conflict = True
+                        reasons.append("source_order_not_increasing")
                     if previous["state"] in {"applied", "partial"} and data["state"] in {"unknown", "absent"}:
-                        conflict = True
+                        reasons.append("known_effect_contradicted")
                     if previous["state"] == "applied" and data["state"] == "partial":
-                        conflict = True
+                        reasons.append("applied_regressed_to_partial")
                     if previous["final"] and not data["final"]:
-                        conflict = True
+                        reasons.append("finality_regressed")
                     if previous["complete_coverage"] and not data["complete_coverage"]:
-                        conflict = True
+                        reasons.append("coverage_regressed")
+                conflict = bool(reasons)
+                existing_hold = current["work_state"] == "conflict_review"
                 kind = "disagreement" if conflict else "observation"
                 revision = current["revision"] + 1
                 receipt = {"profile": PROFILE, "policy": POLICY, "assurance": "synthetic_admission",
                            "revision": revision, "digest": digest, "recorded_at": now.isoformat(),
                            "kind": kind, "identity": identity,
-                           "reason": "conflict_hold" if conflict else "synthetic_checks_passed"}
-                if conflict or current["work_state"] == "conflict_review":
+                           "prior_work_state": current["work_state"],
+                           "conflict_reasons": reasons, "freshness_age_seconds": age,
+                           "checks": {
+                               "structure": "passed", "retained_identity": "passed",
+                               "expected_revision": "passed", "predecessor": "passed",
+                               "freshness": "passed_synthetic_policy",
+                               "source_authentication": "not_established",
+                               "independent_verification": "not_established",
+                               "provider_finality": "not_established",
+                           },
+                           "reason": "conflict_hold" if conflict else (
+                               "existing_conflict_hold" if existing_hold else "synthetic_checks_passed")}
+                if conflict or existing_hold:
                     current["work_state"] = "conflict_review"
                     current["finality"] = "unestablished"
                 else:

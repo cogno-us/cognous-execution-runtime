@@ -397,3 +397,72 @@ def test_export_is_read_only_and_returned_values_do_not_mutate_ledger(pair):
     snapshot["events"].clear()
     assert new.history("attempt") == before
     assert new.current("attempt")["work_state"] == "resolved"
+
+
+def test_freshness_is_evaluated_after_writer_lock_acquisition(pair, monkeypatch):
+    from contextlib import contextmanager
+    new = pair[1]
+    clock = [NOW]
+    monkeypatch.setattr(new, "clock", lambda: clock[0])
+    connect = new._connection
+    class LockAdvance:
+        def __init__(self, conn):
+            self.conn = conn
+        def execute(self, sql, *args):
+            result = self.conn.execute(sql, *args)
+            if sql == "BEGIN IMMEDIATE":
+                clock[0] = NOW + timedelta(seconds=1)
+            return result
+    @contextmanager
+    def delayed_connection():
+        with connect() as conn:
+            yield LockAdvance(conn)
+    monkeypatch.setattr(new, "_connection", delayed_connection)
+    with pytest.raises(ValueError, match="24-hour window"):
+        new.append(observation(observed_at=NOW-timedelta(days=1)),
+                   expected_revision=0, predecessor_digest=None)
+    assert new.history("attempt") == []
+
+
+@pytest.mark.parametrize("changes,reason", [
+    ({"adapter_id": "synthetic:other"}, "adapter_id_changed"),
+    ({"client_reference": "synthetic:other"}, "client_reference_changed"),
+    ({"ordering_domain": "synthetic:other"}, "ordering_domain_changed"),
+    ({"order": 2}, "source_order_not_increasing"),
+    ({"state": "absent"}, "known_effect_contradicted"),
+    ({"state": "partial"}, "applied_regressed_to_partial"),
+    ({"final": False}, "finality_regressed"),
+    ({"complete_coverage": False}, "coverage_regressed"),
+])
+def test_conflict_receipt_explains_each_failed_synthetic_comparison(pair, changes, reason):
+    new = pair[1]
+    append(new, complete())
+    result = append(new, complete(**{"event_id": "event-2", "order": 4, **changes}))
+    receipt = result["admission"]
+    assert reason in receipt["conflict_reasons"]
+    assert receipt["checks"]["source_authentication"] == "not_established"
+    assert receipt["checks"]["independent_verification"] == "not_established"
+    assert receipt["checks"]["freshness"] == "passed_synthetic_policy"
+    assert receipt["prior_work_state"] == "resolved"
+    assert new.export_attempt(effect_id="effect", attempt_id="attempt")["events"][-1]["admission"] == receipt
+
+
+def test_collision_and_existing_hold_have_distinct_durable_reasons(pair):
+    new = pair[1]
+    append(new, complete())
+    collision = append(new, complete(order=4))
+    assert "event_id_reused_with_changed_body" in collision["admission"]["conflict_reasons"]
+    later = append(new, complete(event_id="later", order=5))
+    assert later["admission"]["reason"] == "existing_conflict_hold"
+    assert later["admission"]["prior_work_state"] == "conflict_review"
+    assert later["current"]["work_state"] == "conflict_review"
+
+
+def test_duplicate_preserves_receipt_after_freshness_window_expires(pair):
+    new = pair[1]
+    event = complete()
+    admitted = new.append(event, expected_revision=0, predecessor_digest=None)
+    new.clock = lambda: NOW + timedelta(days=2)
+    duplicate = new.append(event, expected_revision=0, predecessor_digest=None)
+    assert duplicate == admitted
+    assert len(new.history("attempt")) == 1
