@@ -256,3 +256,65 @@ def test_predecessor_and_cross_attempt_event_reuse_fail_closed(pair):
         append(new, observation(effect_id="other-effect", attempt_id="other-attempt"))
     assert new.current("other-attempt")["revision"] == 0
     assert len(new.history("attempt")) == 1
+
+
+@pytest.mark.parametrize("change", ["ambiguous", "decision_changed", "disposition_missing"])
+def test_current_revalidates_original_identity_instead_of_returning_stale_resolution(pair, change):
+    old, new = pair
+    append(new, complete())
+    retained = new.history("attempt")
+    if change == "ambiguous":
+        original(old, effect="second", attempt="attempt")
+    else:
+        with sqlite3.connect(old.path) as conn:
+            if change == "decision_changed":
+                conn.execute("UPDATE runtime_items_v1 SET decision_id='changed'")
+            else:
+                conn.execute("DELETE FROM revocation_dispositions_v1")
+    with pytest.raises(ValueError, match="HOLD"):
+        new.current("attempt")
+    assert new.history("attempt") == retained
+    assert new.metrics()["work_states"]["resolved"] == 0
+
+
+@pytest.mark.parametrize("boundary,committed", [
+    ("event", False), ("projection", False), ("commit", True),
+])
+def test_abrupt_process_exit_preserves_transaction_boundary(pair, boundary, committed):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    old, new = pair
+    # Exit from the actual append transaction without exception handlers or cleanup.
+    script = '''
+import os, runpy, sqlite3, sys
+from engine.recovery_resolution import SyntheticRecoveryLedger
+fixtures = runpy.run_path("tests/test_recovery_resolution.py")
+ledger = SyntheticRecoveryLedger(sys.argv[1], synthetic=True, clock=lambda: fixtures["NOW"])
+connect = sqlite3.connect
+boundary = sys.argv[2]
+class ExitConnection(sqlite3.Connection):
+    def execute(self, sql, *args):
+        result = super().execute(sql, *args)
+        target = {"event": "INSERT INTO recovery_synthetic_events",
+                  "projection": "INSERT INTO recovery_synthetic_projection",
+                  "commit": "COMMIT"}[boundary]
+        if sql.startswith(target):
+            os._exit(73)
+        return result
+sqlite3.connect = lambda *args, **kwargs: connect(*args, factory=ExitConnection, **kwargs)
+ledger.append(fixtures["complete"](), expected_revision=0, predecessor_digest=None)
+raise SystemExit("boundary was not reached")
+'''
+    result = subprocess.run([sys.executable, "-c", script, str(old.path), boundary],
+                            cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 73, result.stderr
+    reopened = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    assert len(reopened.history("attempt")) == int(committed)
+    assert reopened.current("attempt")["revision"] == int(committed)
+    assert reopened.metrics()["current_unresolved"] == int(not committed)
+    replay = reopened.append(complete(), expected_revision=0, predecessor_digest=None)
+    assert replay["current"]["revision"] == 1
+    assert len(reopened.history("attempt")) == 1

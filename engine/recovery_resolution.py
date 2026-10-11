@@ -145,7 +145,16 @@ class SyntheticRecoveryLedger:
 
     def current(self, attempt_id):
         with self._connection() as conn:
-            return self._projection(conn, attempt_id)
+            # Projection and original binding must belong to the same snapshot.
+            conn.execute("BEGIN")
+            current = self._projection(conn, attempt_id)
+            retained = current.get("identity")
+            if retained is not None:
+                identity = self._identity(conn, retained["effect_id"], attempt_id)
+                if identity != retained:
+                    raise ValueError("HOLD: original identity changed")
+            conn.execute("COMMIT")
+            return current
 
     def history(self, attempt_id):
         with self._connection() as conn:
