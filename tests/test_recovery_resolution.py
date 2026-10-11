@@ -318,3 +318,82 @@ raise SystemExit("boundary was not reached")
     replay = reopened.append(complete(), expected_revision=0, predecessor_digest=None)
     assert replay["current"]["revision"] == 1
     assert len(reopened.history("attempt")) == 1
+
+
+@pytest.mark.parametrize("legacy_state", ["unknown", "partial", "applied"])
+def test_export_retains_legacy_facts_without_reconstructing_provenance(pair, legacy_state):
+    old, new = pair
+    old.close_original_attempt(attempt_id="attempt", observation_state=legacy_state,
+                               observation=OrderingEvidence(3, "synthetic:legacy"),
+                               observation_ref="synthetic:legacy")
+    before = old.closeout("attempt")
+    snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["legacy"]["record"]["observation_state"] == legacy_state
+    assert snapshot["legacy"]["assurance"] == "legacy_unverified"
+    assert "observation_digest" in snapshot["legacy"]["unavailable_provenance"]
+    assert snapshot["current"]["work_state"] == "awaiting_observation"
+    assert snapshot["events"] == []
+    assert old.closeout("attempt") == before
+    assert json.loads(json.dumps(snapshot)) == snapshot
+
+
+def test_export_includes_original_uncertainty_all_events_and_current_conflict(pair):
+    new = pair[1]
+    append(new, observation())
+    admitted = append(new, complete(event_id="event-2", order=4))
+    append(new, observation(event_id="event-3", order=5, state="absent"))
+    snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["disposition"]["status"] == "in_doubt"
+    assert snapshot["original"]["attempt_id"] == "attempt"
+    assert snapshot["legacy"] is None
+    assert [event["body"]["observation"]["state"] for event in snapshot["events"]] == ["unknown", "applied", "absent"]
+    assert snapshot["events"][1]["admission"] == admitted["admission"]
+    assert snapshot["current"]["work_state"] == "conflict_review"
+    assert snapshot["current"]["revision"] == len(snapshot["events"]) == 3
+    assert snapshot["current"]["retry_eligible"] is False
+    assert "not_a_replay_or_evidence_pack_mapping" in snapshot["limitations"]
+
+
+def test_export_has_one_snapshot_during_concurrent_append(pair, monkeypatch):
+    old, new = pair
+    writer = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    projection = new._projection
+    def append_between_reads(conn, attempt):
+        result = projection(conn, attempt)
+        append(writer, complete())
+        return result
+    with monkeypatch.context() as scoped:
+        scoped.setattr(new, "_projection", append_between_reads)
+        snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["current"]["revision"] == 0
+    assert snapshot["events"] == []
+    assert new.current("attempt")["revision"] == 1
+    assert len(new.history("attempt")) == 1
+
+
+def test_export_rejects_misbound_legacy_and_ambiguous_original(pair):
+    old, new = pair
+    old.close_original_attempt(attempt_id="attempt", observation_state="unknown",
+                               observation=OrderingEvidence(3, "synthetic:legacy"),
+                               observation_ref="synthetic:legacy")
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("UPDATE original_attempt_closeouts_v1 SET effect_id='other'")
+    with pytest.raises(ValueError, match="legacy closeout binding"):
+        new.export_attempt(effect_id="effect", attempt_id="attempt")
+    original(old, effect="second", attempt="attempt")
+    with pytest.raises(ValueError, match="ambiguous"):
+        new.export_attempt(effect_id="effect", attempt_id="attempt")
+
+
+def test_export_is_read_only_and_returned_values_do_not_mutate_ledger(pair):
+    old, new = pair
+    append(new, complete())
+    before = new.history("attempt")
+    with sqlite3.connect(old.path) as conn:
+        version = conn.execute("PRAGMA data_version").fetchone()[0]
+        snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+        assert conn.execute("PRAGMA data_version").fetchone()[0] == version
+    snapshot["current"]["work_state"] = "changed"
+    snapshot["events"].clear()
+    assert new.history("attempt") == before
+    assert new.current("attempt")["work_state"] == "resolved"

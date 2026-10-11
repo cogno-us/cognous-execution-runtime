@@ -28,6 +28,23 @@ Applied plus complete coverage and finality yields `resolved` **only in this syn
 
 Legacy closeouts are not imported, upgraded or modified. A legacy-only closed row remains awaiting observation in the synthetic profile. The physical SQLite file changes when new tables are created, but v1 rows and interpretation do not. No legacy migration or consumer mapping is claimed.
 
+## Consistent inspection export
+
+`export_attempt(effect_id=..., attempt_id=...)` returns a JSON-compatible `cognous-recovery-inspection/synthetic-0.1` snapshot. It includes the original runtime item, initial in-doubt disposition, all retained event envelopes and receipts, the current projection, and any v1 legacy closeout. All database reads use one SQLite snapshot, so a concurrent append cannot mix an older projection with newer events.
+
+```python
+import json
+from engine.recovery_resolution import SyntheticRecoveryLedger
+
+ledger = SyntheticRecoveryLedger(existing_store.path, synthetic=True)
+snapshot = ledger.export_attempt(effect_id="effect", attempt_id="attempt")
+encoded = json.dumps(snapshot, sort_keys=True, indent=2)
+```
+
+Legacy closeouts are labeled `legacy_unverified`; unavailable observer, watermark, provider-acceptance, evidence-location, content-digest and admission-policy provenance is explicitly listed rather than reconstructed. A legacy `closed` flag remains a legacy fact and never resolves the synthetic projection. Missing or ambiguous original bindings, changed retained identity, and mismatched legacy effect bindings raise HOLD. Export does not write records or fetch evidence references. Disagreement bodies minimized at admission remain minimized in the export.
+
+This inspection envelope is a draft developer API, **not** a Replay or Evidence Pack consumer mapping. It carries its profile, format and limitations explicitly. Downstream support, unsupported-format handling and loss accounting still require separate consumer implementation and qualification. Exports have the same local access assumptions as the synthetic ledger and must not contain real evidence or secrets.
+
 ## Validation and remaining work
 
 Run:
@@ -36,7 +53,7 @@ Run:
 python -m pytest -q tests/test_recovery_resolution.py tests/test_o6_p1d_revocation_closeout.py
 ```
 
-Tests cover retained provenance and restart by reopening, atomic rollback under an injected projection failure, independent concurrent SQLite connections, duplicate after conflict, ID collisions, revision/predecessor binding, canonical timezone normalization, partial/finality semantics, invalid input, writer/append-only controls, current accounting, identity ambiguity and unchanged v1 regressions. Three subprocess tests additionally exit abruptly after event insertion, after projection insertion and after COMMIT. They verify rollback of uncommitted writes, persistence of committed evidence and idempotent resubmission. These are process-exit checks on local SQLite, not power-loss or filesystem durability qualification. Three regression tests demonstrate that missing, ambiguous or changed original identity cannot be returned as a current resolved result.
+The focused suite currently contains 58 passing local cases. Export tests cover legacy unknown/partial/applied records, conflict history, concurrent-append snapshot consistency, identity rejection and read-only behavior. Tests also cover retained provenance and restart by reopening, atomic rollback under an injected projection failure, independent concurrent SQLite connections, duplicate after conflict, ID collisions, revision/predecessor binding, canonical timezone normalization, partial/finality semantics, invalid input, writer/append-only controls, current accounting, identity ambiguity and unchanged v1 regressions. Three subprocess tests additionally exit abruptly after event insertion, after projection insertion and after COMMIT. They verify rollback of uncommitted writes, persistence of committed evidence and idempotent resubmission. These are process-exit checks on local SQLite, not power-loss or filesystem durability qualification. Three regression tests demonstrate that missing, ambiguous or changed original identity cannot be returned as a current resolved result.
 
 Remaining before any stronger successor acceptance: owning-repository contract review; authenticated sources and trusted scope; provider-specific ordering/finality/coverage and evidence commitments; complete admission decision traces and rejection audit; reviewed conflict adjudication; legacy migration; Replay/Evidence Pack mappings; orchestrator integration; broader process-fault, power-loss and deployment qualification. This draft does not pass the full RR-01 through RR-14 proposal matrix.
 

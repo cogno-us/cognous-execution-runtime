@@ -162,6 +162,61 @@ class SyntheticRecoveryLedger:
                 "SELECT * FROM recovery_synthetic_events WHERE attempt_id=? ORDER BY revision", (attempt_id,)
             )]
 
+    def export_attempt(self, *, effect_id, attempt_id):
+        """Return a JSON-compatible inspection snapshot, not a consumer contract.
+
+        Legacy facts are retained separately with explicit provenance gaps. This
+        method never imports them into the synthetic stream or upgrades assurance.
+        """
+        with self._connection() as conn:
+            conn.execute("BEGIN")
+            identity = self._identity(conn, effect_id, attempt_id)
+            current = self._projection(conn, attempt_id)
+            if current.get("identity", identity) != identity:
+                raise ValueError("HOLD: original identity changed")
+            original = dict(conn.execute(
+                "SELECT * FROM runtime_items_v1 WHERE effect_id=?", (effect_id,)
+            ).fetchone())
+            disposition = dict(conn.execute(
+                "SELECT * FROM revocation_dispositions_v1 WHERE effect_id=?", (effect_id,)
+            ).fetchone())
+            legacy = conn.execute(
+                "SELECT * FROM original_attempt_closeouts_v1 WHERE attempt_id=?", (attempt_id,)
+            ).fetchone()
+            if legacy is not None and legacy["effect_id"] != effect_id:
+                raise ValueError("HOLD: legacy closeout binding differs")
+            events = [
+                {"revision": row["revision"], "event_id": row["event_id"],
+                 "digest": row["digest"], "kind": row["kind"],
+                 "body": json.loads(row["body"]),
+                 "admission": json.loads(row["receipt"])}
+                for row in conn.execute(
+                    "SELECT * FROM recovery_synthetic_events WHERE attempt_id=? ORDER BY revision",
+                    (attempt_id,),
+                )
+            ]
+            snapshot = {
+                "export_format": "cognous-recovery-inspection/synthetic-0.1",
+                "profile": PROFILE, "evaluated_at": _utc(self.clock()).isoformat(),
+                "original": original, "disposition": disposition,
+                "events": events, "current": current,
+                "legacy": None if legacy is None else {
+                    "profile": "cognous-revocation-closeout/1",
+                    "assurance": "legacy_unverified", "record": dict(legacy),
+                    "unavailable_provenance": [
+                        "observer_ref", "watermark_ref", "provider_acceptance_ref",
+                        "evidence_location_ref", "observation_digest", "admission_policy",
+                    ],
+                },
+                "limitations": [
+                    "synthetic_assertions_only", "not_a_replay_or_evidence_pack_mapping",
+                    "no_source_authentication", "no_settlement_verification",
+                    "legacy_facts_do_not_resolve_synthetic_work",
+                ],
+            }
+            conn.execute("COMMIT")
+            return snapshot
+
     def append(self, observation, *, expected_revision, predecessor_digest):
         if not self.writer_enabled:
             raise RuntimeError("evidence writer disabled")
