@@ -10,3 +10,5 @@
 - Add a read-only inspection export with one SQLite snapshot, retained original uncertainty and event history, explicit legacy provenance gaps and synthetic limitations; seven focused cases for [PR 47](https://github.com/cogno-us/cognous-execution-runtime/pull/47). Thanks @titanicprime.
 
 - Evaluate freshness after write-lock acquisition and retain versioned synthetic check results, specific conflict reasons and explicit unestablished assurances. Add eleven focused cases for [PR 47](https://github.com/cogno-us/cognous-execution-runtime/pull/47). Thanks @titanicprime.
+
+- Qualify seven deliberately removed protections in disposable source copies, with passing baseline and failing selected behavioral tests required; include mutation controls in scoped CI for [PR 47](https://github.com/cogno-us/cognous-execution-runtime/pull/47). Thanks @titanicprime.
