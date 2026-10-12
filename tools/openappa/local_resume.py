@@ -49,7 +49,8 @@ def _private_directory(path):
 def _open_owned(path):
     path = Path(path).absolute()
     _private_directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    # Do not wait for a FIFO writer before rejecting non-regular state.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
         os.close(fd)
