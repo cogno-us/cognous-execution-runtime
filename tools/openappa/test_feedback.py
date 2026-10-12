@@ -1,5 +1,6 @@
 """Actual destination execution and separately acknowledged flow feedback."""
 import dataclasses
+import hashlib
 import json
 import socket
 
@@ -75,3 +76,57 @@ def test_actual_execution_and_feedback_are_distinct(tmp_path, case, expected_sta
         and e['event'] == {'Closed': {'outcome': {'Ran': {'effects': ['egress']}}}}
         for e in entries)
     assert committed(after) - committed(before) == int(delivered)
+
+
+@pytest.mark.parametrize('first_delivery', ['not-sent', 'receipt-lost', 'unknown-call'])
+def test_feedback_only_recovery_does_not_repeat_effect(tmp_path, first_delivery):
+    _, decision, destination, arguments, path = enrolled(tmp_path)
+    original = arguments.pop('executor')
+    captured = {}
+    executions = []
+    class Executor:
+        def execute(self, **kwargs):
+            executions.append(kwargs)
+            return original.execute(**kwargs)
+    def status(binding):
+        run_probe(binding.store_path, 'status', json.dumps({'root_id': binding.root_id}).encode())
+    def first_report(binding, raw):
+        captured['raw'] = raw
+        if first_delivery == 'receipt-lost':
+            assert run_probe(binding.store_path, 'feedback', raw)['outcome'] == 'ack'
+        raise OSError('synthetic feedback transport loss')
+    left, right = socket.socketpair()
+    try:
+        outcome = execute_with_feedback(peer=left, **arguments, executor=Executor(),
+            read_existing=status, flow_check=lambda binding, raw: run_probe(binding.store_path, 'check', raw),
+            report_success=first_report)
+    finally:
+        left.close()
+        right.close()
+    assert (outcome.execution_status, outcome.feedback_status) == ('executed', 'unconfirmed')
+    assert_destination(destination, decision, True)
+    raw = captured['raw']
+    before = run_probe(path, 'audit')
+    if first_delivery == 'unknown-call':
+        wrong = json.loads(raw)
+        wrong['context']['call_id'] = 'synthetic-unreleased-call'
+        assert run_probe(path, 'feedback', json.dumps(wrong).encode())['outcome'] == 'refuse'
+        assert run_probe(path, 'audit') == before
+    # Explicit test-owned feedback delivery only: no flow check or executor call.
+    receipt = run_probe(path, 'feedback', raw)
+    assert receipt == {'request_sha256': hashlib.sha256(raw).hexdigest(),
+                       'outcome': 'refuse' if first_delivery == 'receipt-lost' else 'ack'}
+    after = run_probe(path, 'audit')
+    if first_delivery == 'receipt-lost':
+        assert after == before  # Duplicate refusal is not a new acknowledgment.
+    else:
+        assert after[:len(before)] == before
+        assert [entry['event'] for entry in after[len(before):]] == [
+            {'Closed': {'outcome': {'Ran': {'effects': ['egress']}}}},
+            {'Admitted': {'label': {'trust': 'trusted', 'audience': 'public'}}},
+        ]
+    # A further duplicate remains refused with exactly the same persisted audit.
+    assert run_probe(path, 'feedback', raw)['outcome'] == 'refuse'
+    assert run_probe(path, 'audit') == after
+    assert len(executions) == 1
+    assert_destination(destination, decision, True)
