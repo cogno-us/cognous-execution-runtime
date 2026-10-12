@@ -49,3 +49,29 @@ status, and no atomic transaction spans the destination and OpenAPPA store.
 No selected component lock, default runtime or institutional authority changes.
 Preserve C0 check-to-commit limits, optional same-host C1, no C2/C3, no real
 settlement and operational #30 HOLD.
+
+
+## Feedback recovery boundary
+
+The follow-up gate adds three actual feedback-only delivery cases after an
+unconfirmed host result: feedback was not sent, feedback persisted but its
+receipt was lost, and an unknown call ID was reported before the correct one.
+The probe exposes a correlated `refuse` response when ToolResult is not Ack,
+rather than treating that result as a process crash. The prior 50 cases remain;
+the strict total becomes 53.
+
+Pinned `classify_report_identified` only attributes results to open dispatches.
+Once the dispatch is closed, it cannot distinguish an already-consumed report
+from an unknown report. The expected recovery boundary is therefore: an open
+dispatch can accept its matching report; closed and unknown reports refuse.
+Duplicate refusal must never be promoted to acknowledged delivery. Tests require
+unchanged audit on refusal, exact successful close/admission events on delivery,
+and exactly one native execution and one destination effect throughout.
+
+This qualifies explicit test-owned delivery, not an automatic retry worker or
+durable outbox. The test retains exact request bytes in memory, so it does not
+prove host-crash recovery. Before production recovery, design durable trusted
+request/outcome association and a receipt protocol that preserves unconfirmed
+state without replaying the destination operation. Aggregate audit projections
+do not by themselves provide per-call delivery receipts. All preceding trust
+boundaries and operational #30 HOLD remain.

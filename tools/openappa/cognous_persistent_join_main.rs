@@ -52,10 +52,9 @@ async fn main() {
                 body: OutcomeBody::Available("synthetic-applied-result".into()),
             },
         }).await;
-        assert_eq!(receipt, HookDecision::Ack);
         let response = serde_json::json!({
             "request_sha256": Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
-            "outcome": "ack",
+            "outcome": if receipt == HookDecision::Ack { "ack" } else { "refuse" },
         });
         writeln!(std::io::stdout(), "{response}").unwrap();
         return;
