@@ -100,3 +100,31 @@ Local application test execution remains blocked as documented above. Prior
 head `589fae01b7958e39e055f0f49e858e96e2873d69` passed actual Linux lint
 and build; its test results are historical after this follow-up. Final-head
 Linux and Windows validation must run again before any acceptance.
+
+## A2UI prerequisite repair — 2026-10-12 UTC
+
+At head `a7b8a8325671629593d4da84c6f071c85297829e`, Linux application
+job 113111340004 failed only `serves the gateway-hosted A2UI scaffold`
+(HTTP 503 instead of 200; 4817 other tests passed in that test population).
+macOS shard job 113122144792 failed the same assertion (1541 other tests
+passed in that population). The source resolver returns 503 when the generated
+bundle is absent. The independent matrix build job does not share its checkout
+with the test job.
+
+The Linux test job now builds the bundle in its own checkout, requires a
+nonempty output, and retains the build log before executing the unchanged
+`pnpm test` command. The macOS shard commands receive the same prerequisite
+already present on accepted main. No test assertion, case, failure handling or
+required aggregate is removed. Dependency manifests and lockfile are unchanged.
+
+Separate remaining blockers: job 113127128112 reported SwiftFormat failures
+on 143 of 202 files; this repair does not reformat that unrelated tree. A local
+trial merge of current main also exposed add/add conflicts in
+`.github/workflows/dependency-restart.yml` and
+`tools/dependency_restart_preflight.py`; it was aborted without resolving by
+discarding either side. This narrow repair does not claim merge readiness.
+
+Full local application gates and new-head CI must be recorded separately.
+Structural workflow checks are not evidence that the generated bundle or
+application tests passed. No dependency policy exception, runtime change,
+release-lock advancement or production authorization is introduced.

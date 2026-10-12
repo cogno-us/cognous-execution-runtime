@@ -51,6 +51,11 @@ jobs:
           mkdir -p gate-evidence
           git rev-parse HEAD > gate-evidence/source.txt
           sha256sum package.json ui/package.json pnpm-lock.yaml > gate-evidence/manifests.txt
+          # Matrix jobs have isolated checkouts; the build job cannot supply this asset.
+          if [[ "${{ matrix.task }}" == test ]]; then
+            pnpm canvas:a2ui:bundle 2>&1 | tee gate-evidence/a2ui-bundle.log
+            test -s src/canvas-host/a2ui/a2ui.bundle.js
+          fi
           pnpm ${{ matrix.task }} 2>&1 | tee gate-evidence/${{ matrix.task }}.log
       - name: Retain executed gate output
         if: always()
