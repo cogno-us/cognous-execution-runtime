@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   listNativeCommandSpecs,
   listNativeCommandSpecsForConfig,
@@ -21,9 +21,9 @@ vi.mock("../auto-reply/skill-commands.js", () => ({
   listSkillCommandsForAgents,
 }));
 
-const { sessionStorePath } = vi.hoisted(() => ({
-  sessionStorePath: `/tmp/moltbot-telegram-bot-${Math.random().toString(16).slice(2)}.json`,
-}));
+const sessionStore = vi.hoisted(() => ({ path: "" }));
+const sessionStoreDir = fs.mkdtempSync(path.join(os.tmpdir(), "moltbot-telegram-bot-"));
+sessionStore.path = path.join(sessionStoreDir, "sessions.json");
 
 function resolveSkillCommands(config: Parameters<typeof listNativeCommandSpecsForConfig>[0]) {
   return listSkillCommandsForAgents({ cfg: config });
@@ -52,7 +52,7 @@ vi.mock("../config/sessions.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../config/sessions.js")>();
   return {
     ...actual,
-    resolveStorePath: vi.fn((storePath) => storePath ?? sessionStorePath),
+    resolveStorePath: vi.fn((storePath) => storePath ?? sessionStore.path),
   };
 });
 
@@ -173,6 +173,9 @@ const getOnHandler = (event: string) => {
 
 const ORIGINAL_TZ = process.env.TZ;
 describe("createTelegramBot", () => {
+  afterAll(() => {
+    fs.rmSync(sessionStoreDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  });
   beforeEach(async () => {
     vi.resetModules();
     ({ resetInboundDedupe } = await import("../auto-reply/reply/inbound-dedupe.js"));

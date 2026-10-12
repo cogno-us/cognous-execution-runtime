@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const readAllowFromStoreMock = vi.fn().mockResolvedValue([]);
 const upsertPairingRequestMock = vi.fn().mockResolvedValue({ code: "PAIRCODE", created: true });
@@ -90,6 +90,12 @@ vi.mock("./session.js", () => {
 import { monitorWebInbox, resetWebInboundDedupe } from "./inbound.js";
 
 describe("web inbound media saves with extension", () => {
+  let listener: Awaited<ReturnType<typeof monitorWebInbox>> | undefined;
+
+  afterEach(async () => {
+    await listener?.close();
+    listener = undefined;
+  });
   beforeEach(() => {
     saveMediaBufferSpy.mockClear();
     resetWebInboundDedupe();
@@ -105,7 +111,7 @@ describe("web inbound media saves with extension", () => {
 
   it("stores inbound image with jpeg extension", async () => {
     const onMessage = vi.fn();
-    const listener = await monitorWebInbox({ verbose: false, onMessage });
+    listener = await monitorWebInbox({ verbose: false, onMessage });
     const { createWaSocket } = await import("./session.js");
     const realSock = await (
       createWaSocket as unknown as () => Promise<{
@@ -126,26 +132,18 @@ describe("web inbound media saves with extension", () => {
 
     realSock.ev.emit("messages.upsert", upsert);
 
-    // Allow a brief window for the async handler to fire on slower hosts.
-    for (let i = 0; i < 50; i++) {
-      if (onMessage.mock.calls.length > 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-
-    expect(onMessage).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1), { timeout: 10_000 });
     const msg = onMessage.mock.calls[0][0];
     const mediaPath = msg.mediaPath;
     expect(mediaPath).toBeDefined();
     expect(path.extname(mediaPath as string)).toBe(".jpg");
     const stat = await fs.stat(mediaPath as string);
     expect(stat.size).toBeGreaterThan(0);
-
-    await listener.close();
   });
 
   it("extracts mentions from media captions", async () => {
     const onMessage = vi.fn();
-    const listener = await monitorWebInbox({ verbose: false, onMessage });
+    listener = await monitorWebInbox({ verbose: false, onMessage });
     const { createWaSocket } = await import("./session.js");
     const realSock = await (
       createWaSocket as unknown as () => Promise<{
@@ -178,22 +176,15 @@ describe("web inbound media saves with extension", () => {
 
     realSock.ev.emit("messages.upsert", upsert);
 
-    for (let i = 0; i < 50; i++) {
-      if (onMessage.mock.calls.length > 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-
-    expect(onMessage).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1), { timeout: 10_000 });
     const msg = onMessage.mock.calls[0][0];
     expect(msg.chatType).toBe("group");
     expect(msg.mentionedJids).toEqual(["999@s.whatsapp.net"]);
-
-    await listener.close();
   });
 
   it("passes mediaMaxMb to saveMediaBuffer", async () => {
     const onMessage = vi.fn();
-    const listener = await monitorWebInbox({
+    listener = await monitorWebInbox({
       verbose: false,
       onMessage,
       mediaMaxMb: 1,
@@ -218,16 +209,9 @@ describe("web inbound media saves with extension", () => {
 
     realSock.ev.emit("messages.upsert", upsert);
 
-    for (let i = 0; i < 50; i++) {
-      if (onMessage.mock.calls.length > 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-
-    expect(onMessage).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1), { timeout: 10_000 });
     expect(saveMediaBufferSpy).toHaveBeenCalled();
     const lastCall = saveMediaBufferSpy.mock.calls.at(-1);
     expect(lastCall?.[3]).toBe(1 * 1024 * 1024);
-
-    await listener.close();
   });
 });
