@@ -93,7 +93,7 @@ async fn main() {
         _ => "refuse",
     };
     let response = serde_json::json!({
-        "request_sha256": format!("{:x}", Sha256::digest(&bytes)),
+        "request_sha256": Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
         "outcome": outcome,
     });
     writeln!(std::io::stdout(), "{response}").unwrap();
