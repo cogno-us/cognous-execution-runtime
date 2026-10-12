@@ -15,7 +15,7 @@ def run_probe(path, mode, raw=b''):
     assert Path(binary).is_file()
     result = subprocess.run([binary, mode, str(path)], input=raw,
                             capture_output=True, timeout=15, check=True)
-    return json.loads(result.stdout) if mode == 'check' else None
+    return json.loads(result.stdout) if mode in ('check', 'feedback', 'audit') else None
 
 
 def prepare(tmp_path):

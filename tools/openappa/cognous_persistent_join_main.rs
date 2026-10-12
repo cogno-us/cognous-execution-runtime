@@ -23,6 +23,10 @@ async fn main() {
         public_denied(&runtime, "restriction-control").await;
         return;
     }
+    if args[1] == "audit" {
+        println!("{}", serde_json::to_string(&runtime.audit(&actor().root).unwrap()).unwrap());
+        return;
+    }
     let mut bytes = Vec::new();
     std::io::stdin().take(65537).read_to_end(&mut bytes).unwrap();
     assert!(bytes.len() <= 65536);
@@ -33,13 +37,29 @@ async fn main() {
         println!("existing-root");
         return;
     }
-    assert_eq!(args[1], "check");
+    assert!(args[1] == "check" || args[1] == "feedback");
     assert_eq!(request["tool"], "host/cognous_fixture/refund");
     assert_eq!(request["context"]["root_id"], actor().root.0);
     // Test-owned mapping only: no claim that arbitrary refunds are public egress.
     let mut proposed = call("send_public");
     proposed.arguments = serde_json::value::RawValue::from_string(
         request["arguments"].to_string()).unwrap();
+    if args[1] == "feedback" {
+        let receipt = hooks::handle(&runtime, HookEvent::ToolResult {
+            actor: actor(), call: proposed,
+            call_id: Some(request["context"]["call_id"].as_str().unwrap().into()),
+            outcome: ToolOutcome::Success {
+                body: OutcomeBody::Available("synthetic-applied-result".into()),
+            },
+        }).await;
+        assert_eq!(receipt, HookDecision::Ack);
+        let response = serde_json::json!({
+            "request_sha256": Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+            "outcome": "ack",
+        });
+        writeln!(std::io::stdout(), "{response}").unwrap();
+        return;
+    }
     let decision = hooks::handle(&runtime, HookEvent::ToolCall {
         actor: actor(), call: proposed,
         call_id: Some(request["context"]["call_id"].as_str().unwrap().into()),
