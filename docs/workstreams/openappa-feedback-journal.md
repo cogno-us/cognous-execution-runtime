@@ -56,3 +56,27 @@ remain separate work. No effect-execution or feedback-retry entrypoint is added.
 No selected component lock, default runtime or institutional authority changes.
 Preserve C0 check-to-commit limits, optional same-host C1, no C2/C3, no real
 settlement and operational #30 HOLD.
+
+
+## Abrupt process termination follow-up
+
+Five additional cases terminate only an owned test child using SIGKILL at
+explicit checkpoints: after the journal claim commits, after actual OpenAPPA
+feedback returns Ack but before the journal records it, and after the journal
+records Ack but before the child returns to its caller. Two local journal cases
+cover claim/receipt persistence; three connected cases use the actual pinned
+runtime and synthetic destination. The strict hosted total becomes 71.
+
+The caller initially sees executed/unconfirmed in every connected case because
+the child returned no receipt. A separate restarted process must recover
+unconfirmed for the first two checkpoints and the recorded Ack for the third,
+without invoking any delivery callback. Reopened OpenAPPA audit must show no
+successful feedback at the claim-only checkpoint and exactly one successful
+close at the other two. Native execution count and destination effect count
+remain one through repeated recovery reads.
+
+These cases extend the earlier ordinary-reopen tests to abrupt feedback-process
+termination at known boundaries. They do not qualify power failure, storage
+loss, whole-host termination, interruption inside a SQLite commit, or a crash
+before a claim exists. They do not add automatic recovery delivery or resolve
+unconfirmed rows. All preceding trust and deployment limits remain.
