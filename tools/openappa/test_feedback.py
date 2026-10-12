@@ -70,5 +70,8 @@ def test_actual_execution_and_feedback_are_distinct(tmp_path, case, expected_sta
     # Actual audit is reopened in a different process; receipt loss may still
     # follow persisted feedback. It must not rewrite execution as a failure.
     after = run_probe(path, 'audit')
-    committed = lambda entries: sum('EffectsCommitted' in e['event'] for e in entries)
+    committed = lambda entries: sum(
+        e['trajectory'] == 'synthetic-persistent-root'
+        and e['event'] == {'Closed': {'outcome': {'Ran': {'effects': ['egress']}}}}
+        for e in entries)
     assert committed(after) - committed(before) == int(delivered)

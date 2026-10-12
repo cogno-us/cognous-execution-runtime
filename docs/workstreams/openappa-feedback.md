@@ -27,7 +27,7 @@ Nine cases cover success, unavailable feedback, receipt loss after actual
 feedback, a wrong receipt digest, mismatched result identity, flow denial,
 revoked authority, partial execution and lost destination acknowledgment.
 Tests inspect the synthetic SQLite destination and reopen the actual OpenAPPA
-audit in a separate process. `EffectsCommitted` counts distinguish persisted
+audit in a separate process. `Closed/Ran` events with the declared `egress` effect distinguish persisted
 feedback from a receipt that the host did not receive. Executor invocation
 counts require no automatic re-execution after feedback failures.
 The conjunction gate retains its previous 41 cases and requires all 50 with
