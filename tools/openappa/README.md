@@ -53,6 +53,11 @@ records the inspected result and the incomplete broader CI status at merge.
 
 ## Remaining work and order
 
+The [host and output-admission contract proposal](../../docs/workstreams/openappa-host-contract.md)
+records a bounded source inventory, candidate requirements and implementation
+gates. It is a design proposal, not acceptance of a deployment or completed
+output enforcement.
+
 1. **Define the deployment host contract.** Select the supported host, identity
    boundary, enrollment/revocation owner, protected store lifecycle and concrete
    request/output path. The current Linux UID helper is one bounded option, not
