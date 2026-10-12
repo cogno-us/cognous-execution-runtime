@@ -11,6 +11,7 @@ async fn main() {
         assert!(!path.exists());
         let runtime = open(&path);
         start(&runtime).await;
+        public_allowed(&runtime, "bootstrap-control").await;
         return;
     }
     let mut uri = url::Url::from_file_path(&path).unwrap();
@@ -19,6 +20,7 @@ async fn main() {
     runtime.try_status(&actor().root).expect("existing root required");
     if args[1] == "restrict" {
         narrow(&runtime).await;
+        public_denied(&runtime, "restriction-control").await;
         return;
     }
     assert_eq!(args[1], "check");
