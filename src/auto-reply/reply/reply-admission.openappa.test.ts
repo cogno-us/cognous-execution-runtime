@@ -145,4 +145,29 @@ describe.skipIf(!probe)("actual pinned OpenAPPA final-text admission", () => {
     expect(deliver).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
   });
+  it("does not deliver an actual allowance cancelled before release", async () => {
+    const controller = new AbortController();
+    const deliver = vi.fn();
+    const onError = vi.fn();
+    let actualOutcome: string | undefined;
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      onError,
+      textAdmission: {
+        destinationId: "synthetic-public",
+        signal: controller.signal,
+        check: async (request) => {
+          const response = await check(request);
+          actualOutcome = response.outcome;
+          controller.abort();
+          return response;
+        },
+      },
+    });
+    dispatcher.sendFinalReply({ text: "synthetic cancelled output" });
+    await dispatcher.waitForIdle();
+    expect(actualOutcome).toBe("allow");
+    expect(deliver).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
 });
