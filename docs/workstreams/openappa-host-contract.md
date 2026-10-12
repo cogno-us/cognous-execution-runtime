@@ -136,3 +136,11 @@ remain useful regression evidence within their stated scope.
 No credential/grant issuance, selected component-lock advancement, default
 runtime activation or production release is authorized. Preserve C0 limits,
 optional same-host C1, no C2/C3, no real settlement and operational #30 HOLD.
+
+## Bounded implementation follow-up
+
+The [optional final-text dispatcher gate](openappa-reply-admission.md) implements
+one admission interface and tests the actual queue's delivery-callback boundary.
+It is not wired to an authenticated deployment host or actual OpenAPPA policy.
+Streaming, other output routes, complete sink coverage and deployment acceptance
+remain unqualified. The proposal's wider requirements are not superseded.
