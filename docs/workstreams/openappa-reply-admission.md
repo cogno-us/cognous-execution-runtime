@@ -139,3 +139,24 @@ check, capacity release, and preservation of ungated backlog behavior. Strict
 workflow totals become 41 unit/routing cases and 48 cases with the existing seven
 actual-policy cases. This is local admission backpressure, not distributed rate
 limiting, per-tenant quotas, durable deduplication or production-load qualification.
+
+## Stop after delivery failure
+
+An opted-in dispatcher now stops its admission instance when the delivery
+callback rejects, before invoking the existing error handler. Already queued
+replies do not obtain new policy checks or reach delivery; later enqueue is
+refused. The ungated dispatcher retains its existing continuation behavior.
+
+A rejected delivery promise is not evidence that nothing was sent. Unit cases
+cover failure before a synthetic send and receipt loss after a synthetic send;
+the latter retains the observed first send while withholding the second. A
+connected case obtains actual pinned OpenAPPA allowance before the synthetic
+send/receipt loss and verifies that the queue neither sends again nor requests
+another allowance. Three added unit/routing cases and one connected case bring
+the strict workflow totals to 44 and 52 respectively (44 plus eight connected).
+
+This change stops subsequent output in the current in-memory profile. It does
+not undo a send, determine provider outcome, persist delivery status, close the
+OpenAPPA dispatch, or authorize replay through a new dispatcher. The host still
+needs an accepted observation/recovery contract; production activation remains
+off and all existing C0/C1, lock, authority and operational HOLD limits remain.

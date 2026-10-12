@@ -374,3 +374,46 @@ describe("bounded admission backlog", () => {
     expect(ungatedDeliver).toHaveBeenCalledTimes(33);
   });
 });
+
+describe("delivery failure after admission", () => {
+  it.each(["before-send", "after-send"])("stops later gated output on failure %s", async (mode) => {
+    const syntheticDestination: string[] = [];
+    const failure = new Error("synthetic transport failure");
+    const deliver = vi.fn(async (payload) => {
+      if (mode === "after-send") syntheticDestination.push(payload.text);
+      throw failure;
+    });
+    const check = vi.fn(allow);
+    const onError = vi.fn();
+    const onIdle = vi.fn();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      onError,
+      onIdle,
+      textAdmission: { destinationId: "synthetic", check },
+    });
+    dispatcher.sendFinalReply({ text: "first" });
+    dispatcher.sendFinalReply({ text: "second" });
+    await dispatcher.waitForIdle();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(syntheticDestination).toEqual(mode === "after-send" ? ["first"] : []);
+    expect(onError).toHaveBeenNthCalledWith(1, failure, { kind: "final" });
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(onIdle).toHaveBeenCalledTimes(1);
+    expect(dispatcher.sendFinalReply({ text: "third" })).toBe(false);
+  });
+
+  it("preserves ungated continuation after delivery errors", async () => {
+    const failure = new Error("synthetic transport failure");
+    const deliver = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined);
+    const onError = vi.fn();
+    const dispatcher = createReplyDispatcher({ deliver, onError });
+    dispatcher.sendFinalReply({ text: "first" });
+    dispatcher.sendFinalReply({ text: "second" });
+    await dispatcher.waitForIdle();
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver).toHaveBeenLastCalledWith({ text: "second" }, { kind: "final" });
+    expect(onError).toHaveBeenCalledExactlyOnceWith(failure, { kind: "final" });
+  });
+});
