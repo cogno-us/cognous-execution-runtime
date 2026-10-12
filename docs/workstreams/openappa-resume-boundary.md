@@ -1,5 +1,8 @@
 # OpenAPPA existing-trajectory lookup boundary
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Candidate against Runtime `19c46ba1974867ec9b990aba9081d0840ea92424` and upstream
 `10aa0e09e32d8c6704bdb030dc3c66140bf81915`. No selected lock changes.
 

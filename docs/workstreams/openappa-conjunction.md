@@ -1,5 +1,8 @@
 # Synthetic OpenAPPA and authority conjunction candidate
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Runtime base: `383fbd972220992ce60e1662053720f2076485f3` (embedded gate #49).
 Upstream OpenAPPA: `10aa0e09e32d8c6704bdb030dc3c66140bf81915`.
 Control Plane: `2ea9528eeb87e14ff10f05de06473122b9df540f`.

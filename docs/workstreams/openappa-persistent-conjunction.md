@@ -1,5 +1,8 @@
 # Persistent OpenAPPA flow and authority qualification
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Candidate based on Runtime `ac309e43a95cb163762f2f6d317e3bcec913ad30`.
 The conjunction workflow keeps its existing upstream pins: OpenAPPA
 `10aa0e09e32d8c6704bdb030dc3c66140bf81915`, Control Plane

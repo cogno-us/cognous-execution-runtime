@@ -1,5 +1,8 @@
 # OpenAPPA embedded runtime qualification candidate
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Base: Runtime `9d9804131b0029801925ce1a5ca9e7f696a81f76`, after codec PR #48.
 Upstream remains `10aa0e09e32d8c6704bdb030dc3c66140bf81915`.
 

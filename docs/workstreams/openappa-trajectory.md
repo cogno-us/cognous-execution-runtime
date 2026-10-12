@@ -1,5 +1,8 @@
 # Persistent OpenAPPA trajectory qualification candidate
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Runtime base `db6b06dc3c8f22f265a633ad20d4ed143c2984ff`, after synthetic conjunction
 PR #50. Upstream remains `10aa0e09e32d8c6704bdb030dc3c66140bf81915`.
 

@@ -1,5 +1,8 @@
 # Opt-in Linux local-host resume candidate
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Base Runtime `a26a1e29b7a6ef67dba5ebd45de977c1b1c81b47`; upstream OpenAPPA
 `10aa0e09e32d8c6704bdb030dc3c66140bf81915`. No selected-lock advancement.
 

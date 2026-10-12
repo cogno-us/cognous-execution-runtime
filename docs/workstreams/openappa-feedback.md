@@ -1,5 +1,8 @@
 # Synthetic execution outcome feedback
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Candidate based on Runtime `812ef39e9ceb4f1e4c4adade75c8d0c2d65ea8d5`.
 Existing conjunction pins remain OpenAPPA
 `10aa0e09e32d8c6704bdb030dc3c66140bf81915`, Control Plane
