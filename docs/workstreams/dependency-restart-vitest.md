@@ -161,3 +161,18 @@ repository code. The full retry was then stopped; neither partial run is counted
 as a completed suite. No mock, exclusion or production change was introduced to
 bypass the restriction. This remains a draft integration repair; AGENTS.md's
 full local landing gate must still pass in a suitable environment before merge.
+
+## Hosted full-suite budget correction
+
+At head 9f279edc9eb0c7cd6644bd4eac715e2195c6fefc, main CI run
+38201706575 succeeded. Dedicated application run 38201706482 passed lint
+and build, but test job 114656328934 reached its 12-minute step timeout
+while test files were still completing. Its log contains no assertion-failure
+or fatal-error marker; this is not a completed test-suite pass.
+
+Increase only the test step budget to 30 minutes (lint/build remain 12),
+and the enclosing job budget to 45 minutes to accommodate installation and
+artifact retention. Preserve two workers, 4 GB heap, the original full test
+command, A2UI prerequisite, fail-fast behavior and all-success aggregate.
+No exclusions or assertions change. The local full-suite environment blocker
+and separate landing requirement remain unchanged.

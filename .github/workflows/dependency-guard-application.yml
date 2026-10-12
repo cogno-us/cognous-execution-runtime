@@ -17,7 +17,7 @@ jobs:
   application-gate:
     name: Required Linux ${{ matrix.task }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -44,7 +44,8 @@ jobs:
         timeout-minutes: 8
         run: pnpm install --frozen-lockfile
       - name: Run actual repository gate
-        timeout-minutes: 12
+        # The two-worker full suite exceeded 12 minutes while still progressing.
+        timeout-minutes: ${{ matrix.task == 'test' && 30 || 12 }}
         shell: bash
         run: |
           set -euo pipefail
