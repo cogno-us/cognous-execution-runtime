@@ -1,0 +1,29 @@
+name: OpenAPPA persistent trajectory qualification
+on:
+  pull_request:
+    paths:
+      - 'tools/openappa/cognous_trajectory_contract.rs'
+      - '.github/workflows/openappa-trajectory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trajectory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: archestra-ai/OpenAPPA
+          ref: 10aa0e09e32d8c6704bdb030dc3c66140bf81915
+          path: pinned/openappa
+      - name: Check actual persistent runtime behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C pinned/openappa rev-parse HEAD)" = 10aa0e09e32d8c6704bdb030dc3c66140bf81915
+          rustup toolchain install stable --profile minimal
+          cp tools/openappa/cognous_trajectory_contract.rs pinned/openappa/appa-runtime/tests/
+          cd pinned/openappa
+          cargo +stable test --locked -p appa --no-default-features --test cognous_trajectory_contract
