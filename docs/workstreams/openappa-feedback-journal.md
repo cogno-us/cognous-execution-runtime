@@ -80,3 +80,16 @@ termination at known boundaries. They do not qualify power failure, storage
 loss, whole-host termination, interruption inside a SQLite commit, or a crash
 before a claim exists. They do not add automatic recovery delivery or resolve
 unconfirmed rows. All preceding trust and deployment limits remain.
+
+## Independent process contention
+
+Two additional local bookkeeping cases launch six independent Python processes
+against one existing journal and identical binding/request. Exactly one callback
+may record a synthetic delivery. With an Ack, restart recovers the recorded Ack;
+with a lost receipt, all callers and restart remain unconfirmed. Recovery must
+not invoke another callback. The hosted conjunction gate requires 73 cases.
+
+These cases exercise interprocess SQLite claim serialization, not independent
+remote receipt verification or production load. Process scheduling is not a
+guarantee of simultaneous lock acquisition. Existing crash, trust, no-retry and
+deployment limitations remain unchanged.
