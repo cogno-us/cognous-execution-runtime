@@ -1,0 +1,468 @@
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+import json
+import sqlite3
+from threading import Barrier
+
+import pytest
+
+from engine.recovery_resolution import SyntheticObservation, SyntheticRecoveryLedger
+from engine.revocation_closeout import OrderingEvidence, RevocationCloseoutStore
+
+NOW = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
+
+
+def original(store, effect="effect", attempt="attempt"):
+    store.record_item(effect_id=effect, attempt_id=attempt, decision_id="decision",
+                      grant_id=effect, grant_revision="r1", state="executing",
+                      ordering=OrderingEvidence(1, "synthetic:queue"))
+    store.record_revocation(grant_id=effect, grant_revision="r1",
+                            revocation=OrderingEvidence(2, "synthetic:revocation"),
+                            owner="synthetic:owner", deadline=NOW-timedelta(hours=1),
+                            reconciliation_ref="synthetic:reconciliation")
+
+
+@pytest.fixture
+def pair(tmp_path):
+    old = RevocationCloseoutStore(tmp_path, clock=lambda: NOW)
+    original(old)
+    new = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    return old, new
+
+
+def observation(**changes):
+    event = SyntheticObservation(
+        event_id="event-1", effect_id="effect", attempt_id="attempt",
+        adapter_id="synthetic:adapter", client_reference="synthetic:client",
+        state="unknown", observed_at=NOW, ordering_domain="synthetic:domain", order=3,
+        observation_ref="synthetic:observation", observation_digest="0" * 64,
+        observer_ref="synthetic:observer", watermark_ref="synthetic:watermark",
+        provider_acceptance_ref="synthetic:unavailable", evidence_location_ref="synthetic:location",
+    )
+    return replace(event, **changes)
+
+
+def append(ledger, event):
+    current = ledger.current(event.attempt_id)
+    return ledger.append(event, expected_revision=current["revision"], predecessor_digest=current["head_digest"])
+
+
+def complete(**changes):
+    return observation(**{"state": "applied", "complete_coverage": True, "final": True, **changes})
+
+
+def test_unknown_to_applied_survives_restart_with_provenance_and_v1_untouched(pair):
+    old, new = pair
+    before = old.dispositions()
+    append(new, observation())
+    append(new, complete(event_id="event-2", order=4))
+    restarted = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    assert restarted.current("attempt")["work_state"] == "resolved"
+    history = restarted.history("attempt")
+    assert len(history) == 2
+    for row in history:
+        body = json.loads(row["body"])
+        assert body["observation"]["observer_ref"] == "synthetic:observer"
+        assert body["observation"]["watermark_ref"] == "synthetic:watermark"
+        assert json.loads(row["receipt"])["assurance"] == "synthetic_admission"
+    assert old.dispositions() == before
+    assert old.closeout("attempt") is None
+    assert restarted.current("attempt")["retry_eligible"] is False
+    assert restarted.current("attempt")["settlement_verified"] is False
+
+
+def test_metrics_include_unobserved_then_remove_resolved_from_overdue(pair):
+    old, new = pair
+    report = new.metrics()
+    assert report["current_unresolved"] == report["current_overdue"] == 1
+    assert report["work_states"]["awaiting_observation"] == 1
+    append(new, complete())
+    report = new.metrics()
+    assert report["historical_in_doubt"] == 1
+    assert report["current_unresolved"] == report["current_overdue"] == 0
+    assert old.overdue_report(now=NOW)["count"] == 1
+
+
+@pytest.mark.parametrize("state,coverage,final,work", [
+    ("unknown", False, False, "awaiting_finality"),
+    ("absent", True, True, "awaiting_finality"),
+    ("partial", True, True, "partial_followup"),
+    ("applied", False, True, "awaiting_finality"),
+    ("applied", True, False, "awaiting_finality"),
+    ("applied", True, True, "resolved"),
+])
+def test_outcome_and_finality_are_separate(pair, state, coverage, final, work):
+    result = append(pair[1], observation(state=state, complete_coverage=coverage, final=final))
+    assert result["current"]["work_state"] == work
+    assert result["current"]["execution_authority"] == "none"
+    assert result["current"]["retry_eligible"] is False
+
+
+def test_partial_followed_by_full_coverage(pair):
+    new = pair[1]
+    append(new, observation(state="partial"))
+    assert append(new, complete(event_id="event-2", order=4))["current"]["work_state"] == "resolved"
+
+
+def test_duplicate_returns_original_admission_and_later_conflict(pair):
+    new = pair[1]
+    first = new.append(complete(), expected_revision=0, predecessor_digest=None)
+    append(new, observation(event_id="event-2", state="absent", order=4))
+    duplicate = new.append(complete(), expected_revision=0, predecessor_digest=None)
+    assert duplicate["admission"] == first["admission"]
+    assert duplicate["current"]["work_state"] == "conflict_review"
+    assert duplicate["current"]["observation"] == "applied"
+    assert len(new.history("attempt")) == 2
+    append(new, complete(event_id="event-3", order=5))
+    assert new.current("attempt")["work_state"] == "conflict_review"
+
+
+def test_same_id_changed_body_records_minimized_disagreement(pair):
+    new = pair[1]
+    append(new, complete())
+    result = append(new, observation(state="absent", order=4))
+    assert result["current"]["work_state"] == "conflict_review"
+    row = new.history("attempt")[-1]
+    assert row["kind"] == "disagreement"
+    assert set(json.loads(row["body"])) == {"conflicting_digest", "event_id"}
+
+
+@pytest.mark.parametrize("changes", [
+    {"ordering_domain": "synthetic:other"}, {"order": 2},
+    {"adapter_id": "synthetic:other"}, {"client_reference": "synthetic:other"},
+    {"final": False}, {"complete_coverage": False},
+])
+def test_incomparable_and_regressive_evidence_holds(pair, changes):
+    new = pair[1]
+    append(new, complete())
+    params = {"event_id": "event-2", "order": 4, **changes}
+    result = append(new, complete(**params))
+    assert result["current"]["work_state"] == "conflict_review"
+    assert result["current"]["finality"] == "unestablished"
+
+
+@pytest.mark.parametrize("changes", [
+    {"effect_id": "other"}, {"attempt_id": "missing"},
+    {"observed_at": NOW+timedelta(seconds=1)},
+    {"observed_at": NOW-timedelta(days=2)},
+    {"observed_at": NOW.replace(tzinfo=None)},
+    {"observation_digest": "invalid"}, {"observer_ref": ""},
+    {"order": True}, {"final": 1}, {"state": "settled"},
+])
+def test_invalid_inputs_do_not_promote_or_append(pair, changes):
+    new = pair[1]
+    with pytest.raises(ValueError):
+        append(new, observation(**changes))
+    assert new.current("attempt")["revision"] == 0
+    assert new.history("attempt") == []
+
+
+def test_competing_writers_have_one_winner_and_stale_loser(pair):
+    old, new = pair
+    barrier = Barrier(2)
+    def submit(event_id):
+        ledger = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+        barrier.wait()
+        try:
+            ledger.append(observation(event_id=event_id), expected_revision=0, predecessor_digest=None)
+            return "admitted"
+        except ValueError as error:
+            assert "stale stream revision" in str(error)
+            return "stale"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(submit, ["first", "second"])) == ["admitted", "stale"]
+    assert len(new.history("attempt")) == new.current("attempt")["revision"] == 1
+
+
+def test_projection_failure_rolls_back_event_and_restart(pair):
+    old, new = pair
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("CREATE TRIGGER test_projection_failure BEFORE INSERT ON recovery_synthetic_projection BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
+    with pytest.raises(sqlite3.IntegrityError, match="injected failure"):
+        append(new, complete())
+    reopened = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    assert reopened.history("attempt") == []
+    assert reopened.current("attempt")["revision"] == 0
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("DROP TRIGGER test_projection_failure")
+    assert append(reopened, complete())["current"]["revision"] == 1
+
+
+def test_disabled_writer_and_append_only_controls(pair):
+    old, new = pair
+    disabled = SyntheticRecoveryLedger(old.path, synthetic=True, writer_enabled=False)
+    with pytest.raises(RuntimeError, match="writer disabled"):
+        append(disabled, observation())
+    append(new, observation())
+    with sqlite3.connect(old.path) as conn:
+        for sql in ["DELETE FROM recovery_synthetic_events", "UPDATE recovery_synthetic_events SET body='{}'"]:
+            with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+                conn.execute(sql)
+
+
+def test_ambiguous_and_missing_attempts_are_separate_work(pair):
+    old, new = pair
+    original(old, effect="second", attempt="attempt")
+    original(old, effect="missing", attempt=None)
+    with pytest.raises(ValueError, match="ambiguous"):
+        append(new, observation())
+    report = new.metrics()
+    assert report["historical_in_doubt"] == report["unattributable_effects"] == 3
+    assert report["current_unresolved"] == 0
+
+
+def test_missing_deadline_and_legacy_closeout_do_not_fabricate_resolution(pair):
+    old, new = pair
+    old.close_original_attempt(attempt_id="attempt", observation_state="partial",
+                               observation=OrderingEvidence(3, "synthetic:legacy"),
+                               observation_ref="synthetic:legacy")
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("UPDATE revocation_dispositions_v1 SET deadline=NULL")
+    report = new.metrics()
+    assert report["invalid_or_missing_deadlines"] == 1
+    assert report["current_unresolved"] == 1
+    assert report["work_states"]["awaiting_observation"] == 1
+    assert old.closeout("attempt").closed is True
+
+
+def test_synthetic_opt_in_and_existing_database_required(tmp_path):
+    with pytest.raises(ValueError, match="production admission unsupported"):
+        SyntheticRecoveryLedger(tmp_path / "missing.db")
+    with pytest.raises(sqlite3.OperationalError):
+        SyntheticRecoveryLedger(tmp_path / "missing.db", synthetic=True)
+    assert not (tmp_path / "missing.db").exists()
+
+
+def test_canonical_digest_normalizes_timezone_and_duplicate_is_idempotent(pair):
+    new = pair[1]
+    first = new.append(observation(), expected_revision=0, predecessor_digest=None)
+    equivalent = observation(observed_at=NOW.astimezone(timezone(timedelta(hours=2))))
+    second = new.append(equivalent, expected_revision=0, predecessor_digest=None)
+    assert first == second
+    assert len(new.history("attempt")) == 1
+    import hashlib
+    row = new.history("attempt")[0]
+    assert hashlib.sha256(row["body"].encode("utf-8")).hexdigest() == row["digest"]
+
+
+def test_predecessor_and_cross_attempt_event_reuse_fail_closed(pair):
+    old, new = pair
+    original(old, effect="other-effect", attempt="other-attempt")
+    append(new, complete())
+    with pytest.raises(ValueError, match="stale stream revision"):
+        new.append(observation(event_id="event-2"), expected_revision=1, predecessor_digest="wrong")
+    with pytest.raises(ValueError, match="another attempt"):
+        append(new, observation(effect_id="other-effect", attempt_id="other-attempt"))
+    assert new.current("other-attempt")["revision"] == 0
+    assert len(new.history("attempt")) == 1
+
+
+@pytest.mark.parametrize("change", ["ambiguous", "decision_changed", "disposition_missing"])
+def test_current_revalidates_original_identity_instead_of_returning_stale_resolution(pair, change):
+    old, new = pair
+    append(new, complete())
+    retained = new.history("attempt")
+    if change == "ambiguous":
+        original(old, effect="second", attempt="attempt")
+    else:
+        with sqlite3.connect(old.path) as conn:
+            if change == "decision_changed":
+                conn.execute("UPDATE runtime_items_v1 SET decision_id='changed'")
+            else:
+                conn.execute("DELETE FROM revocation_dispositions_v1")
+    with pytest.raises(ValueError, match="HOLD"):
+        new.current("attempt")
+    assert new.history("attempt") == retained
+    assert new.metrics()["work_states"]["resolved"] == 0
+
+
+@pytest.mark.parametrize("boundary,committed", [
+    ("event", False), ("projection", False), ("commit", True),
+])
+def test_abrupt_process_exit_preserves_transaction_boundary(pair, boundary, committed):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    old, new = pair
+    # Exit from the actual append transaction without exception handlers or cleanup.
+    script = '''
+import os, runpy, sqlite3, sys
+from engine.recovery_resolution import SyntheticRecoveryLedger
+fixtures = runpy.run_path("tests/test_recovery_resolution.py")
+ledger = SyntheticRecoveryLedger(sys.argv[1], synthetic=True, clock=lambda: fixtures["NOW"])
+connect = sqlite3.connect
+boundary = sys.argv[2]
+class ExitConnection(sqlite3.Connection):
+    def execute(self, sql, *args):
+        result = super().execute(sql, *args)
+        target = {"event": "INSERT INTO recovery_synthetic_events",
+                  "projection": "INSERT INTO recovery_synthetic_projection",
+                  "commit": "COMMIT"}[boundary]
+        if sql.startswith(target):
+            os._exit(73)
+        return result
+sqlite3.connect = lambda *args, **kwargs: connect(*args, factory=ExitConnection, **kwargs)
+ledger.append(fixtures["complete"](), expected_revision=0, predecessor_digest=None)
+raise SystemExit("boundary was not reached")
+'''
+    result = subprocess.run([sys.executable, "-c", script, str(old.path), boundary],
+                            cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 73, result.stderr
+    reopened = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    assert len(reopened.history("attempt")) == int(committed)
+    assert reopened.current("attempt")["revision"] == int(committed)
+    assert reopened.metrics()["current_unresolved"] == int(not committed)
+    replay = reopened.append(complete(), expected_revision=0, predecessor_digest=None)
+    assert replay["current"]["revision"] == 1
+    assert len(reopened.history("attempt")) == 1
+
+
+@pytest.mark.parametrize("legacy_state", ["unknown", "partial", "applied"])
+def test_export_retains_legacy_facts_without_reconstructing_provenance(pair, legacy_state):
+    old, new = pair
+    old.close_original_attempt(attempt_id="attempt", observation_state=legacy_state,
+                               observation=OrderingEvidence(3, "synthetic:legacy"),
+                               observation_ref="synthetic:legacy")
+    before = old.closeout("attempt")
+    snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["legacy"]["record"]["observation_state"] == legacy_state
+    assert snapshot["legacy"]["assurance"] == "legacy_unverified"
+    assert "observation_digest" in snapshot["legacy"]["unavailable_provenance"]
+    assert snapshot["current"]["work_state"] == "awaiting_observation"
+    assert snapshot["events"] == []
+    assert old.closeout("attempt") == before
+    assert json.loads(json.dumps(snapshot)) == snapshot
+
+
+def test_export_includes_original_uncertainty_all_events_and_current_conflict(pair):
+    new = pair[1]
+    append(new, observation())
+    admitted = append(new, complete(event_id="event-2", order=4))
+    append(new, observation(event_id="event-3", order=5, state="absent"))
+    snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["disposition"]["status"] == "in_doubt"
+    assert snapshot["original"]["attempt_id"] == "attempt"
+    assert snapshot["legacy"] is None
+    assert [event["body"]["observation"]["state"] for event in snapshot["events"]] == ["unknown", "applied", "absent"]
+    assert snapshot["events"][1]["admission"] == admitted["admission"]
+    assert snapshot["current"]["work_state"] == "conflict_review"
+    assert snapshot["current"]["revision"] == len(snapshot["events"]) == 3
+    assert snapshot["current"]["retry_eligible"] is False
+    assert "not_a_replay_or_evidence_pack_mapping" in snapshot["limitations"]
+
+
+def test_export_has_one_snapshot_during_concurrent_append(pair, monkeypatch):
+    old, new = pair
+    writer = SyntheticRecoveryLedger(old.path, synthetic=True, clock=lambda: NOW)
+    projection = new._projection
+    def append_between_reads(conn, attempt):
+        result = projection(conn, attempt)
+        append(writer, complete())
+        return result
+    with monkeypatch.context() as scoped:
+        scoped.setattr(new, "_projection", append_between_reads)
+        snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+    assert snapshot["current"]["revision"] == 0
+    assert snapshot["events"] == []
+    assert new.current("attempt")["revision"] == 1
+    assert len(new.history("attempt")) == 1
+
+
+def test_export_rejects_misbound_legacy_and_ambiguous_original(pair):
+    old, new = pair
+    old.close_original_attempt(attempt_id="attempt", observation_state="unknown",
+                               observation=OrderingEvidence(3, "synthetic:legacy"),
+                               observation_ref="synthetic:legacy")
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("UPDATE original_attempt_closeouts_v1 SET effect_id='other'")
+    with pytest.raises(ValueError, match="legacy closeout binding"):
+        new.export_attempt(effect_id="effect", attempt_id="attempt")
+    original(old, effect="second", attempt="attempt")
+    with pytest.raises(ValueError, match="ambiguous"):
+        new.export_attempt(effect_id="effect", attempt_id="attempt")
+
+
+def test_export_is_read_only_and_returned_values_do_not_mutate_ledger(pair):
+    old, new = pair
+    append(new, complete())
+    before = new.history("attempt")
+    with sqlite3.connect(old.path) as conn:
+        version = conn.execute("PRAGMA data_version").fetchone()[0]
+        snapshot = new.export_attempt(effect_id="effect", attempt_id="attempt")
+        assert conn.execute("PRAGMA data_version").fetchone()[0] == version
+    snapshot["current"]["work_state"] = "changed"
+    snapshot["events"].clear()
+    assert new.history("attempt") == before
+    assert new.current("attempt")["work_state"] == "resolved"
+
+
+def test_freshness_is_evaluated_after_writer_lock_acquisition(pair, monkeypatch):
+    from contextlib import contextmanager
+    new = pair[1]
+    clock = [NOW]
+    monkeypatch.setattr(new, "clock", lambda: clock[0])
+    connect = new._connection
+    class LockAdvance:
+        def __init__(self, conn):
+            self.conn = conn
+        def execute(self, sql, *args):
+            result = self.conn.execute(sql, *args)
+            if sql == "BEGIN IMMEDIATE":
+                clock[0] = NOW + timedelta(seconds=1)
+            return result
+    @contextmanager
+    def delayed_connection():
+        with connect() as conn:
+            yield LockAdvance(conn)
+    monkeypatch.setattr(new, "_connection", delayed_connection)
+    with pytest.raises(ValueError, match="24-hour window"):
+        new.append(observation(observed_at=NOW-timedelta(days=1)),
+                   expected_revision=0, predecessor_digest=None)
+    assert new.history("attempt") == []
+
+
+@pytest.mark.parametrize("changes,reason", [
+    ({"adapter_id": "synthetic:other"}, "adapter_id_changed"),
+    ({"client_reference": "synthetic:other"}, "client_reference_changed"),
+    ({"ordering_domain": "synthetic:other"}, "ordering_domain_changed"),
+    ({"order": 2}, "source_order_not_increasing"),
+    ({"state": "absent"}, "known_effect_contradicted"),
+    ({"state": "partial"}, "applied_regressed_to_partial"),
+    ({"final": False}, "finality_regressed"),
+    ({"complete_coverage": False}, "coverage_regressed"),
+])
+def test_conflict_receipt_explains_each_failed_synthetic_comparison(pair, changes, reason):
+    new = pair[1]
+    append(new, complete())
+    result = append(new, complete(**{"event_id": "event-2", "order": 4, **changes}))
+    receipt = result["admission"]
+    assert reason in receipt["conflict_reasons"]
+    assert receipt["checks"]["source_authentication"] == "not_established"
+    assert receipt["checks"]["independent_verification"] == "not_established"
+    assert receipt["checks"]["freshness"] == "passed_synthetic_policy"
+    assert receipt["prior_work_state"] == "resolved"
+    assert new.export_attempt(effect_id="effect", attempt_id="attempt")["events"][-1]["admission"] == receipt
+
+
+def test_collision_and_existing_hold_have_distinct_durable_reasons(pair):
+    new = pair[1]
+    append(new, complete())
+    collision = append(new, complete(order=4))
+    assert "event_id_reused_with_changed_body" in collision["admission"]["conflict_reasons"]
+    later = append(new, complete(event_id="later", order=5))
+    assert later["admission"]["reason"] == "existing_conflict_hold"
+    assert later["admission"]["prior_work_state"] == "conflict_review"
+    assert later["current"]["work_state"] == "conflict_review"
+
+
+def test_duplicate_preserves_receipt_after_freshness_window_expires(pair):
+    new = pair[1]
+    event = complete()
+    admitted = new.append(event, expected_revision=0, predecessor_digest=None)
+    new.clock = lambda: NOW + timedelta(days=2)
+    duplicate = new.append(event, expected_revision=0, predecessor_digest=None)
+    assert duplicate == admitted
+    assert len(new.history("attempt")) == 1

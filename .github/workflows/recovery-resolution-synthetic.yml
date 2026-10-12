@@ -1,0 +1,48 @@
+name: Synthetic recovery resolution
+
+on:
+  push:
+    paths:
+      - 'engine/recovery_resolution.py'
+      - 'engine/revocation_closeout.py'
+      - 'tests/test_recovery_resolution.py'
+      - 'tests/test_recovery_resolution_mutations.py'
+      - 'tests/test_o6_p1d_revocation_closeout.py'
+      - 'docs/recovery-resolution-synthetic.md'
+      - '.github/workflows/recovery-resolution-synthetic.yml'
+  pull_request:
+    paths:
+      - 'engine/recovery_resolution.py'
+      - 'engine/revocation_closeout.py'
+      - 'tests/test_recovery_resolution.py'
+      - 'tests/test_recovery_resolution_mutations.py'
+      - 'tests/test_o6_p1d_revocation_closeout.py'
+      - 'docs/recovery-resolution-synthetic.md'
+      - '.github/workflows/recovery-resolution-synthetic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest==8.3.5
+      - name: Compile optional prototype
+        run: python -m compileall -q engine/recovery_resolution.py
+      - name: Verify repository module resolution
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import engine.recovery_resolution as module
+          assert Path(module.__file__).resolve() == (Path.cwd() / 'engine/recovery_resolution.py').resolve()
+          PY
+      - name: Test prototype and unchanged v1
+        run: python -m pytest -q tests/test_recovery_resolution.py tests/test_o6_p1d_revocation_closeout.py tests/test_recovery_resolution_mutations.py
