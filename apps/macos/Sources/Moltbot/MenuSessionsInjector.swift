@@ -159,7 +159,9 @@ final class MenuSessionsInjector: NSObject, NSMenuDelegate {
 extension MenuSessionsInjector {
     // MARK: - Injection
 
-    private var mainSessionKey: String { WorkActivityStore.shared.mainSessionKey }
+    private var mainSessionKey: String {
+        WorkActivityStore.shared.mainSessionKey
+    }
 
     private func inject(into menu: NSMenu) {
         self.cancelPreviewTasks()
@@ -180,13 +182,21 @@ extension MenuSessionsInjector {
             let now = Date()
             let mainKey = self.mainSessionKey
             let rows = snapshot.rows.filter { row in
-                if row.key == "main", mainKey != "main" { return false }
-                if row.key == mainKey { return true }
+                if row.key == "main", mainKey != "main" {
+                    return false
+                }
+                if row.key == mainKey {
+                    return true
+                }
                 guard let updatedAt = row.updatedAt else { return false }
                 return now.timeIntervalSince(updatedAt) <= self.activeWindowSeconds
             }.sorted { lhs, rhs in
-                if lhs.key == mainKey { return true }
-                if rhs.key == mainKey { return false }
+                if lhs.key == mainKey {
+                    return true
+                }
+                if rhs.key == mainKey {
+                    return false
+                }
                 return (lhs.updatedAt ?? .distantPast) > (rhs.updatedAt ?? .distantPast)
             }
             if !rows.isEmpty {
@@ -459,9 +469,13 @@ extension MenuSessionsInjector {
 
     private var isControlChannelConnected: Bool {
         #if DEBUG
-        if let override = self.testControlChannelConnected { return override }
+        if let override = self.testControlChannelConnected {
+            return override
+        }
         #endif
-        if case .connected = ControlChannel.shared.state { return true }
+        if case .connected = ControlChannel.shared.state {
+            return true
+        }
         return false
     }
 
@@ -736,8 +750,12 @@ extension MenuSessionsInjector {
 
     private func compactUsageError(_ error: Error) -> String {
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        if message.isEmpty { return "Usage unavailable" }
-        if message.count > 90 { return "\(message.prefix(87))…" }
+        if message.isEmpty {
+            return "Usage unavailable"
+        }
+        if message.count > 90 {
+            return "\(message.prefix(87))…"
+        }
         return message
     }
 
@@ -964,7 +982,9 @@ extension MenuSessionsInjector {
     private func formatVersionLabel(_ version: String) -> String {
         let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return version }
-        if trimmed.hasPrefix("v") { return trimmed }
+        if trimmed.hasPrefix("v") {
+            return trimmed
+        }
         if let first = trimmed.unicodeScalars.first, CharacterSet.decimalDigits.contains(first) {
             return "v\(trimmed)"
         }
@@ -1104,7 +1124,9 @@ extension MenuSessionsInjector {
             return sepIdx
         }
 
-        if menu.items.count >= 1 { return 1 }
+        if menu.items.count >= 1 {
+            return 1
+        }
         return menu.items.count
     }
 
@@ -1120,7 +1142,9 @@ extension MenuSessionsInjector {
             return sepIdx
         }
 
-        if menu.items.count >= 1 { return 1 }
+        if menu.items.count >= 1 {
+            return 1
+        }
         return menu.items.count
     }
 
@@ -1156,11 +1180,17 @@ extension MenuSessionsInjector {
     private func sortedNodeEntries() -> [NodeInfo] {
         let entries = self.nodesStore.nodes.filter(\.isConnected)
         return entries.sorted { lhs, rhs in
-            if lhs.isConnected != rhs.isConnected { return lhs.isConnected }
-            if lhs.isPaired != rhs.isPaired { return lhs.isPaired }
+            if lhs.isConnected != rhs.isConnected {
+                return lhs.isConnected
+            }
+            if lhs.isPaired != rhs.isPaired {
+                return lhs.isPaired
+            }
             let lhsName = NodeMenuEntryFormatter.primaryName(lhs).lowercased()
             let rhsName = NodeMenuEntryFormatter.primaryName(rhs).lowercased()
-            if lhsName == rhsName { return lhs.nodeId < rhs.nodeId }
+            if lhsName == rhsName {
+                return lhs.nodeId < rhs.nodeId
+            }
             return lhsName < rhsName
         }
     }
@@ -1171,8 +1201,7 @@ extension MenuSessionsInjector {
 
     private func makeHostedView(rootView: AnyView, width: CGFloat, highlighted: Bool) -> NSView {
         if highlighted {
-            let container = HighlightedMenuItemHostView(rootView: rootView, width: width)
-            return container
+            return HighlightedMenuItemHostView(rootView: rootView, width: width)
         }
 
         let hosting = NSHostingView(rootView: rootView)

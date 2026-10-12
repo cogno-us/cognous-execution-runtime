@@ -1,17 +1,19 @@
 import AppKit
 import ApplicationServices
 import AVFoundation
-import MoltbotIPC
 import CoreGraphics
 import CoreLocation
 import Foundation
+import MoltbotIPC
 import Observation
 import Speech
 import UserNotifications
 
 enum PermissionManager {
     static func isLocationAuthorized(status: CLAuthorizationStatus, requireAlways: Bool) -> Bool {
-        if requireAlways { return status == .authorizedAlways }
+        if requireAlways {
+            return status == .authorizedAlways
+        }
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
             return true
@@ -336,7 +338,7 @@ final class LocationPermissionRequester: NSObject, CLLocationManagerDelegate {
         cont.resume(returning: status)
     }
 
-    // nonisolated for Swift 6 strict concurrency compatibility
+    /// nonisolated for Swift 6 strict concurrency compatibility
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         Task { @MainActor in
@@ -344,7 +346,7 @@ final class LocationPermissionRequester: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    // Legacy callback (still used on some macOS versions / configurations).
+    /// Legacy callback (still used on some macOS versions / configurations).
     nonisolated func locationManager(
         _ manager: CLLocationManager,
         didChangeAuthorization status: CLAuthorizationStatus)
@@ -471,7 +473,9 @@ final class PermissionMonitor {
     }
 
     private func checkStatus(force: Bool) async {
-        if self.isChecking { return }
+        if self.isChecking {
+            return
+        }
         let now = Date()
         if !force, let lastCheck, now.timeIntervalSince(lastCheck) < self.minimumCheckInterval {
             return

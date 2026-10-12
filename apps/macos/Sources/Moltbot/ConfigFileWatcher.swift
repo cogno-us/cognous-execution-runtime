@@ -96,7 +96,9 @@ extension ConfigFileWatcher {
         guard eventFlags != nil else { return }
         guard self.matchesTarget(eventPaths: eventPaths) else { return }
 
-        if self.pending { return }
+        if self.pending {
+            return
+        }
         self.pending = true
         self.queue.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self else { return }
@@ -109,9 +111,15 @@ extension ConfigFileWatcher {
         guard let eventPaths else { return true }
         let paths = unsafeBitCast(eventPaths, to: NSArray.self)
         for case let path as String in paths {
-            if path == self.targetPath { return true }
-            if path.hasSuffix("/\(self.targetName)") { return true }
-            if path == self.watchedDir.path { return true }
+            if path == self.targetPath {
+                return true
+            }
+            if path.hasSuffix("/\(self.targetName)") {
+                return true
+            }
+            if path == self.watchedDir.path {
+                return true
+            }
         }
         return false
     }

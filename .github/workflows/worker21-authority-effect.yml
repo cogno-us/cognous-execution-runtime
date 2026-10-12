@@ -10,6 +10,8 @@ on:
       - 'tests/test_profile_exclusivity.py'
       - 'tests/test_refund_intent.py'
       - 'tests/test_local_authority_effect.py'
+      - 'tests/test_w2_refusal_history.py'
+      - 'tests/test_w2_stop_recovery.py'
       - 'docs/local-authority-effect-profile.md'
       - 'docs/workstreams/local-authority-effect-checkpoint.md'
       - '.github/workflows/worker21-authority-effect.yml'
@@ -25,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: cogno-us/cognous-control-plane
-          ref: 73e3c65acc47dc43593dcb0420d14032ed410b14
+          ref: e66e5f163c5d5c112ff345a2f332b4c3893ee183
           path: pinned/control-plane
       - uses: actions/setup-python@v5
         with:
@@ -40,4 +42,4 @@ jobs:
         timeout-minutes: 2
         env:
           PYTHONPATH: .:pinned/control-plane/src
-        run: python -m pytest -q tests/test_local_authority_effect.py
+        run: python -m pytest -q tests/test_local_authority_effect.py tests/test_w2_refusal_history.py tests/test_w2_stop_recovery.py

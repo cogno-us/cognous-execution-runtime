@@ -1,0 +1,55 @@
+name: Platform repair qualification
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/platform-repair-qualification.yml'
+      - 'src/gateway/tools-invoke-http.test.ts'
+      - 'src/gateway/test-helpers.mocks.ts'
+permissions:
+  contents: read
+concurrency:
+  group: platform-repair-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  focused:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.23.0'
+      - name: Frozen install
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile
+      - name: Build required canvas assets
+        timeout-minutes: 3
+        run: pnpm canvas:a2ui:bundle
+      - name: Gateway and canvas regression suites
+        timeout-minutes: 5
+        run: pnpm exec vitest run --config vitest.config.ts src/gateway/tools-invoke-http.test.ts src/canvas-host/server.test.ts --maxWorkers=1 --reporter=verbose
+  formatting:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Verify committed macOS sources
+        run: |
+          swiftformat --version
+          swiftlint --config .swiftlint.yml
+          swiftformat --lint apps/macos/Sources --config .swiftformat

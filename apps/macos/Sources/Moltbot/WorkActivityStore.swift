@@ -1,6 +1,6 @@
+import Foundation
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 import Observation
 import SwiftUI
 
@@ -31,7 +31,9 @@ final class WorkActivityStore {
     private var mainSessionKeyStorage = "main"
     private let toolResultGrace: TimeInterval = 2.0
 
-    var mainSessionKey: String { self.mainSessionKeyStorage }
+    var mainSessionKey: String {
+        self.mainSessionKeyStorage
+    }
 
     func handleJob(sessionKey: String, state: String) {
         let isStart = state.lowercased() == "started" || state.lowercased() == "streaming"

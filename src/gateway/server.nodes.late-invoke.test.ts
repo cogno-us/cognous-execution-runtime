@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
+import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 
 vi.mock("../infra/update-runner.js", () => ({
@@ -16,15 +17,25 @@ vi.mock("../infra/update-runner.js", () => ({
 
 import {
   connectOk,
+  getTestPluginRegistry,
   installGatewayTestHooks,
   rpcReq,
   startServerWithClient,
 } from "./test-helpers.js";
 
+// Node RPC behavior uses the supplied gateway fixture, not installed extensions.
+vi.mock("../plugins/loader.js", () => ({
+  loadMoltbotPlugins: () => {
+    const registry = getTestPluginRegistry();
+    setActivePluginRegistry(registry);
+    return registry;
+  },
+}));
+
 installGatewayTestHooks({ scope: "suite" });
 
-let server: Awaited<ReturnType<typeof startServerWithClient>>["server"];
-let ws: WebSocket;
+let server: Awaited<ReturnType<typeof startServerWithClient>>["server"] | undefined;
+let ws: WebSocket | undefined;
 let port: number;
 
 beforeAll(async () => {
@@ -37,8 +48,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  ws.close();
-  await server.close();
+  ws?.close();
+  await server?.close();
 });
 
 describe("late-arriving invoke results", () => {

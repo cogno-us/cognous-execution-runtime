@@ -66,11 +66,12 @@ struct ContextMenuCardView: View {
 
     private var subtitle: String {
         let count = self.rows.count
-        if count == 1 { return "1 session · 24h" }
+        if count == 1 {
+            return "1 session · 24h"
+        }
         return "\(count) sessions · 24h"
     }
 
-    @ViewBuilder
     private func sessionRow(_ row: SessionRow) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             ContextUsageBar(

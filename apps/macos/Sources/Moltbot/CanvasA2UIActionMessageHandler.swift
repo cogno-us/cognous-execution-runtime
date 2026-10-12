@@ -1,7 +1,7 @@
 import AppKit
+import Foundation
 import MoltbotIPC
 import MoltbotKit
-import Foundation
 import WebKit
 
 final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
@@ -28,7 +28,9 @@ final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
         }
 
         let body: [String: Any] = {
-            if let dict = message.body as? [String: Any] { return dict }
+            if let dict = message.body as? [String: Any] {
+                return dict
+            }
             if let dict = message.body as? [AnyHashable: Any] {
                 return dict.reduce(into: [String: Any]()) { acc, pair in
                     guard let key = pair.key as? String else { return }
@@ -41,7 +43,9 @@ final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
 
         let userActionAny = body["userAction"] ?? body
         let userAction: [String: Any] = {
-            if let dict = userActionAny as? [String: Any] { return dict }
+            if let dict = userActionAny as? [String: Any] {
+                return dict
+            }
             if let dict = userActionAny as? [AnyHashable: Any] {
                 return dict.reduce(into: [String: Any]()) { acc, pair in
                     guard let key = pair.key as? String else { return }
@@ -114,11 +118,21 @@ final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
         guard let host = url.host?.trimmingCharacters(in: .whitespacesAndNewlines), !host.isEmpty else {
             return false
         }
-        if host == "localhost" { return true }
-        if host.hasSuffix(".local") { return true }
-        if host.hasSuffix(".ts.net") { return true }
-        if host.hasSuffix(".tailscale.net") { return true }
-        if !host.contains("."), !host.contains(":") { return true }
+        if host == "localhost" {
+            return true
+        }
+        if host.hasSuffix(".local") {
+            return true
+        }
+        if host.hasSuffix(".ts.net") {
+            return true
+        }
+        if host.hasSuffix(".tailscale.net") {
+            return true
+        }
+        if !host.contains("."), !host.contains(":") {
+            return true
+        }
         if let ipv4 = Self.parseIPv4(host) {
             return Self.isLocalNetworkIPv4(ipv4)
         }
@@ -135,12 +149,24 @@ final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
 
     static func isLocalNetworkIPv4(_ ip: (UInt8, UInt8, UInt8, UInt8)) -> Bool {
         let (a, b, _, _) = ip
-        if a == 10 { return true }
-        if a == 172, (16...31).contains(Int(b)) { return true }
-        if a == 192, b == 168 { return true }
-        if a == 127 { return true }
-        if a == 169, b == 254 { return true }
-        if a == 100, (64...127).contains(Int(b)) { return true }
+        if a == 10 {
+            return true
+        }
+        if a == 172, (16...31).contains(Int(b)) {
+            return true
+        }
+        if a == 192, b == 168 {
+            return true
+        }
+        if a == 127 {
+            return true
+        }
+        if a == 169, b == 254 {
+            return true
+        }
+        if a == 100, (64...127).contains(Int(b)) {
+            return true
+        }
         return false
     }
 

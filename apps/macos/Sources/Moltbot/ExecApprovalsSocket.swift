@@ -1,8 +1,8 @@
 import AppKit
-import MoltbotKit
 import CryptoKit
 import Darwin
 import Foundation
+import MoltbotKit
 import OSLog
 
 struct ExecApprovalPromptRequest: Codable, Sendable {
@@ -76,7 +76,9 @@ private struct ExecHostResponse: Codable {
 enum ExecApprovalsSocketClient {
     private struct TimeoutError: LocalizedError {
         var message: String
-        var errorDescription: String? { self.message }
+        var errorDescription: String? {
+            self.message
+        }
     }
 
     static func requestDecision(
@@ -168,9 +170,13 @@ enum ExecApprovalsSocketClient {
         var buffer = Data()
         while buffer.count < maxBytes {
             let chunk = try handle.read(upToCount: 4096) ?? Data()
-            if chunk.isEmpty { break }
+            if chunk.isEmpty {
+                break
+            }
             buffer.append(chunk)
-            if buffer.contains(0x0A) { break }
+            if buffer.contains(0x0A) {
+                break
+            }
         }
         guard let newlineIndex = buffer.firstIndex(of: 0x0A) else {
             guard !buffer.isEmpty else { return nil }
@@ -520,7 +526,9 @@ private enum ExecHostExecutor {
         guard needsScreenRecording == true else { return nil }
         let authorized = await PermissionManager
             .status([.screenRecording])[.screenRecording] ?? false
-        if authorized { return nil }
+        if authorized {
+            return nil
+        }
         return self.errorResponse(
             code: "UNAVAILABLE",
             message: "PERMISSION_MISSING: screenRecording",
@@ -580,8 +588,12 @@ private enum ExecHostExecutor {
             let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else { continue }
             let upper = key.uppercased()
-            if self.blockedEnvKeys.contains(upper) { continue }
-            if self.blockedEnvPrefixes.contains(where: { upper.hasPrefix($0) }) { continue }
+            if self.blockedEnvKeys.contains(upper) {
+                continue
+            }
+            if self.blockedEnvPrefixes.contains(where: { upper.hasPrefix($0) }) {
+                continue
+            }
             merged[key] = value
         }
         return merged
@@ -647,7 +659,9 @@ private final class ExecApprovalsSocketServer: @unchecked Sendable {
                 }
             }
             if client < 0 {
-                if errno == EINTR { continue }
+                if errno == EINTR {
+                    continue
+                }
                 break
             }
             Task.detached { [weak self] in
@@ -744,9 +758,13 @@ private final class ExecApprovalsSocketServer: @unchecked Sendable {
         var buffer = Data()
         while buffer.count < maxBytes {
             let chunk = try handle.read(upToCount: 4096) ?? Data()
-            if chunk.isEmpty { break }
+            if chunk.isEmpty {
+                break
+            }
             buffer.append(chunk)
-            if buffer.contains(0x0A) { break }
+            if buffer.contains(0x0A) {
+                break
+            }
         }
         guard let newlineIndex = buffer.firstIndex(of: 0x0A) else {
             guard !buffer.isEmpty else { return nil }

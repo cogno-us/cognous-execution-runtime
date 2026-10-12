@@ -111,17 +111,23 @@ struct MoltbotApp: App {
     }
 
     private var isGatewaySleeping: Bool {
-        if self.state.isPaused { return false }
+        if self.state.isPaused {
+            return false
+        }
         switch self.state.connectionMode {
         case .unconfigured:
             return true
         case .remote:
-            if case .connected = self.controlChannel.state { return false }
+            if case .connected = self.controlChannel.state {
+                return false
+            }
             return true
         case .local:
             switch self.gatewayManager.status {
             case .running, .starting, .attachedExisting:
-                if case .connected = self.controlChannel.state { return false }
+                if case .connected = self.controlChannel.state {
+                    return false
+                }
                 return true
             case .failed, .stopped:
                 return true
@@ -132,7 +138,9 @@ struct MoltbotApp: App {
     @MainActor
     private func installStatusItemMouseHandler(for item: NSStatusItem) {
         guard let button = item.button else { return }
-        if button.subviews.contains(where: { $0 is StatusItemMouseHandlerView }) { return }
+        if button.subviews.contains(where: { $0 is StatusItemMouseHandlerView }) {
+            return
+        }
 
         WebChatManager.shared.onPanelVisibilityChanged = { [self] visible in
             self.isPanelVisible = visible
@@ -344,7 +352,7 @@ protocol UpdaterProviding: AnyObject {
     func checkForUpdates(_ sender: Any?)
 }
 
-// No-op updater used for debug/dev runs to suppress Sparkle dialogs.
+/// No-op updater used for debug/dev runs to suppress Sparkle dialogs.
 final class DisabledUpdaterController: UpdaterProviding {
     var automaticallyChecksForUpdates: Bool = false
     var automaticallyDownloadsUpdates: Bool = false
@@ -393,7 +401,9 @@ final class SparkleUpdaterController: NSObject, UpdaterProviding {
         set { self.controller.updater.automaticallyDownloadsUpdates = newValue }
     }
 
-    var isAvailable: Bool { true }
+    var isAvailable: Bool {
+        true
+    }
 
     func checkForUpdates(_ sender: Any?) {
         self.controller.checkForUpdates(sender)

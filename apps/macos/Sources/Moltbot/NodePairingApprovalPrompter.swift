@@ -1,9 +1,9 @@
 import AppKit
+import Foundation
 import MoltbotDiscovery
 import MoltbotIPC
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 import Observation
 import OSLog
 import UserNotifications
@@ -39,8 +39,13 @@ final class NodePairingApprovalPrompter {
     private var autoApproveAttempts: Set<String> = []
 
     private final class AlertHostWindow: NSWindow {
-        override var canBecomeKey: Bool { true }
-        override var canBecomeMain: Bool { true }
+        override var canBecomeKey: Bool {
+            true
+        }
+
+        override var canBecomeMain: Bool {
+            true
+        }
     }
 
     private struct PairingList: Codable {
@@ -68,7 +73,9 @@ final class NodePairingApprovalPrompter {
         let silent: Bool?
         let ts: Double
 
-        var id: String { self.requestId }
+        var id: String {
+            self.requestId
+        }
     }
 
     private struct PairingResolvedEvent: Codable {
@@ -94,7 +101,9 @@ final class NodePairingApprovalPrompter {
             await self.loadPendingRequestsFromGateway()
             let stream = await GatewayConnection.shared.subscribe(bufferingNewest: 200)
             for await push in stream {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 await MainActor.run { [weak self] in self?.handle(push: push) }
             }
         }
@@ -125,7 +134,9 @@ final class NodePairingApprovalPrompter {
         // pending pairing prompts are still shown on launch.
         var delayMs: UInt64 = 200
         for attempt in 1...8 {
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             do {
                 let data = try await GatewayConnection.shared.request(
                     method: "node.pair.list",
@@ -156,7 +167,9 @@ final class NodePairingApprovalPrompter {
         // Reconcile requests periodically so multiple running apps stay in sync
         // (e.g. close dialogs + notify if another machine approves/rejects via app or CLI).
         while !Task.isCancelled {
-            if self.isStopping { break }
+            if self.isStopping {
+                break
+            }
             if !self.shouldPoll {
                 self.reconcileTask = nil
                 return
@@ -177,7 +190,9 @@ final class NodePairingApprovalPrompter {
     }
 
     private func apply(list: PairingList) async {
-        if self.isStopping { return }
+        if self.isStopping {
+            return
+        }
 
         let pendingById = Dictionary(
             uniqueKeysWithValues: list.pending.map { ($0.requestId, $0) })
@@ -190,7 +205,9 @@ final class NodePairingApprovalPrompter {
         // Detect resolved requests (approved/rejected elsewhere).
         let queued = self.queue
         for req in queued {
-            if pendingById[req.requestId] != nil { continue }
+            if pendingById[req.requestId] != nil {
+                continue
+            }
             let resolution = self.inferResolution(for: req, list: list)
 
             if self.activeRequestId == req.requestId, self.activeAlert != nil {
@@ -297,7 +314,9 @@ final class NodePairingApprovalPrompter {
     }
 
     private func enqueue(_ req: PendingRequest) {
-        if self.queue.contains(req) { return }
+        if self.queue.contains(req) {
+            return
+        }
         self.queue.append(req)
         self.updatePendingCounts()
         self.presentNextIfNeeded()
@@ -430,10 +449,18 @@ final class NodePairingApprovalPrompter {
         var lines: [String] = []
         lines.append("Name: \(name?.isEmpty == false ? name! : "Unknown")")
         lines.append("Node ID: \(req.nodeId)")
-        if let platform, !platform.isEmpty { lines.append("Platform: \(platform)") }
-        if let version, !version.isEmpty { lines.append("App: \(version)") }
-        if let ip, !ip.isEmpty { lines.append("IP: \(ip)") }
-        if req.isRepair == true { lines.append("Note: Repair request (token will rotate).") }
+        if let platform, !platform.isEmpty {
+            lines.append("Platform: \(platform)")
+        }
+        if let version, !version.isEmpty {
+            lines.append("App: \(version)")
+        }
+        if let ip, !ip.isEmpty {
+            lines.append("IP: \(ip)")
+        }
+        if req.isRepair == true {
+            lines.append("Note: Repair request (token will rotate).")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -446,8 +473,12 @@ final class NodePairingApprovalPrompter {
     private static func prettyPlatform(_ platform: String?) -> String? {
         let raw = platform?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let raw, !raw.isEmpty else { return nil }
-        if raw.lowercased() == "ios" { return "iOS" }
-        if raw.lowercased() == "macos" { return "macOS" }
+        if raw.lowercased() == "ios" {
+            return "iOS"
+        }
+        if raw.lowercased() == "macos" {
+            return "macOS"
+        }
         return raw
     }
 
@@ -479,7 +510,9 @@ final class NodePairingApprovalPrompter {
 
     private func trySilentApproveIfPossible(_ req: PendingRequest) async -> Bool {
         guard req.silent == true else { return false }
-        if self.autoApproveAttempts.contains(req.requestId) { return false }
+        if self.autoApproveAttempts.contains(req.requestId) {
+            return false
+        }
         self.autoApproveAttempts.insert(req.requestId)
 
         guard let target = await self.resolveSSHTarget() else {
@@ -615,8 +648,12 @@ final class NodePairingApprovalPrompter {
     }
 
     private func reconcileOnce(timeoutMs: Double) async {
-        if self.isStopping { return }
-        if self.reconcileInFlight { return }
+        if self.isStopping {
+            return
+        }
+        if self.reconcileInFlight {
+            return
+        }
         self.reconcileInFlight = true
         defer { self.reconcileInFlight = false }
         do {

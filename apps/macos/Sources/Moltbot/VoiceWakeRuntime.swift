@@ -48,10 +48,10 @@ actor VoiceWakeRuntime {
     private var isStarting: Bool = false
     private var triggerOnlyTask: Task<Void, Never>?
 
-    // Tunables
-    // Silence threshold once we've captured user speech (post-trigger).
+    /// Tunables
+    /// Silence threshold once we've captured user speech (post-trigger).
     private let silenceWindow: TimeInterval = 2.0
-    // Silence threshold when we only heard the trigger but no post-trigger speech yet.
+    /// Silence threshold when we only heard the trigger but no post-trigger speech yet.
     private let triggerOnlySilenceWindow: TimeInterval = 5.0
     // Maximum capture duration from trigger until we force-send, to avoid runaway sessions.
     private let captureHardStop: TimeInterval = 120.0
@@ -323,7 +323,9 @@ actor VoiceWakeRuntime {
             }
         }
 
-        if self.isCapturing { return }
+        if self.isCapturing {
+            return
+        }
 
         let gateConfig = WakeWordGateConfig(triggers: config.triggers)
         var usedFallback = false
@@ -700,7 +702,9 @@ actor VoiceWakeRuntime {
     }
 
     private func restartRecognizerIfIdleAndOverlayHidden() async {
-        if self.isCapturing { return }
+        if self.isCapturing {
+            return
+        }
         self.restartRecognizer()
     }
 

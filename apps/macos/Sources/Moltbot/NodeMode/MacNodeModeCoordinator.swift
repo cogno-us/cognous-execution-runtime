@@ -1,5 +1,5 @@
-import MoltbotKit
 import Foundation
+import MoltbotKit
 import OSLog
 
 @MainActor

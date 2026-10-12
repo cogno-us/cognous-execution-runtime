@@ -1,6 +1,6 @@
+import Foundation
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 #if canImport(Darwin)
 import Darwin
 #endif
@@ -284,7 +284,9 @@ private func bestEffortEndpoint(opts: ConnectOptions, config: GatewayConfig) -> 
 }
 
 private func resolvedToken(opts: ConnectOptions, mode: String, config: GatewayConfig) -> String? {
-    if let token = opts.token, !token.isEmpty { return token }
+    if let token = opts.token, !token.isEmpty {
+        return token
+    }
     if let token = ProcessInfo.processInfo.environment["CLAWDBOT_GATEWAY_TOKEN"], !token.isEmpty {
         return token
     }
@@ -295,7 +297,9 @@ private func resolvedToken(opts: ConnectOptions, mode: String, config: GatewayCo
 }
 
 private func resolvedPassword(opts: ConnectOptions, mode: String, config: GatewayConfig) -> String? {
-    if let password = opts.password, !password.isEmpty { return password }
+    if let password = opts.password, !password.isEmpty {
+        return password
+    }
     if let password = ProcessInfo.processInfo.environment["CLAWDBOT_GATEWAY_PASSWORD"], !password.isEmpty {
         return password
     }
@@ -326,7 +330,9 @@ private func detectTailnetIPv4() -> String? {
         let isUp = (flags & IFF_UP) != 0
         let isLoopback = (flags & IFF_LOOPBACK) != 0
         let family = ptr.pointee.ifa_addr.pointee.sa_family
-        if !isUp || isLoopback || family != UInt8(AF_INET) { continue }
+        if !isUp || isLoopback || family != UInt8(AF_INET) {
+            continue
+        }
 
         var addr = ptr.pointee.ifa_addr.pointee
         var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
@@ -342,7 +348,9 @@ private func detectTailnetIPv4() -> String? {
         let len = buffer.prefix { $0 != 0 }
         let bytes = len.map { UInt8(bitPattern: $0) }
         guard let ip = String(bytes: bytes, encoding: .utf8) else { continue }
-        if isTailnetIPv4(ip) { return ip }
+        if isTailnetIPv4(ip) {
+            return ip
+        }
     }
 
     return nil

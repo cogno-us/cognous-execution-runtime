@@ -1,7 +1,7 @@
-import MoltbotKit
-import MoltbotProtocol
 import Cocoa
 import Foundation
+import MoltbotKit
+import MoltbotProtocol
 import Observation
 import OSLog
 
@@ -90,7 +90,9 @@ final class InstancesStore {
             guard let self else { return }
             let stream = await GatewayConnection.shared.subscribe()
             for await push in stream {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 await MainActor.run { [weak self] in
                     self?.handle(push: push)
                 }
@@ -114,7 +116,9 @@ final class InstancesStore {
     }
 
     func refresh() async {
-        if self.isLoading { return }
+        if self.isLoading {
+            return
+        }
         self.statusMessage = nil
         self.isLoading = true
         defer { self.isLoading = false }
@@ -182,7 +186,9 @@ final class InstancesStore {
     private static func lastInputSeconds() -> Int? {
         let anyEvent = CGEventType(rawValue: UInt32.max) ?? .null
         let seconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
-        if seconds.isNaN || seconds.isInfinite || seconds < 0 { return nil }
+        if seconds.isNaN || seconds.isInfinite || seconds < 0 {
+            return nil
+        }
         return Int(seconds.rounded())
     }
 
@@ -200,7 +206,9 @@ final class InstancesStore {
             let isLoopback = (flags & IFF_LOOPBACK) != 0
             let name = String(cString: ptr.pointee.ifa_name)
             let family = ptr.pointee.ifa_addr.pointee.sa_family
-            if !isUp || isLoopback || family != UInt8(AF_INET) { continue }
+            if !isUp || isLoopback || family != UInt8(AF_INET) {
+                continue
+            }
 
             var addr = ptr.pointee.ifa_addr.pointee
             var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
@@ -217,8 +225,12 @@ final class InstancesStore {
             let bytes = len.map { UInt8(bitPattern: $0) }
             guard let ip = String(bytes: bytes, encoding: .utf8) else { continue }
 
-            if name == "en0" { en0 = ip; break }
-            if fallback == nil { fallback = ip }
+            if name == "en0" {
+                en0 = ip; break
+            }
+            if fallback == nil {
+                fallback = ip
+            }
         }
 
         return en0 ?? fallback
@@ -231,7 +243,9 @@ final class InstancesStore {
 
     private func snippet(_ data: Data?, limit: Int = 256) -> String {
         guard let data else { return "<none>" }
-        if data.isEmpty { return "<empty>" }
+        if data.isEmpty {
+            return "<empty>"
+        }
         let prefix = data.prefix(limit)
         if let asString = String(data: prefix, encoding: .utf8) {
             return asString.replacingOccurrences(of: "\n", with: " ")
@@ -244,10 +258,14 @@ final class InstancesStore {
             let data = try await ControlChannel.shared.health(timeout: 8)
             guard let snap = decodeHealthSnapshot(from: data) else { return }
             let linkId = snap.channelOrder?.first(where: {
-                if let summary = snap.channels[$0] { return summary.linked != nil }
+                if let summary = snap.channels[$0] {
+                    return summary.linked != nil
+                }
                 return false
             }) ?? snap.channels.keys.first(where: {
-                if let summary = snap.channels[$0] { return summary.linked != nil }
+                if let summary = snap.channels[$0] {
+                    return summary.linked != nil
+                }
                 return false
             })
             let linked = linkId.flatMap { snap.channels[$0]?.linked } ?? false
@@ -335,13 +353,19 @@ final class InstancesStore {
         for inst in instances {
             guard let reason = inst.reason?.trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
             guard reason == "node-connected" else { continue }
-            if let mode = inst.mode?.lowercased(), mode == "local" { continue }
+            if let mode = inst.mode?.lowercased(), mode == "local" {
+                continue
+            }
 
             let previous = self.lastPresenceById[inst.id]
-            if previous?.reason == "node-connected", previous?.ts == inst.ts { continue }
+            if previous?.reason == "node-connected", previous?.ts == inst.ts {
+                continue
+            }
 
             let lastNotified = self.lastLoginNotifiedAtMs[inst.id] ?? 0
-            if inst.ts <= lastNotified { continue }
+            if inst.ts <= lastNotified {
+                continue
+            }
             self.lastLoginNotifiedAtMs[inst.id] = inst.ts
 
             let name = inst.host?.trimmingCharacters(in: .whitespacesAndNewlines)

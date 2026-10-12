@@ -128,3 +128,36 @@ Full local application gates and new-head CI must be recorded separately.
 Structural workflow checks are not evidence that the generated bundle or
 application tests passed. No dependency policy exception, runtime change,
 release-lock advancement or production authorization is introduced.
+
+## Main reconciliation — 2026-10-12 UTC
+
+Merged accepted main `8e7d634cf0a22b6f3c1fc6d93afe92c7414fa243` into
+the candidate. Both add/add conflicts were resolved by retaining the candidate's
+strict guard API, exact-resolution/importer checks and eight regression cases,
+which extend the simpler main guard. The dependency workflow keeps all three
+main preflight batches and adds its bounded regression job/triggers.
+
+Main already contains the Swift formatting and macOS A2UI prerequisites, so
+those accepted changes are now inherited instead of repaired again. The
+Windows harness files and all runtime/dependency files match main. The net
+diff from main is seven guard, workflow, changelog and documentation paths.
+
+Validation on the reconciled working tree: eight regressions and root/UI/graph
+preflight pass. New-head CI and full local application gates remain separate
+requirements; this reconciliation does not count earlier failing jobs as passes.
+
+Local application checkpoint on the reconciled tree: frozen installation with
+pnpm 10.23.0 succeeded. A task-local Corepack shim kept nested pnpm invocations
+on that version. `pnpm lint` passed (2517 files, zero warnings/errors), and
+`pnpm build` passed including generation of the A2UI bundle. The targeted canvas
+host suite passed all seven tests, including the previously failing scaffold.
+
+Full local tests remain unqualified. The first attempt exhausted Node's default
+2 GB heap and was stopped. A retry with CI's 4 GB heap and one worker reached
+security-audit failures; a focused run confirmed 30 passing and 10 failing tests,
+all failing in `os.networkInterfaces()` with `uv_interface_addresses` error 1.
+A standalone Node call reproduced that environment restriction without any
+repository code. The full retry was then stopped; neither partial run is counted
+as a completed suite. No mock, exclusion or production change was introduced to
+bypass the restriction. This remains a draft integration repair; AGENTS.md's
+full local landing gate must still pass in a suitable environment before merge.

@@ -1,0 +1,58 @@
+name: Focused dompurify restart
+on:
+  push:
+    branches: [governor/qualify-dompurify]
+permissions:
+  contents: read
+concurrency:
+  group: focused-dompurify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.23.0'
+      - name: Frozen install
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        timeout-minutes: 4
+        run: pnpm --dir ui exec playwright install --with-deps chromium
+      - name: Markdown and chat sanitizer browser tests
+        timeout-minutes: 4
+        run: pnpm --dir ui exec vitest run --config vitest.config.ts src/ui/markdown.test.ts src/ui/chat-markdown.browser.test.ts
+  windows:
+    needs: linux
+    runs-on: windows-2025
+    timeout-minutes: 12
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.23.0'
+      - name: Frozen install
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile
+      - name: Embedded runner only
+        timeout-minutes: 4
+        run: pnpm exec vitest run --config vitest.config.ts src/agents/pi-embedded-runner.test.ts --maxWorkers=1

@@ -48,8 +48,12 @@ final class PresenceReporter {
             "deviceFamily": AnyHashable("Mac"),
             "reason": AnyHashable(reason),
         ]
-        if let model = InstanceIdentity.modelIdentifier { params["modelIdentifier"] = AnyHashable(model) }
-        if let lastInput { params["lastInputSeconds"] = AnyHashable(lastInput) }
+        if let model = InstanceIdentity.modelIdentifier {
+            params["modelIdentifier"] = AnyHashable(model)
+        }
+        if let lastInput {
+            params["lastInputSeconds"] = AnyHashable(lastInput)
+        }
         do {
             try await ControlChannel.shared.sendSystemEvent(text, params: params)
         } catch {
@@ -90,7 +94,9 @@ final class PresenceReporter {
     private static func lastInputSeconds() -> Int? {
         let anyEvent = CGEventType(rawValue: UInt32.max) ?? .null
         let seconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
-        if seconds.isNaN || seconds.isInfinite || seconds < 0 { return nil }
+        if seconds.isNaN || seconds.isInfinite || seconds < 0 {
+            return nil
+        }
         return Int(seconds.rounded())
     }
 
@@ -108,7 +114,9 @@ final class PresenceReporter {
             let isLoopback = (flags & IFF_LOOPBACK) != 0
             let name = String(cString: ptr.pointee.ifa_name)
             let family = ptr.pointee.ifa_addr.pointee.sa_family
-            if !isUp || isLoopback || family != UInt8(AF_INET) { continue }
+            if !isUp || isLoopback || family != UInt8(AF_INET) {
+                continue
+            }
 
             var addr = ptr.pointee.ifa_addr.pointee
             var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
@@ -125,8 +133,12 @@ final class PresenceReporter {
             let bytes = len.map { UInt8(bitPattern: $0) }
             guard let ip = String(bytes: bytes, encoding: .utf8) else { continue }
 
-            if name == "en0" { en0 = ip; break }
-            if fallback == nil { fallback = ip }
+            if name == "en0" {
+                en0 = ip; break
+            }
+            if fallback == nil {
+                fallback = ip
+            }
         }
 
         return en0 ?? fallback

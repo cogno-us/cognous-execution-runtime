@@ -2,7 +2,10 @@ import Foundation
 import JavaScriptCore
 
 enum ModelCatalogLoader {
-    static var defaultPath: String { self.resolveDefaultPath() }
+    static var defaultPath: String {
+        self.resolveDefaultPath()
+    }
+
     private static let logger = Logger(subsystem: "bot.molt", category: "models")
     private nonisolated static let appSupportDir: URL = {
         let base = FileManager().urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -67,9 +70,15 @@ enum ModelCatalogLoader {
 
     private static func resolveDefaultPath() -> String {
         let cache = self.cachePath.path
-        if FileManager().isReadableFile(atPath: cache) { return cache }
-        if let bundlePath = self.bundleCatalogPath() { return bundlePath }
-        if let nodePath = self.nodeModulesCatalogPath() { return nodePath }
+        if FileManager().isReadableFile(atPath: cache) {
+            return cache
+        }
+        if let bundlePath = self.bundleCatalogPath() {
+            return bundlePath
+        }
+        if let nodePath = self.nodeModulesCatalogPath() {
+            return nodePath
+        }
         return cache
     }
 

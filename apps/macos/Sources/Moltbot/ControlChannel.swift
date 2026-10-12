@@ -1,6 +1,6 @@
+import Foundation
 import MoltbotKit
 import MoltbotProtocol
-import Foundation
 import Observation
 import SwiftUI
 
@@ -15,7 +15,10 @@ struct ControlHeartbeatEvent: Codable {
 }
 
 struct ControlAgentEvent: Codable, Sendable, Identifiable {
-    var id: String { "\(self.runId)-\(self.seq)" }
+    var id: String {
+        "\(self.runId)-\(self.seq)"
+    }
+
     let runId: String
     let seq: Int
     let stream: String
@@ -248,13 +251,17 @@ final class ControlChannel {
 
         let detail = nsError.localizedDescription.isEmpty ? "unknown gateway error" : nsError.localizedDescription
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("gateway error:") { return trimmed }
+        if trimmed.lowercased().hasPrefix("gateway error:") {
+            return trimmed
+        }
         return "Gateway error: \(trimmed)"
     }
 
     private func scheduleRecovery(reason: String) {
         let now = Date()
-        if let last = self.lastRecoveryAt, now.timeIntervalSince(last) < 10 { return }
+        if let last = self.lastRecoveryAt, now.timeIntervalSince(last) < 10 {
+            return
+        }
         guard self.recoveryTask == nil else { return }
         self.lastRecoveryAt = now
 
@@ -340,7 +347,9 @@ final class ControlChannel {
             guard let self else { return }
             let stream = await GatewayConnection.shared.subscribe()
             for await push in stream {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 await MainActor.run { [weak self] in
                     self?.handle(push: push)
                 }

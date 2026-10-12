@@ -1,5 +1,5 @@
-import MoltbotProtocol
 import Foundation
+import MoltbotProtocol
 import Observation
 
 struct ChannelsStatusSnapshot: Codable {

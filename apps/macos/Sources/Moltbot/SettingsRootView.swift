@@ -140,7 +140,9 @@ struct SettingsRootView: View {
     }
 
     private func validTab(for requested: SettingsTab) -> SettingsTab {
-        if requested == .debug, !self.state.debugPaneEnabled { return .general }
+        if requested == .debug, !self.state.debugPaneEnabled {
+            return .general
+        }
         return requested
     }
 

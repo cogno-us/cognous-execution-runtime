@@ -177,6 +177,8 @@ const pluginRegistryState = {
 };
 setActivePluginRegistry(pluginRegistryState.registry);
 
+export const getTestPluginRegistry = () => pluginRegistryState.registry;
+
 export const setTestPluginRegistry = (registry: PluginRegistry) => {
   pluginRegistryState.registry = registry;
   setActivePluginRegistry(registry);

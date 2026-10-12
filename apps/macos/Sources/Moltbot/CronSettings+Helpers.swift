@@ -23,31 +23,49 @@ extension CronSettings {
         case let .every(everyMs, _):
             return "every \(self.formatDuration(ms: everyMs))"
         case let .cron(expr, tz):
-            if let tz, !tz.isEmpty { return "cron \(expr) (\(tz))" }
+            if let tz, !tz.isEmpty {
+                return "cron \(expr) (\(tz))"
+            }
             return "cron \(expr)"
         }
     }
 
     func formatDuration(ms: Int) -> String {
-        if ms < 1000 { return "\(ms)ms" }
+        if ms < 1000 {
+            return "\(ms)ms"
+        }
         let s = Double(ms) / 1000.0
-        if s < 60 { return "\(Int(round(s)))s" }
+        if s < 60 {
+            return "\(Int(round(s)))s"
+        }
         let m = s / 60.0
-        if m < 60 { return "\(Int(round(m)))m" }
+        if m < 60 {
+            return "\(Int(round(m)))m"
+        }
         let h = m / 60.0
-        if h < 48 { return "\(Int(round(h)))h" }
+        if h < 48 {
+            return "\(Int(round(h)))h"
+        }
         let d = h / 24.0
         return "\(Int(round(d)))d"
     }
 
     func nextRunLabel(_ date: Date, now: Date = .init()) -> String {
         let delta = date.timeIntervalSince(now)
-        if delta <= 0 { return "due" }
-        if delta < 60 { return "in <1m" }
+        if delta <= 0 {
+            return "due"
+        }
+        if delta < 60 {
+            return "in <1m"
+        }
         let minutes = Int(round(delta / 60))
-        if minutes < 60 { return "in \(minutes)m" }
+        if minutes < 60 {
+            return "in \(minutes)m"
+        }
         let hours = Int(round(Double(minutes) / 60))
-        if hours < 48 { return "in \(hours)h" }
+        if hours < 48 {
+            return "in \(hours)h"
+        }
         let days = Int(round(Double(hours) / 24))
         return "in \(days)d"
     }

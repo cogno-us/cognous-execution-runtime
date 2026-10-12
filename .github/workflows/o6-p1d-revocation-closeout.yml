@@ -1,0 +1,51 @@
+name: O6 P1D revocation closeout
+
+on:
+  push:
+    paths:
+      - "engine/revocation_closeout.py"
+      - "tests/test_o6_p1d_revocation_closeout.py"
+      - "docs/o6-p1d-revocation-closeout.md"
+      - ".github/workflows/o6-p1d-revocation-closeout.yml"
+  pull_request:
+    paths:
+      - "engine/revocation_closeout.py"
+      - "tests/test_o6_p1d_revocation_closeout.py"
+      - "docs/o6-p1d-revocation-closeout.md"
+      - ".github/workflows/o6-p1d-revocation-closeout.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: o6-p1d-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  revocation-closeout:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused test dependency
+        run: python -m pip install pytest==8.3.5
+      - name: Compile bounded profile
+        run: python -m compileall -q engine/revocation_closeout.py
+      - name: Verify repository source resolution
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import engine.revocation_closeout as module
+
+          expected = (Path.cwd() / "engine" / "revocation_closeout.py").resolve()
+          actual = Path(module.__file__).resolve()
+          print(f"resolved revocation closeout source: {actual}")
+          if actual != expected:
+              raise SystemExit(f"unexpected source: {actual} != {expected}")
+          PY
+      - name: Run O6-P1D qualification
+        run: python -m pytest -q tests/test_o6_p1d_revocation_closeout.py

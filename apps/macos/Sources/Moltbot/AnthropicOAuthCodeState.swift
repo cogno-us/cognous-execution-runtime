@@ -15,10 +15,16 @@ enum AnthropicOAuthCodeState {
     static func extract(from raw: String) -> String? {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "`"))
-        if text.isEmpty { return nil }
+        if text.isEmpty {
+            return nil
+        }
 
-        if let fromURL = self.extractFromURL(text) { return fromURL }
-        if let fromToken = self.extractFromToken(text) { return fromToken }
+        if let fromURL = self.extractFromURL(text) {
+            return fromURL
+        }
+        if let fromToken = self.extractFromToken(text) {
+            return fromToken
+        }
         return nil
     }
 

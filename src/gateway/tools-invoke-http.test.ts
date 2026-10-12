@@ -5,9 +5,25 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { installGatewayTestHooks, getFreePort, startGatewayServer } from "./test-helpers.server.js";
-import { resetTestPluginRegistry, setTestPluginRegistry, testState } from "./test-helpers.mocks.js";
+import {
+  getTestPluginRegistry,
+  resetTestPluginRegistry,
+  setTestPluginRegistry,
+  testState,
+} from "./test-helpers.mocks.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
+import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { CONFIG_PATH } from "../config/config.js";
+
+// This suite supplies its own plugin registry, including the HTTP ordering fixture.
+// Do not discover and transpile every installed extension on the first request.
+vi.mock("../plugins/loader.js", () => ({
+  loadMoltbotPlugins: () => {
+    const registry = getTestPluginRegistry();
+    setActivePluginRegistry(registry);
+    return registry;
+  },
+}));
 
 installGatewayTestHooks({ scope: "suite" });
 

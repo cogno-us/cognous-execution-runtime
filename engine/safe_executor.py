@@ -56,6 +56,7 @@ class ExecutionOperation:
     grant_id: str
     grant_revision: str
     effective_max_effects: int
+    tenant_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class FrozenOperation:
     grant_id: str
     grant_revision: str
     effective_max_effects: int
+    tenant_id: str | None = None
 
     def payload(self) -> dict:
         value = json.loads(self.payload_json)
@@ -99,7 +101,7 @@ class FrozenOperation:
         return value
 
     def canonical_dict(self) -> dict:
-        return {
+        value = {
             "actor": self.actor,
             "principal": self.principal,
             "institution_id": self.institution_id,
@@ -123,6 +125,9 @@ class FrozenOperation:
             "grant_revision": self.grant_revision,
             "effective_max_effects": self.effective_max_effects,
         }
+        if self.tenant_id is not None:
+            value["tenant_id"] = self.tenant_id
+        return value
 
     @property
     def digest(self) -> str:
@@ -174,6 +179,7 @@ def snapshot_envelope(envelope: ExecutionEnvelope) -> FrozenEnvelope:
         grant_id=copy.deepcopy(op.grant_id),
         grant_revision=copy.deepcopy(op.grant_revision),
         effective_max_effects=op.effective_max_effects,
+        tenant_id=copy.deepcopy(op.tenant_id),
     )
     snap = FrozenEnvelope(
         version=copy.deepcopy(envelope.version),
@@ -236,6 +242,10 @@ def validate_snapshot(envelope: FrozenEnvelope) -> None:
     _strict_finite_number(op.amount, name="amount")
     _strict_positive_int(op.effects, name="effects", exactly_one=True)
     _strict_positive_int(op.effective_max_effects, name="effective_max_effects")
+    if op.tenant_id is not None and (
+        not isinstance(op.tenant_id, str) or not (1 <= len(op.tenant_id) <= 128)
+    ):
+        raise ValueError("tenant_id must be an exact non-empty string up to 128 characters")
     required = [
         op.actor,
         op.principal,
@@ -440,8 +450,90 @@ class DurableRefundDestination:
                 created_at REAL NOT NULL,
                 FOREIGN KEY(attempt_id) REFERENCES attempts(attempt_id)
             );
+            CREATE TABLE IF NOT EXISTS failure_records_v1 (
+                failure_id TEXT PRIMARY KEY,
+                decision_id TEXT NOT NULL,
+                effect_id TEXT NOT NULL,
+                attempt_id TEXT,
+                proposal_commitment TEXT,
+                manifest_version TEXT,
+                manifest_digest TEXT,
+                grant_id TEXT,
+                grant_revision TEXT,
+                failure_class TEXT NOT NULL CHECK(failure_class IN (
+                    'policy_denial','authority_hold','malformed_input',
+                    'capability_unavailable','evaluation_error','dispatch_error'
+                )),
+                reason_code TEXT NOT NULL,
+                stage TEXT NOT NULL CHECK(stage IN ('pre_dispatch','post_dispatch')),
+                detail TEXT,
+                created_at REAL NOT NULL
+            );
             """
         )
+
+    def record_failure(
+        self,
+        snapshot: FrozenEnvelope,
+        *,
+        failure_class: str,
+        reason_code: str,
+        stage: str,
+        attempt_id: str | None = None,
+        detail: str | None = None,
+        failure_id: str | None = None,
+    ) -> str:
+        """Persist one typed C4 failure without manufacturing an execution attempt."""
+        if failure_class not in {
+            "policy_denial",
+            "authority_hold",
+            "malformed_input",
+            "capability_unavailable",
+            "evaluation_error",
+            "dispatch_error",
+        }:
+            raise ValueError("unsupported failure class")
+        if stage not in {"pre_dispatch", "post_dispatch"}:
+            raise ValueError("unsupported failure stage")
+        failure_id = failure_id or str(uuid.uuid4())
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO failure_records_v1(
+                    failure_id,decision_id,effect_id,attempt_id,proposal_commitment,
+                    manifest_version,manifest_digest,grant_id,grant_revision,
+                    failure_class,reason_code,stage,detail,created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    failure_id,
+                    snapshot.decision_id,
+                    snapshot.effect_id,
+                    attempt_id,
+                    snapshot.operation.proposal_commitment,
+                    snapshot.operation.manifest_version,
+                    snapshot.operation.manifest_digest,
+                    snapshot.operation.grant_id,
+                    snapshot.operation.grant_revision,
+                    failure_class,
+                    reason_code,
+                    stage,
+                    detail,
+                    time.time(),
+                ),
+            )
+        return failure_id
+
+    def failure_history(self, effect_id: str | None = None) -> list[dict]:
+        with self._connect() as conn:
+            if effect_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM failure_records_v1 ORDER BY created_at,failure_id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM failure_records_v1 WHERE effect_id=? ORDER BY created_at,failure_id",
+                    (effect_id,),
+                ).fetchall()
+        return [dict(row) for row in rows]
 
     def begin_attempt(
         self, requested_attempt_id: str | None, snapshot: FrozenEnvelope

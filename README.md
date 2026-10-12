@@ -36,6 +36,14 @@ Pinned Control Plane BoundedAuthorizationWorkflow.execute()
 
 A persisted historical `authorized` decision is not an execution credential. An allow decision is not an executed effect. An execution acknowledgement is not independently verified delivery.
 
+## Which Runtime revision is supported?
+
+The current [hub component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) selects **`c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`**. This repository's accepted source main is **`1b0a9e32d010797711004ae612051a277b07912a`**, which includes an **optional** durable revocation-disposition and original-attempt closeout profile at [`engine/revocation_closeout.py`](engine/revocation_closeout.py). The newer source is not thereby selected by the hub. The hub PR #31 lock pointer in the next section identifies a **historical acceptance snapshot**, not a standing instruction to use that commit instead of the current hub lock.
+
+**Worked recovery example:** a single synthetic refund effect `E1` has original attempt `A1`; the destination may commit but the acknowledgement is lost. Record `A1` as `in_doubt` after an ordering-based grant revocation. On restart, an `unknown` or `absent` observation does **not** create permission to issue attempt `A2` or another effect. A separately supplied `applied` or `partial` observation can close the **original** `A1` record in the optional profile, but its source authenticity and external settlement are not established merely by the record. The orchestration [O6-Q6 example](https://github.com/cogno-us/cognous-stack-orchestrator/blob/main/development/acceptance/o6-q6/README.md) tests these boundaries synthetically and notes that a recorded `unknown` cannot later be silently overwritten by a new observation without an additional reviewed transition contract.
+
+This Python safety layer does not cover the repository's retained TypeScript application, real payment processors or independently authenticated deployment. Review the [hub release status](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) and [operational trust HOLD](https://github.com/cogno-us/cognous-stack-orchestrator/issues/30) before making deployment claims.
+
 ## Accepted integration and versioned evidence
 
 The accepted hub lock at [hub PR #31's merge](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/component-lock.json) selects:

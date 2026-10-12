@@ -1,5 +1,5 @@
-import MoltbotProtocol
 import Foundation
+import MoltbotProtocol
 
 enum ConfigStore {
     struct Overrides: Sendable {

@@ -1,6 +1,6 @@
-import MoltbotKit
 import CoreLocation
 import Foundation
+import MoltbotKit
 
 @MainActor
 final class MacNodeLocationService: NSObject, CLLocationManagerDelegate {
