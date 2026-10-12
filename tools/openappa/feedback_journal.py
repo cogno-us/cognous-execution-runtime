@@ -21,7 +21,7 @@ def initialize(path):
 
 
 @contextmanager
-def _database(path):
+def _database(path, *, readonly=False):
     # Same trusted-directory assumption as local resume; no hostile-owner race claim.
     path = Path(path).absolute()
     try:
@@ -29,13 +29,47 @@ def _database(path):
     except ResumeRefused as error:
         raise ValueError('feedback journal unavailable') from error
     try:
-        with closing(sqlite3.connect(path.as_uri() + '?mode=rw', uri=True)) as db:
+        with closing(sqlite3.connect(path.as_uri() + ('?mode=ro' if readonly else '?mode=rw'), uri=True)) as db:
             db.execute('PRAGMA synchronous=FULL')
             yield db
     except sqlite3.Error as error:
         raise ValueError('feedback journal unavailable') from error
     finally:
         os.close(fd)
+
+
+def _identity(binding, raw):
+    context = json.loads(raw)['context']
+    if (context['tenant_id'], context['principal_id'], context['root_id']) != (
+        binding.tenant_id, binding.principal_id, binding.root_id
+    ):
+        raise ValueError('feedback binding mismatch')
+    # Store only digests and state, never request payloads or result bodies.
+    identity = json.dumps([asdict(binding), _text(context['call_id'])],
+                          sort_keys=True, separators=(',', ':')).encode()
+    key = hashlib.sha256(identity).hexdigest()
+    digest = hashlib.sha256(raw).hexdigest()
+    return key, digest
+
+
+def read_receipt(path, binding, raw):
+    """Inspect existing host bookkeeping without claiming or delivering feedback.
+
+    Absent is not permission to retry execution or feedback. Acknowledged is a
+    recorded host observation, not an independently verified remote receipt.
+    """
+    key, digest = _identity(binding, raw)
+    with _database(path, readonly=True) as db:
+        prior = db.execute('SELECT request_sha256,state FROM receipt WHERE call_key=?', (key,)).fetchone()
+    if prior is None:
+        outcome = 'absent'
+    else:
+        if prior[0] != digest:
+            raise ValueError('feedback call identity was reused')
+        if prior[1] not in ('acknowledged', 'unconfirmed'):
+            raise ValueError('invalid feedback journal state')
+        outcome = 'ack' if prior[1] == 'acknowledged' else 'unconfirmed'
+    return {'request_sha256': digest, 'outcome': outcome}
 
 
 class JournaledReporter:
@@ -50,16 +84,7 @@ class JournaledReporter:
         self.report_success = report_success
 
     def __call__(self, binding, raw):
-        context = json.loads(raw)['context']
-        if (context['tenant_id'], context['principal_id'], context['root_id']) != (
-            binding.tenant_id, binding.principal_id, binding.root_id
-        ):
-            raise ValueError('feedback binding mismatch')
-        # Store only digests and state, never request payloads or result bodies.
-        identity = json.dumps([asdict(binding), _text(context['call_id'])],
-                              sort_keys=True, separators=(',', ':')).encode()
-        key = hashlib.sha256(identity).hexdigest()
-        digest = hashlib.sha256(raw).hexdigest()
+        key, digest = _identity(binding, raw)
         with _database(self.path) as db, db:
             db.execute('BEGIN IMMEDIATE')
             prior = db.execute('SELECT request_sha256,state FROM receipt WHERE call_key=?', (key,)).fetchone()

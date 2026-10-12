@@ -93,3 +93,21 @@ These cases exercise interprocess SQLite claim serialization, not independent
 remote receipt verification or production load. Process scheduling is not a
 guarantee of simultaneous lock acquisition. Existing crash, trust, no-retry and
 deployment limitations remain unchanged.
+
+## Read-only receipt inspection
+
+`read_receipt(path, binding, raw)` opens an existing private journal with SQLite
+`mode=ro`, validates the same bound identity and exact request digest, and returns
+`absent`, `unconfirmed`, or `ack`. It accepts no delivery callback and cannot
+create a claim. Missing, inaccessible, corrupt or mismatched state raises an
+error rather than being presented as an absent receipt. An absent row says only
+that this journal has no matching claim; it never permits effect or feedback
+retry. A recorded Ack retains the trusted-host bookkeeping limitations above.
+
+Nine cases cover the three states without byte changes or new files, unavailable
+journals, reused call identity, binding mismatch, and inspection while another
+connection reserves the writer. Existing subprocess recovery checks now also verify the
+read-only function, retaining the reporter no-redelivery assertions and including
+connected actual-runtime receipt recovery. The
+strict hosted gate requires 82 cases. This is a Python inspection API, not an
+operator UI, reconciliation mechanism, remote receipt proof or retry API.
