@@ -53,6 +53,13 @@ jobs:
               "tests/test_local_authority_effect.py",
               "tests/test_profile_exclusivity.py",
           })
+          # Exact static-guard paths have dedicated bounded Linux qualification.
+          installer_only.update({
+              ".github/workflows/dependency-restart.yml",
+              "tools/dependency_restart_preflight.py",
+              "tools/tests/test_dependency_restart_preflight.py",
+              "docs/workstreams/dependency-restart-vitest.md",
+          })
           def application_required(paths):
               return not paths or any(p not in installer_only for p in paths)
           assert not application_required(["scripts/docker/install-sh-smoke/run.sh"])
@@ -62,6 +69,9 @@ jobs:
           assert application_required(["pnpm-lock.yaml"])
           assert application_required(["tests/test_safe_executor.py"])
           assert application_required(["scripts/docker/install-sh-smoke/run.sh", "src/index.ts"])
+          assert not application_required(["tools/dependency_restart_preflight.py", "tools/tests/test_dependency_restart_preflight.py"])
+          assert application_required(["tools/dependency_restart_preflight.py", "ui/package.json"])
+          assert application_required(["package.json"])
           assert application_required([])
           base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
           result = subprocess.run(
