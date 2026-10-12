@@ -1,6 +1,7 @@
 import type { HumanDelayConfig } from "../../config/types.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
+import { createTextReplyAdmission, type TextReplyAdmission } from "./reply-admission.js";
 import type { ResponsePrefixContext } from "./response-prefix-template.js";
 import type { TypingController } from "./typing.js";
 
@@ -33,6 +34,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type ReplyDispatcherOptions = {
   deliver: ReplyDispatchDeliverer;
+  /** Opt-in final-text gate. Host must bind the checker and delivery destination. */
+  textAdmission?: TextReplyAdmission;
   responsePrefix?: string;
   /** Static context for response prefix template interpolation. */
   responsePrefixContext?: ResponsePrefixContext;
@@ -86,6 +89,9 @@ function normalizeReplyPayloadInternal(
 }
 
 export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDispatcher {
+  const admission = options.textAdmission
+    ? createTextReplyAdmission(options.textAdmission)
+    : undefined;
   let sendChain: Promise<void> = Promise.resolve();
   // Track in-flight deliveries so we can emit a reliable "idle" signal.
   let pending = 0;
@@ -99,8 +105,17 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
   };
 
   const enqueue = (kind: ReplyDispatchKind, payload: ReplyPayload) => {
-    const normalized = normalizeReplyPayloadInternal(payload, options);
+    let normalized = normalizeReplyPayloadInternal(payload, options);
     if (!normalized) return false;
+    if (admission) {
+      try {
+        normalized = admission.snapshot(normalized, kind);
+      } catch (error) {
+        options.onError?.(error, { kind });
+        return false;
+      }
+    }
+    const queuedPayload = normalized;
     queuedCounts[kind] += 1;
     pending += 1;
 
@@ -115,7 +130,11 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
           const delayMs = getHumanDelay(options.humanDelay);
           if (delayMs > 0) await sleep(delayMs);
         }
-        await options.deliver(normalized, { kind });
+        if (admission) {
+          await admission.admit(queuedPayload);
+          admission.assertOpen();
+        }
+        await options.deliver(queuedPayload, { kind });
       })
       .catch((err) => {
         options.onError?.(err, { kind });
