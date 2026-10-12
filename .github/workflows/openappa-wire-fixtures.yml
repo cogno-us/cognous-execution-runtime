@@ -1,0 +1,38 @@
+name: OpenAPPA pinned wire fixtures
+on:
+  pull_request:
+    paths:
+      - 'tools/openappa/**'
+      - 'tests/fixtures/openappa/**'
+      - 'tests/test_openappa_fixture_contract.py'
+      - '.github/workflows/openappa-wire-fixtures.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  codec:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Native identity fixture checks
+        run: python -m unittest discover -s tests -p test_openappa_fixture_contract.py -v
+      - uses: actions/checkout@v4
+        with:
+          repository: archestra-ai/OpenAPPA
+          ref: 10aa0e09e32d8c6704bdb030dc3c66140bf81915
+          path: upstream-openappa
+      - name: Validate fixtures with actual pinned upstream codec
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream-openappa rev-parse HEAD)" = 10aa0e09e32d8c6704bdb030dc3c66140bf81915
+          rustup toolchain install stable --profile minimal
+          mkdir -p upstream-openappa/appa-runtime-api/tests
+          cp tools/openappa/cognous_wire_contract.rs upstream-openappa/appa-runtime-api/tests/
+          export COGNOUS_OPENAPPA_FIXTURE="$GITHUB_WORKSPACE/tests/fixtures/openappa/protocol1.json"
+          cd upstream-openappa
+          cargo +stable test --locked -p appa-runtime-api --test cognous_wire_contract

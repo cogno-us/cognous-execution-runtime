@@ -1,0 +1,48 @@
+{
+  "upstream_sha": "10aa0e09e32d8c6704bdb030dc3c66140bf81915",
+  "authority_effect": "none",
+  "request_json": "{\"protocol\":1,\"adapter\":\"kagent\",\"event\":\"tool_call\",\"root_id\":\"synthetic-root\",\"tool\":\"refund\",\"call_id\":\"synthetic-call\",\"arguments\":{\"target\":\"refund.sqlite\",\"amount\":50}}",
+  "request_sha256": "1cca52cdeeed276072f489a47c72cd612e71f7cea7ffb07151fdb22a152d75eb",
+  "host_context": {
+    "tenant_id": "synthetic-tenant",
+    "principal_id": "synthetic-principal",
+    "authority_domain": "synthetic-domain",
+    "operation_id": "synthetic-operation",
+    "attempt_id": "synthetic-attempt",
+    "effect_id": "synthetic-effect",
+    "root_id": "synthetic-root",
+    "call_id": "synthetic-call",
+    "tool": "refund"
+  },
+  "expected_host_context": {
+    "tenant_id": "synthetic-tenant",
+    "principal_id": "synthetic-principal",
+    "authority_domain": "synthetic-domain",
+    "operation_id": "synthetic-operation",
+    "attempt_id": "synthetic-attempt",
+    "effect_id": "synthetic-effect",
+    "root_id": "synthetic-root",
+    "call_id": "synthetic-call",
+    "tool": "refund"
+  },
+  "decisions": [
+    {
+      "protocol": 1,
+      "decision": "allow_call"
+    },
+    {
+      "protocol": 1,
+      "decision": "deny_call",
+      "feedback": "synthetic restriction"
+    },
+    {
+      "protocol": 1,
+      "decision": "pass_control"
+    },
+    {
+      "protocol": 1,
+      "decision": "block",
+      "reason": "synthetic result withheld"
+    }
+  ]
+}
