@@ -176,3 +176,12 @@ artifact retention. Preserve two workers, 4 GB heap, the original full test
 command, A2UI prerequisite, fail-fast behavior and all-success aggregate.
 No exclusions or assertions change. The local full-suite environment blocker
 and separate landing requirement remain unchanged.
+
+## Post-PR37 main reconciliation
+
+Integrated main 31beca6e90dfd775bb177115ebec481ede3abd95 after the accepted
+music-metadata update. The only merge conflict was two independent changelog
+entries; both are retained. The narrowed lock and its qualification note are
+inherited unchanged from main. Guard tests and root/UI/graph checks must cover
+this combined tree; earlier hosted full-suite results belong to 45ea97d and
+are not represented as new-head qualification. No tests or gates are bypassed.
