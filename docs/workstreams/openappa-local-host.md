@@ -65,3 +65,19 @@ durable root continuity across hostile rollback remain separate requirements.
 Preserve C0 check-to-commit limits, optional same-host C1, no C2/C3, no real
 settlement and operational #30 HOLD. A successful local-host fixture does not
 authorize deployment or claim enterprise tenant isolation.
+
+## Enrollment transaction follow-up
+
+The initial implementation did not reserve a SQLite write transaction before
+reading the existing UID mapping. Concurrent enrollment of different sessions
+could therefore read the same empty mapping before either inserted. Enrollment
+now uses `BEGIN IMMEDIATE` across lookup and insert. Resume reads the full UID
+identity set and session in one read transaction and refuses inconsistent older
+registries rather than choosing a session-specific identity.
+
+Three new cases use independent real SQLite connections: six concurrent
+conflicting enrollments must leave one identity, six same-identity sessions must
+all succeed, and a deliberately inconsistent older registry must refuse resume.
+The concurrency test delays actual reads to expose scheduling windows without
+substituting the database. The hosted gate now requires all 21 cases with no
+skips. Current-head hosted results remain required before this follow-up lands.
