@@ -38,3 +38,8 @@ restart, expiry, output admission and the Python/Rust transport remain open.
 No default activation, selected lock advancement or production effects. Preserve
 C0 check-to-commit limitations, optional same-host C1, no C2/C3, no real settlement
 and operational orchestrator #30 HOLD.
+
+Initial hosted job `114927611496` stopped before compilation because the command
+used the directory name `appa-runtime` as the Cargo package. The pinned manifest
+names the package `appa` and its library `appa_runtime`. The command is corrected
+to `-p appa`; no runtime result is inferred from that failed setup run.

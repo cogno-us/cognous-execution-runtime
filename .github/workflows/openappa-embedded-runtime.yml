@@ -26,4 +26,4 @@ jobs:
           rustup toolchain install stable --profile minimal
           cp tools/openappa/cognous_embedded_contract.rs upstream-openappa/appa-runtime/tests/
           cd upstream-openappa
-          cargo +stable test --locked -p appa-runtime --no-default-features --test cognous_embedded_contract
+          cargo +stable test --locked -p appa --no-default-features --test cognous_embedded_contract
