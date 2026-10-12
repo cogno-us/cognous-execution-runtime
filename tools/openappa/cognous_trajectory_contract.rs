@@ -1,7 +1,7 @@
 //! Qualification of actual embedded SQLite trajectory replay, not a host adapter.
 use std::{path::Path, sync::Arc, time::Duration};
 use appa_eventlog::{Backend, LogStore};
-use appa_runtime::{api::{RemedyOutcome, Runtime}, config::{Config, HostDefaults}, hooks};
+use appa_runtime::{api::{RemedyOutcome, Runtime, StatusReadError}, config::{Config, HostDefaults}, hooks};
 use appa_runtime_api::{Actor, Adapter, AdapterName, CanonicalTool, HookDecision,
     HookEvent, IdentifiedTool, OutcomeBody, ParseRefusal, ProposedCall, ToolOutcome, TrajectoryId};
 
@@ -131,4 +131,51 @@ fn malformed_sqlite_is_refused_instead_of_replaced() {
     std::fs::write(&path, b"synthetic-invalid-database").unwrap();
     assert!(LogStore::open(Backend::Sqlite { path: path.clone() }).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), b"synthetic-invalid-database");
+}
+
+
+#[tokio::test]
+async fn unknown_root_status_probe_does_not_create_or_change_trajectories() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("trajectory.sqlite");
+    let runtime = open(&path);
+    start(&runtime).await;
+    narrow(&runtime).await;
+    let before = runtime.audit(&actor().root).unwrap().len();
+    let missing = TrajectoryId("synthetic-unknown-root".into());
+    for _ in 0..2 {
+        assert!(matches!(runtime.try_status(&missing),
+            Err(StatusReadError::UnknownRoot { .. })));
+    }
+    let store = LogStore::open(Backend::Sqlite { path }).unwrap();
+    assert!(!store.has_root(&missing).unwrap());
+    assert_eq!(runtime.audit(&actor().root).unwrap().len(), before);
+    public_denied(&runtime, "after-unknown-root-probes").await;
+}
+
+#[tokio::test]
+async fn unrelated_store_cannot_supply_the_expected_existing_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let original_path = dir.path().join("original.sqlite");
+    {
+        let original = open(&original_path);
+        start(&original).await;
+        narrow(&original).await;
+    }
+    let other_path = dir.path().join("unrelated.sqlite");
+    let unrelated = open(&other_path);
+    let other_root = TrajectoryId("synthetic-other-root".into());
+    assert_eq!(hooks::handle(&unrelated, HookEvent::SessionStart {
+        root: other_root.clone(), principal: None, address: None, title: None,
+        launch: None, start: None,
+    }).await, HookDecision::Ack);
+    let before = unrelated.audit(&other_root).unwrap().len();
+    assert!(matches!(unrelated.try_status(&actor().root),
+        Err(StatusReadError::UnknownRoot { .. })));
+    let store = LogStore::open(Backend::Sqlite { path: other_path }).unwrap();
+    assert!(!store.has_root(&actor().root).unwrap());
+    assert_eq!(unrelated.audit(&other_root).unwrap().len(), before);
+    let resumed = open(&original_path);
+    assert!(resumed.try_status(&actor().root).is_ok());
+    public_denied(&resumed, "correct-store-after-substitution-probe").await;
 }
