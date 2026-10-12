@@ -44,21 +44,23 @@ jobs:
           set -euo pipefail
           rustup toolchain install stable --profile minimal
           cp tools/openappa/cognous_decision_probe.rs pinned/openappa/appa-runtime/examples/
+          cat tools/openappa/cognous_trajectory_contract.rs tools/openappa/cognous_persistent_join_main.rs > pinned/openappa/appa-runtime/examples/cognous_persistent_join.rs
           cd pinned/openappa
-          cargo +stable build --locked -p appa --no-default-features --example cognous_decision_probe
+          cargo +stable build --locked -p appa --no-default-features --example cognous_decision_probe --example cognous_persistent_join
       - name: Exercise both independent denial paths and SQLite state
         env:
           PYTHONPATH: '.:pinned/control-plane/src'
           MOLTBOT_SAFE_CONTROL_PLANE_ROOT: pinned/control-plane
           MOLTBOT_SAFE_MANIFEST_FIXTURE: pinned/action-manifest/examples/refund_integration_v1_1.manifest.json
+          COGNOUS_OPENAPPA_PERSISTENT_PROBE: pinned/openappa/target/debug/examples/cognous_persistent_join
           COGNOUS_OPENAPPA_PROBE: pinned/openappa/target/debug/examples/cognous_decision_probe
         run: |
           python -m pip install pytest==8.3.5 pydantic==2.11.9
-          python -m pytest -q tools/openappa/test_conjunction.py --junitxml=conjunction.xml
+          python -m pytest -q tools/openappa/test_conjunction.py tools/openappa/test_persistent_join.py --junitxml=conjunction.xml
           python - <<'PY'
           import xml.etree.ElementTree as ET
           cases = ET.parse('conjunction.xml').getroot().findall('.//testcase')
-          assert len(cases) == 20, len(cases)
+          assert len(cases) == 28, len(cases)
           assert all(not any(c.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for c in cases)
           PY
       - uses: actions/upload-artifact@v4
