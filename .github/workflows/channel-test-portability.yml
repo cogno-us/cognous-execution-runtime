@@ -1,0 +1,60 @@
+name: Channel test portability
+on:
+  pull_request:
+    paths:
+      - 'src/web/inbound.media.test.ts'
+      - 'src/telegram/bot.test.ts'
+      - '.github/workflows/channel-test-portability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  channels:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.23.0 --activate
+          pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
+      - name: Run affected channel suites twice
+        env:
+          CI: 'true'
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          set -euo pipefail
+          pnpm canvas:a2ui:bundle
+          pnpm exec vitest run src/web/inbound.media.test.ts src/telegram/bot.test.ts --maxWorkers=1 --reporter=default --reporter=junit --outputFile=channel-tests-1.xml
+          pnpm exec vitest run src/web/inbound.media.test.ts src/telegram/bot.test.ts --maxWorkers=1 --reporter=default --reporter=junit --outputFile=channel-tests-2.xml
+      - name: Require complete results from both runs
+        run: |
+          python - <<'PYTHON'
+          import xml.etree.ElementTree as ET
+          for path in ('channel-tests-1.xml', 'channel-tests-2.xml'):
+              cases = ET.parse(path).getroot().findall('.//testcase')
+              assert len(cases) == 85, (path, len(cases))
+              assert all(not any(c.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for c in cases)
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: channel-tests-${{ matrix.os }}
+          path: channel-tests-*.xml
+          if-no-files-found: error
