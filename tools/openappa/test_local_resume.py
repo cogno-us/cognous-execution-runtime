@@ -146,3 +146,63 @@ def test_actual_corrupt_store_is_not_reset(tmp_path):
     with pytest.raises(subprocess.CalledProcessError):
         run_probe('resume', store)
     assert store.read_bytes() == b'invalid sqlite'
+
+
+@pytest.mark.parametrize('same_identity', [False, True])
+def test_concurrent_enrollment_preserves_one_identity_per_uid(tmp_path, monkeypatch, same_identity):
+    import concurrent.futures
+    import sqlite3
+    import threading
+    import time
+
+    registry, store = enroll(tmp_path, uid=os.getuid() + 1)
+    original_connect = sqlite3.connect
+
+    class DelayedReadCursor(sqlite3.Cursor):
+        def fetchall(self):
+            rows = super().fetchall()
+            # Exercise scheduling after actual DB reads, before subsequent writes.
+            # The production transaction must protect this interval.
+            time.sleep(0.04)
+            return rows
+
+    class DelayedReadConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            return self.cursor(factory=DelayedReadCursor).execute(sql, parameters)
+
+    def delayed_connect(*args, **kwargs):
+        return original_connect(*args, **kwargs, factory=DelayedReadConnection)
+
+    monkeypatch.setattr(sqlite3, 'connect', delayed_connect)
+    start = threading.Barrier(6)
+
+    def worker(index):
+        start.wait(timeout=5)
+        try:
+            provision(registry, uid=os.getuid(), tenant_id='tenant-same' if same_identity else f'tenant-{index}',
+                      principal_id='principal-same' if same_identity else f'principal-{index}',
+                      session_id=f'session-{index}', root_id=ROOT, store=store)
+            return True
+        except ResumeRefused:
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(worker, range(6)))
+    assert sum(results) == (6 if same_identity else 1)
+    with original_connect(registry) as db:
+        identities = db.execute('SELECT DISTINCT tenant,principal FROM host_binding WHERE uid=?',
+                                (os.getuid(),)).fetchall()
+    assert len(identities) == 1
+
+
+def test_inconsistent_persisted_uid_mapping_refuses_resume(tmp_path):
+    import sqlite3
+    registry, store = enroll(tmp_path)
+    with sqlite3.connect(registry) as db:
+        info = store.stat()
+        # Represents an inconsistent older registry, not a normal enrollment path.
+        db.execute('INSERT INTO host_binding VALUES (?,?,?,?,?,?,?,?)',
+                   (os.getuid(), 'other-tenant', 'other-principal', 'other-session', ROOT,
+                    str(store), info.st_dev, info.st_ino))
+    with pytest.raises(ResumeRefused, match='inconsistent'):
+        read_binding(registry, unreachable)

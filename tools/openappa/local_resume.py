@@ -81,6 +81,9 @@ def provision(registry, *, uid, tenant_id, principal_id, session_id, root_id, st
         fd, _ = _open_owned(registry)
         os.close(fd)
     with closing(sqlite3.connect(registry.as_uri() + '?mode=rw', uri=True)) as db, db:
+        # Reserve the writer before reading identity; SELECT alone does not start
+        # sqlite3's implicit transaction. Concurrent enrollments must serialize.
+        db.execute('BEGIN IMMEDIATE')
         db.execute('CREATE TABLE IF NOT EXISTS host_binding (uid INTEGER, tenant TEXT, principal TEXT, session TEXT, root TEXT, path TEXT, device INTEGER, inode INTEGER, PRIMARY KEY(uid, session))')
         prior = db.execute('SELECT tenant, principal FROM host_binding WHERE uid=?', (uid,)).fetchall()
         if any(row != values[:2] for row in prior):
@@ -110,6 +113,11 @@ def resume(peer, registry, session_id, *, read_existing):
         fd, registry_info = _open_owned(registry)
         fds.append(fd)
         with closing(sqlite3.connect(registry.as_uri() + '?mode=ro', uri=True)) as db:
+            # One read transaction observes the identity set and session together.
+            db.execute('BEGIN')
+            identities = db.execute('SELECT DISTINCT tenant,principal FROM host_binding WHERE uid=?', (uid,)).fetchall()
+            if len(identities) != 1:
+                raise ResumeRefused('uid mapping is absent or inconsistent')
             rows = db.execute('SELECT uid,tenant,principal,session,root,path,device,inode FROM host_binding WHERE uid=? AND session=?', (uid, session_id)).fetchall()
         if len(rows) != 1:
             raise ResumeRefused('no enrolled session for authenticated uid')
