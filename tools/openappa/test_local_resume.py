@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 
 import pytest
 
@@ -206,3 +207,32 @@ def test_inconsistent_persisted_uid_mapping_refuses_resume(tmp_path):
                     str(store), info.st_dev, info.st_ino))
     with pytest.raises(ResumeRefused, match='inconsistent'):
         read_binding(registry, unreachable)
+
+
+@pytest.mark.parametrize('operation', ['provision', 'resume'])
+@pytest.mark.parametrize('state_file', ['registry', 'store'])
+def test_fifo_state_is_refused_without_waiting(tmp_path, operation, state_file):
+    registry, store = enroll(tmp_path)
+    target = registry if state_file == 'registry' else store
+    target.unlink()
+    os.mkfifo(target, 0o600)
+    # A subprocess timeout bounds a regression without leaving a blocked thread.
+    result = subprocess.run([sys.executable, '-c', """
+import os
+import sys
+from tools.openappa.test_local_resume import ROOT, read_binding, unreachable
+from tools.openappa.local_resume import ResumeRefused, provision
+registry, store, operation = sys.argv[1:]
+try:
+    if operation == 'resume':
+        read_binding(registry, unreachable)
+    else:
+        provision(registry, uid=os.getuid(), tenant_id='tenant-fixture',
+                  principal_id='principal-fixture', session_id='new-session',
+                  root_id=ROOT, store=store)
+except ResumeRefused as error:
+    assert 'state file must be private and host-owned' in str(error)
+else:
+    raise AssertionError('FIFO state was accepted')
+""", str(registry), str(store), operation], capture_output=True, text=True, timeout=5)
+    assert result.returncode == 0, result.stderr

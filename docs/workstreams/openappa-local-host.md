@@ -81,3 +81,13 @@ all succeed, and a deliberately inconsistent older registry must refuse resume.
 The concurrency test delays actual reads to expose scheduling windows without
 substituting the database. The hosted gate now requires all 21 cases with no
 skips. Current-head hosted results remain required before this follow-up lands.
+
+
+## Non-regular state files
+
+State descriptors are opened with `O_NONBLOCK` before checking their file type,
+so a named pipe cannot wait for a writer before the regular-file check runs.
+Both enrollment and resume refuse named pipes in registry and trajectory paths;
+four subprocess-bounded cases cover these paths. Regular SQLite files retain
+the same read, ownership, permission and identity checks. The hosted gate now
+requires all 25 cases without skips.
