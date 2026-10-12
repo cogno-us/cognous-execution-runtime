@@ -1,5 +1,8 @@
 # OpenAPPA pinned codec fixture gate
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Scope: synthetic protocol-1 fixture integrity and actual upstream codec parsing.
 This is not an OpenAPPA policy/runtime adapter and cannot dispatch or authorize.
 

@@ -1,5 +1,8 @@
 # Durable local feedback status
 
+> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> for consolidated evidence, current scope and remaining work.
+
 Candidate based on Runtime `89556d5aa7c6278a726b5815544c9aee82c1864c`.
 Existing conjunction pins remain OpenAPPA
 `10aa0e09e32d8c6704bdb030dc3c66140bf81915`, Control Plane
