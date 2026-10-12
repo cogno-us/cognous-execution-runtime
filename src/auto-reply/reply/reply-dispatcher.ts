@@ -137,6 +137,8 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
         await options.deliver(queuedPayload, { kind });
       })
       .catch((err) => {
+        // Delivery may have partially completed; do not release later gated output.
+        admission?.stop();
         options.onError?.(err, { kind });
       })
       .finally(() => {

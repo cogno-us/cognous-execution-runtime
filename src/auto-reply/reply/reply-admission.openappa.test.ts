@@ -170,4 +170,35 @@ describe.skipIf(!probe)("actual pinned OpenAPPA final-text admission", () => {
     expect(deliver).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
   });
+  it("stops after ambiguous delivery despite actual policy allowance", async () => {
+    const syntheticDestination: string[] = [];
+    const deliver = vi.fn(async (payload) => {
+      syntheticDestination.push(payload.text);
+      throw new Error("synthetic receipt loss after send");
+    });
+    const onError = vi.fn();
+    const decisions: string[] = [];
+    const policyCheck = vi.fn(async (request: TextAdmissionRequest) => {
+      const response = await check(request);
+      decisions.push(response.outcome);
+      return response;
+    });
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      onError,
+      textAdmission: {
+        destinationId: "synthetic-public",
+        check: policyCheck,
+      },
+    });
+    dispatcher.sendFinalReply({ text: "first synthetic output" });
+    dispatcher.sendFinalReply({ text: "later synthetic output" });
+    await dispatcher.waitForIdle();
+    expect(decisions).toEqual(["allow"]);
+    expect(policyCheck).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(syntheticDestination).toEqual(["first synthetic output"]);
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(dispatcher.sendFinalReply({ text: "new output" })).toBe(false);
+  });
 });

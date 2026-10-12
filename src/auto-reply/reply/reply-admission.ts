@@ -55,6 +55,7 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
   };
   return {
     assertOpen,
+    stop: () => stop("reply admission stopped after dispatch failure"),
     snapshot(payload: ReplyPayload, kind: string, pending: number): ReplyPayload {
       assertOpen();
       if (pending >= 32) {
