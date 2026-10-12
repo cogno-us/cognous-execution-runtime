@@ -92,3 +92,27 @@ report successful delivery back to OpenAPPA, qualify output-policy changes durin
 an in-flight send, or cover other runtime routes. Existing host, C0/C1, no-retry,
 lock and operational HOLD limitations remain. Hosted results must be inspected
 before claiming these connected cases pass.
+
+## Cooperative admission cancellation
+
+The optional host configuration now accepts an `AbortSignal`. Already-cancelled
+profiles reject enqueue; cancellation before dispatch avoids the policy call;
+cancellation during an outstanding check ends the admission wait and stops later
+queued delivery. The checker receives a per-check signal as its second argument;
+host cancellation and admission timeout abort that signal. The stopped state is
+set before notifying the checker, so an allow returned during abort cannot release
+output. Timer and host abort listeners are removed when the check finishes.
+
+Four additional unit cases cover these boundaries, including a send already
+started before cancellation: that first callback remains an observed send, while
+the second queued output is withheld. The timeout case also checks cancellation
+notification to the checker. One connected case obtains actual pinned OpenAPPA
+allowance and cancels before release; callback delivery must still remain zero.
+The strict unit/routing gate now requires 38 cases and the actual-policy gate
+requires 45 (38 plus seven connected cases).
+
+Cancellation is cooperative. It cannot terminate arbitrary checker code, reverse
+a started provider send, remove an OpenAPPA dispatch record already persisted by
+a check, or prove remote non-delivery. The synchronous Rust test bridge remains
+non-production and cannot process JS cancellation while its child call blocks.
+This change introduces no production host wiring or automatic retry.

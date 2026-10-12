@@ -79,6 +79,7 @@ describe("opt-in final text admission", () => {
     vi.useFakeTimers();
     let finish!: (result: Awaited<ReturnType<typeof allow>>) => void;
     let request!: TextAdmissionRequest;
+    let checkerSignal: AbortSignal | undefined;
     const deliver = vi.fn();
     const onError = vi.fn();
     const dispatcher = createReplyDispatcher({
@@ -87,7 +88,8 @@ describe("opt-in final text admission", () => {
       textAdmission: {
         destinationId: "synthetic",
         timeoutMs: 10,
-        check: (value) => {
+        check: (value, signal) => {
+          checkerSignal = signal;
           request = value;
           return new Promise((resolve) => {
             finish = resolve;
@@ -98,6 +100,7 @@ describe("opt-in final text admission", () => {
     dispatcher.sendFinalReply({ text: "one" });
     await vi.advanceTimersByTimeAsync(11);
     await dispatcher.waitForIdle();
+    expect(checkerSignal?.aborted).toBe(true);
     finish(await allow(request));
     await Promise.resolve();
     expect(deliver).not.toHaveBeenCalled();
@@ -193,5 +196,111 @@ describe("opt-in final text admission", () => {
         },
       }),
     ).toThrow("invalid reply admission configuration");
+  });
+});
+
+describe("reply admission cancellation", () => {
+  it("rejects an already-cancelled profile without a policy check", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const check = vi.fn(allow);
+    const deliver = vi.fn();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      textAdmission: {
+        destinationId: "synthetic",
+        signal: controller.signal,
+        check,
+      },
+    });
+    expect(dispatcher.sendFinalReply({ text: "cancelled" })).toBe(false);
+    await dispatcher.waitForIdle();
+    expect(check).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it("does not start a check cancelled between enqueue and dispatch", async () => {
+    const controller = new AbortController();
+    const check = vi.fn(allow);
+    const deliver = vi.fn();
+    const onError = vi.fn();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      onError,
+      textAdmission: {
+        destinationId: "synthetic",
+        signal: controller.signal,
+        check,
+      },
+    });
+    expect(dispatcher.sendFinalReply({ text: "queued" })).toBe(true);
+    controller.abort();
+    await dispatcher.waitForIdle();
+    expect(check).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies an outstanding checker and rejects an allow returned during abort", async () => {
+    const controller = new AbortController();
+    const deliver = vi.fn();
+    const onError = vi.fn();
+    let checkerSignal: AbortSignal | undefined;
+    const check = vi.fn((request: TextAdmissionRequest, signal: AbortSignal) => {
+      checkerSignal = signal;
+      return new Promise<Awaited<ReturnType<typeof allow>>>((resolve) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            void allow(request).then(resolve);
+          },
+          { once: true },
+        );
+      });
+    });
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      onError,
+      textAdmission: {
+        destinationId: "synthetic",
+        signal: controller.signal,
+        check,
+      },
+    });
+    dispatcher.sendFinalReply({ text: "pending" });
+    dispatcher.sendFinalReply({ text: "later" });
+    await vi.waitFor(() => expect(checkerSignal).toBeDefined());
+    controller.abort();
+    await dispatcher.waitForIdle();
+    expect(checkerSignal?.aborted).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(deliver).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents subsequent queued delivery without claiming to undo a started send", async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const firstDelivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deliver = vi.fn(async () => firstDelivery);
+    const check = vi.fn(allow);
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      textAdmission: {
+        destinationId: "synthetic",
+        signal: controller.signal,
+        check,
+      },
+    });
+    dispatcher.sendFinalReply({ text: "first" });
+    dispatcher.sendFinalReply({ text: "second" });
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(1));
+    controller.abort();
+    release();
+    await dispatcher.waitForIdle();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
   });
 });
