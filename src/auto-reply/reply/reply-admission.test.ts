@@ -304,3 +304,73 @@ describe("reply admission cancellation", () => {
     expect(deliver).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("bounded admission backlog", () => {
+  it("stops the profile before checking when the 33rd pending reply arrives", async () => {
+    const check = vi.fn(allow);
+    const deliver = vi.fn();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      textAdmission: {
+        destinationId: "synthetic",
+        check,
+      },
+    });
+    for (let index = 0; index < 32; index++) {
+      expect(dispatcher.sendFinalReply({ text: `synthetic ${index}` })).toBe(true);
+    }
+    expect(dispatcher.sendFinalReply({ text: "overflow" })).toBe(false);
+    await dispatcher.waitForIdle();
+    expect(check).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(dispatcher.sendFinalReply({ text: "after overflow" })).toBe(false);
+  });
+
+  it("cancels an outstanding check on overflow without waiting for its timeout", async () => {
+    const deliver = vi.fn();
+    let checkerSignal: AbortSignal | undefined;
+    const check = vi.fn((_request: TextAdmissionRequest, signal: AbortSignal) => {
+      checkerSignal = signal;
+      return new Promise<Awaited<ReturnType<typeof allow>>>(() => {});
+    });
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      textAdmission: {
+        destinationId: "synthetic",
+        timeoutMs: 30_000,
+        check,
+      },
+    });
+    dispatcher.sendFinalReply({ text: "first" });
+    await vi.waitFor(() => expect(checkerSignal).toBeDefined());
+    for (let index = 1; index < 32; index++)
+      dispatcher.sendFinalReply({ text: `synthetic ${index}` });
+    expect(dispatcher.sendFinalReply({ text: "overflow" })).toBe(false);
+    await dispatcher.waitForIdle();
+    expect(checkerSignal?.aborted).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(deliver).not.toHaveBeenCalled();
+  }, 5_000);
+
+  it("releases capacity after completion and leaves an ungated backlog unchanged", async () => {
+    const deliver = vi.fn();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      textAdmission: { destinationId: "synthetic", check: allow },
+    });
+    for (let batch = 0; batch < 2; batch++) {
+      for (let index = 0; index < 32; index++) {
+        expect(dispatcher.sendFinalReply({ text: `synthetic ${batch}-${index}` })).toBe(true);
+      }
+      await dispatcher.waitForIdle();
+    }
+    expect(deliver).toHaveBeenCalledTimes(64);
+    const ungatedDeliver = vi.fn();
+    const ungated = createReplyDispatcher({ deliver: ungatedDeliver });
+    for (let index = 0; index < 33; index++) {
+      expect(ungated.sendFinalReply({ text: `synthetic ${index}` })).toBe(true);
+    }
+    await ungated.waitForIdle();
+    expect(ungatedDeliver).toHaveBeenCalledTimes(33);
+  });
+});

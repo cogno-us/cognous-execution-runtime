@@ -41,14 +41,26 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
     throw new Error("invalid reply admission configuration");
   }
   let stopped = false;
+  let activeController: AbortController | undefined;
+  let interrupt: ((error: Error) => void) | undefined;
+  const stop = (message: string) => {
+    // Latch first: a checker may return an allowance from its abort handler.
+    stopped = true;
+    activeController?.abort();
+    interrupt?.(new Error(message));
+  };
   const assertOpen = () => {
     if (signal?.aborted) stopped = true;
     if (stopped) throw new Error("reply admission stopped");
   };
   return {
     assertOpen,
-    snapshot(payload: ReplyPayload, kind: string): ReplyPayload {
+    snapshot(payload: ReplyPayload, kind: string, pending: number): ReplyPayload {
       assertOpen();
+      if (pending >= 32) {
+        stop("reply admission queue limit exceeded");
+        throw new Error("reply admission queue limit exceeded");
+      }
       if (
         kind !== "final" ||
         typeof payload.text !== "string" ||
@@ -57,7 +69,7 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
           (key) => key !== "text" && Reflect.get(payload, key) !== undefined,
         )
       ) {
-        stopped = true;
+        stop("reply admission supports bounded final text only");
         throw new Error("reply admission supports bounded final text only");
       }
       return Object.freeze({ text: payload.text });
@@ -67,6 +79,7 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let onAbort: (() => void) | undefined;
       const controller = new AbortController();
+      activeController = controller;
       try {
         const record = {
           outputId: randomUUID(),
@@ -82,12 +95,7 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
             return check(request, controller.signal);
           }),
           new Promise<never>((_, reject) => {
-            const stop = (message: string) => {
-              // Stop before notifying the checker: it may resolve during abort.
-              stopped = true;
-              controller.abort();
-              reject(new Error(message));
-            };
+            interrupt = reject;
             onAbort = () => stop("reply admission cancelled");
             signal?.addEventListener("abort", onAbort, { once: true });
             if (signal?.aborted) onAbort();
@@ -103,6 +111,8 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
         stopped = true;
         throw error;
       } finally {
+        activeController = undefined;
+        interrupt = undefined;
         if (timer !== undefined) clearTimeout(timer);
         if (onAbort) signal?.removeEventListener("abort", onAbort);
       }

@@ -109,7 +109,7 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     if (!normalized) return false;
     if (admission) {
       try {
-        normalized = admission.snapshot(normalized, kind);
+        normalized = admission.snapshot(normalized, kind, pending);
       } catch (error) {
         options.onError?.(error, { kind });
         return false;
