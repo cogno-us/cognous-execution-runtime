@@ -1,0 +1,51 @@
+name: O6 P1A operation admission
+
+on:
+  push:
+    paths:
+      - "engine/operation_admission*"
+      - "tests/test_o6_p1a*"
+      - "docs/o6-p1a*"
+      - ".github/workflows/o6-p1a*"
+  pull_request:
+    paths:
+      - "engine/operation_admission*"
+      - "tests/test_o6_p1a*"
+      - "docs/o6-p1a*"
+      - ".github/workflows/o6-p1a*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: o6-p1a-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  operation-admission:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused test dependency
+        run: python -m pip install pytest==8.3.5
+      - name: Compile bounded profile
+        run: python -m compileall -q engine/operation_admission.py
+      - name: Verify repository source resolution
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import engine.operation_admission as module
+
+          expected = (Path.cwd() / "engine" / "operation_admission.py").resolve()
+          actual = Path(module.__file__).resolve()
+          print(f"resolved operation admission source: {actual}")
+          if actual != expected:
+              raise SystemExit(f"unexpected operation admission source: {actual} != {expected}")
+          PY
+      - name: Run O6-P1A qualification
+        run: python -m pytest -q tests/test_o6_p1a_operation_admission.py
