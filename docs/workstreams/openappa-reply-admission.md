@@ -63,3 +63,32 @@ remain separate surfaces. Complete coverage requires source mapping and actual
 selected-host tests, not simply enabling this option. Preserve optional same-host
 C1 limits, no C2/C3, no real settlement, selected component locks and operational
 #30 HOLD. No credential/grant issuance or production activation is included.
+
+## Actual-policy fixture follow-up
+
+A dedicated Rust probe links the pinned OpenAPPA runtime
+`10aa0e09e32d8c6704bdb030dc3c66140bf81915` to the actual TypeScript dispatcher
+in a test-only bridge. Explicit fixture bootstrap creates a synthetic trajectory;
+checks reopen only that existing SQLite store/root. The fixed `synthetic-public`
+destination maps to the shared fixture's `send_public` policy. The Rust process
+computes its response digest from the exact received output record, including
+text, destination, kind and output ID, rather than echoing a caller's digest.
+
+Six additional cases require actual allowance before one callback delivery,
+persisted refusal after narrowing and repeated process reopen, missing/corrupt
+store noncreation/nonreplacement, rejection of an actual allowance for different
+text, and rejection of a destination outside the fixed mapping. A dedicated
+workflow builds the real probe, checks TypeScript, and requires all 40 tests
+(the six connected cases plus the existing 34) with no skips or failures.
+Ordinary test runs without the probe skip the six connected cases; those skips
+are not qualification evidence and are rejected by the dedicated gate.
+
+This extends the synthetic-checker qualification above to actual pinned policy
+for this narrow fixture. The fixed public-sink mapping is not a general output
+policy. The bridge uses synchronous child-process calls with bounded process
+limits for testing; it is not a production checker or event-loop deadline design.
+It does not enroll/authenticate a production caller, transmit network content,
+report successful delivery back to OpenAPPA, qualify output-policy changes during
+an in-flight send, or cover other runtime routes. Existing host, C0/C1, no-retry,
+lock and operational HOLD limitations remain. Hosted results must be inspected
+before claiming these connected cases pass.
