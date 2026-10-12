@@ -116,3 +116,26 @@ a started provider send, remove an OpenAPPA dispatch record already persisted by
 a check, or prove remote non-delivery. The synchronous Rust test bridge remains
 non-production and cannot process JS cancellation while its child call blocks.
 This change introduces no production host wiring or automatic retry.
+
+## Bounded pending queue
+
+The opt-in profile accepts at most 32 pending replies per dispatcher, including
+any current policy check or delivery callback. Together with the existing
+16,384-byte per-reply limit, this bounds the accepted pending text to 512 KiB;
+it is not a bound on total process memory, checker allocations or provider buffers.
+A completed queue entry releases its capacity. The ungated dispatcher retains
+its existing behavior.
+
+The 33rd pending reply is rejected and stops the profile, rather than silently
+dropping one item and continuing. Overflow or unsupported output aborts an active
+check and ends the admission wait without waiting for its deadline. All queued
+replies are withheld after the stop; an already-started send cannot be undone.
+A checker that ignores its signal may continue executing, but cannot release
+delivery. Capacity exhaustion provides no permission to recreate the dispatcher
+and retry uncertain output.
+
+Three new cases check overflow before dispatch, overflow during a never-settling
+check, capacity release, and preservation of ungated backlog behavior. Strict
+workflow totals become 41 unit/routing cases and 48 cases with the existing seven
+actual-policy cases. This is local admission backpressure, not distributed rate
+limiting, per-tenant quotas, durable deduplication or production-load qualification.
