@@ -6,6 +6,7 @@ Docs: https://docs.molt.bot
 Status: beta.
 
 ### Changes
+- Dependencies: narrow the music-metadata 11.16.0 lock update to its parser dependencies while preserving unrelated runtime resolutions. (#37) Thanks @dependabot.
 - Safety: preserve both executor profile guards and reject mixed refund-intent/authority-effect database activation. (#17) Thanks @titanicprime.
 - Safety: add an opt-in synthetic refund intent registry with durable original ownership, authorized dispatch binding and process-boundary tests; hub adoption remains pending. (#14) Thanks @titanicprime.
 - Rebrand: rename the npm package/CLI to `moltbot`, add a `moltbot` compatibility shim, and move extensions to the `@moltbot/*` scope.
