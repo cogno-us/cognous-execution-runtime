@@ -38,11 +38,13 @@ def ack(raw):
 def restart(path, binding, raw):
     result = subprocess.run([sys.executable, '-c', '''
 import json, sys
-from tools.openappa.feedback_journal import JournaledReporter
+from tools.openappa.feedback_journal import JournaledReporter, read_receipt
 from tools.openappa.local_resume import Binding
+binding, raw = Binding(**json.loads(sys.argv[2])), sys.argv[3].encode()
+r = read_receipt(sys.argv[1], binding, raw)
 def forbidden(*args):
     raise AssertionError('restart attempted another delivery')
-r = JournaledReporter(sys.argv[1], forbidden)(Binding(**json.loads(sys.argv[2])), sys.argv[3].encode())
+assert JournaledReporter(sys.argv[1], forbidden)(binding, raw) == r
 print(json.dumps(r))
 ''', str(path), json.dumps(asdict(binding)), raw.decode()], capture_output=True, text=True, check=True, timeout=10)
     return json.loads(result.stdout)
