@@ -57,7 +57,7 @@ jobs:
           python - <<'PY'
           import xml.etree.ElementTree as ET
           cases = ET.parse('openappa-reply-admission.xml').getroot().findall('.//testcase')
-          assert len(cases) == 57, len(cases)
+          assert len(cases) == 60, len(cases)
           assert all(not any(c.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for c in cases)
           PY
       - uses: actions/upload-artifact@v4

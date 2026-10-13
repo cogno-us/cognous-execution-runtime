@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import type { ReplyPayload } from "../types.js";
 
 export type TextAdmissionRequest = Readonly<{
@@ -90,9 +91,18 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
         };
         const requestSha256 = createHash("sha256").update(JSON.stringify(record)).digest("hex");
         const request = Object.freeze({ ...record, requestSha256 });
+        const startedAt = performance.now();
+        const assertTimely = () => {
+          // A busy event loop can delay the timer past a checker's resolution.
+          if (performance.now() - startedAt >= timeoutMs) {
+            stop("reply admission timed out");
+            throw new Error("reply admission timed out");
+          }
+        };
         const result = await Promise.race([
           Promise.resolve().then(() => {
             assertOpen();
+            assertTimely();
             return check(request, controller.signal);
           }),
           new Promise<never>((_, reject) => {
@@ -103,6 +113,7 @@ export function createTextReplyAdmission(options: TextReplyAdmission) {
             timer = setTimeout(() => stop("reply admission timed out"), timeoutMs);
           }),
         ]);
+        assertTimely();
         if (result?.outcome !== "allow" || result.requestSha256 !== requestSha256) {
           throw new Error("reply admission refused or uncorrelated");
         }
