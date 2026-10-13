@@ -105,8 +105,10 @@ output enforcement.
    check-to-commit limitations until an accepted synchronization contract is
    implemented and independently qualified.
 4. **Connect output outcomes and unresolved-feedback operations.** The reply
-   probe checks an actual allowance but does not close its dispatch with a
-   ToolResult. Stopping after a send error does not resolve that outcome. Define
+   fixture can explicitly report synthetic successful delivery with ToolResult,
+   inspect persisted closure and distinguish lost feedback receipts. This is not
+   a production outcome adapter or durable reply receipt journal. Stopping after
+   a send error does not resolve that outcome. Define
    trusted reassociation with execution evidence, receiver-side receipt
    requirements, and treatment of
    non-success outcomes. Keep inspection separate from reconciliation and any
