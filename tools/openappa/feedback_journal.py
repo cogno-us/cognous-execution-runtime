@@ -72,6 +72,24 @@ def read_receipt(path, binding, raw):
     return {'request_sha256': digest, 'outcome': outcome}
 
 
+def read_journal_status(path):
+    """Return a read-only host-wide count snapshot, without receipt identifiers.
+
+    Counts are bookkeeping observations, not remote delivery proof, a capacity
+    reservation, or retry permission. This is not a tenant-facing endpoint.
+    Unavailable state raises instead of being represented as an empty journal.
+    """
+    with _database(path, readonly=True) as db:
+        # One statement gives a consistent snapshot across both state counts.
+        rows = db.execute('SELECT state,count(*) FROM receipt GROUP BY state').fetchall()
+    counts = {'acknowledged': 0, 'unconfirmed': 0}
+    for state, count in rows:
+        if state not in counts:
+            raise ValueError('invalid feedback journal state')
+        counts[state] = count
+    return {'total': sum(counts.values()), **counts}
+
+
 class JournalCapacityExceeded(ValueError):
     """No new feedback claim was admitted; existing evidence remains intact."""
 
