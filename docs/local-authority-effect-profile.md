@@ -103,3 +103,31 @@ SQLite databases. Activation rejects the other profile's marker while holding
 store. Rejection preserves existing ownership and execution claims. Reopening
 the same profile remains supported. This is explicit separation, not combined
 intent ownership plus authority/effect enforcement for one operation.
+
+## Commit-state receipts (issue #84)
+
+New C1 commits retain an `authority_effect_receipts_v1` row in the same SQLite
+transaction as the effect, attempt, budget consumption and claim consumption.
+The receipt links attempt/effect/decision/claim IDs with the grant revision,
+active status, check time and a canonical commitment to the authoritative local
+grant row. The executor returns this receipt in `control_plane_evidence`;
+`authority_receipt(attempt_id)` retrieves it after restart or lost acknowledgement.
+
+`grant_state_commitment` is a content-addressed local state version.
+`status_version_source=local_authority_row_commitment` explicitly distinguishes it
+from an upstream issuer-assigned status revision, which this profile does not
+retain. The timestamp is the check time after obtaining the transaction lock,
+not proof of commit ordering. SQLite transaction serialization supplies the local
+order. The receipt does not add a remote sequencer, external signature or witness.
+
+Both effect-first and revocation-first schedules are tested. A revocation waiting
+behind an already locked effect transaction cannot interleave between authority
+validation and effect commit. If revocation commits first, there is no effect or
+commit receipt. If the effect commits first, its retained receipt names the
+active revision and local state commitment even after revocation. A failure
+before commit rolls back the effect and receipt together. No-claim dispatch is
+refused. Existing historical effects receive no fabricated receipt on migration.
+
+All invalidating authority writes MUST use this same database/transaction lock.
+A remote authority mirrored into it has a separate ordering boundary. Default C0
+is unchanged; no C2/C3, external refusal-custody or real-settlement claim follows.

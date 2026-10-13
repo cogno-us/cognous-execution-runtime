@@ -82,7 +82,7 @@ class AtomicLocalControlPlaneExecutor:
                 reason_code="dispatch_exception",
             )
         observation = value["observation"]
-        return ExecutionResult(status="partial" if observation["state"] == "partial" else "executed", decision_id=snapshot.decision_id, effect_id=snapshot.effect_id, attempt_id=attempt_id, attempted=True, acknowledged=True, observed_state=observation["state"], newly_executed=True, observation=copy.deepcopy(observation), control_plane_evidence={"local_authority_effect_profile":PROFILE,"claim_id":claim_id,"linearized_at":value["linearized_at"]})
+        return ExecutionResult(status="partial" if observation["state"] == "partial" else "executed", decision_id=snapshot.decision_id, effect_id=snapshot.effect_id, attempt_id=attempt_id, attempted=True, acknowledged=True, observed_state=observation["state"], newly_executed=True, observation=copy.deepcopy(observation), control_plane_evidence={"local_authority_effect_profile":PROFILE,"claim_id":claim_id,"linearized_at":value["linearized_at"],"authority_receipt":copy.deepcopy(value["authority_receipt"])})
 
     def reconcile(self, *, claim_id: str, envelope: ExecutionEnvelope) -> ExecutionResult:
         snapshot = snapshot_envelope(envelope)

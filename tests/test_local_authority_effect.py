@@ -826,3 +826,134 @@ def test_w1_tenant_claim_sample_bytes_match_live_model():
     sample = json.loads(sample_path.read_text(encoding="utf-8"))
     live = make_tenant_claim(tenant_envelope()).model_dump(mode="json", exclude_none=False)
     assert sample == live
+
+
+@pytest.mark.parametrize('revocation_first', [True, False])
+def test_commit_receipt_in_both_revocation_orders(tmp_path, revocation_first):
+    """Pause the losing writer before its ordering write; release after winner commits."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from agent_control_plane.bounded import commitment
+
+    clock, env, destination, claim = setup_atomic(tmp_path)
+    with destination._connect() as conn:
+        original_grant = dict(conn.execute(
+            'SELECT * FROM authority_grants_v1 WHERE grant_id=?', (claim.grant_id,)
+        ).fetchone())
+    paused, release = Event(), Event()
+
+    def effect():
+        if revocation_first:
+            paused.set()
+            assert release.wait(5)
+        return destination.execute_claim_atomic(
+            claim.claim_id, snapshot_envelope(env), attempt_id='ordered-attempt'
+        )
+
+    def revoke():
+        if not revocation_first:
+            paused.set()
+            assert release.wait(5)
+        destination.set_grant_status(claim.grant_id, status='revoked')
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(effect if revocation_first else revoke)
+        assert paused.wait(5)
+        try:
+            if revocation_first:
+                revoke()
+            else:
+                result = effect()
+        finally:
+            release.set()
+        if revocation_first:
+            with pytest.raises(PermissionError, match='grant state invalid'):
+                future.result(timeout=5)
+        else:
+            future.result(timeout=5)
+    restarted = AtomicAuthorityEffectDestination(tmp_path, clock=clock)
+    receipt = restarted.authority_receipt('ordered-attempt')
+    if revocation_first:
+        assert effect_rows(restarted) == [] and receipt is None
+    else:
+        assert len(effect_rows(restarted)) == 1
+        assert receipt == result['authority_receipt']
+        assert receipt['grant_revision'] == claim.grant_revision
+        assert receipt['grant_status'] == 'active'
+        assert receipt['grant_state_commitment'] == commitment(original_grant)
+        assert receipt['status_version_source'] == 'local_authority_row_commitment'
+        with restarted._connect() as conn:
+            assert conn.execute('SELECT status FROM authority_grants_v1').fetchone()[0] == 'revoked'
+
+
+def test_commit_receipt_rolls_back_with_effect(tmp_path):
+    class RollbackDestination(AtomicAuthorityEffectDestination):
+        def _transaction_stage(self, stage):
+            if stage == 'after_effect_insert_before_commit':
+                raise RuntimeError('synthetic transaction failure')
+    clock, env, destination, claim = setup_atomic(tmp_path)
+    failing = RollbackDestination(tmp_path, clock=clock)
+    with pytest.raises(RuntimeError, match='synthetic transaction failure'):
+        failing.execute_claim_atomic(claim.claim_id, snapshot_envelope(env), attempt_id='rollback-attempt')
+    assert effect_rows(destination) == []
+    assert destination.authority_receipt('rollback-attempt') is None
+    assert destination.claim_state(claim.claim_id) == 'issued'
+
+
+def test_effect_without_claim_has_no_receipt(tmp_path):
+    _, env, destination, _ = setup_atomic(tmp_path)
+    with pytest.raises(PermissionError, match='claim unavailable'):
+        destination.execute_claim_atomic('missing-claim', snapshot_envelope(env), attempt_id='no-claim')
+    assert destination.authority_receipt('no-claim') is None
+    assert effect_rows(destination) == []
+
+
+def test_executor_exposes_same_transaction_authority_receipt(tmp_path):
+    _, env, destination, claim = setup_atomic(tmp_path)
+    result = AtomicLocalControlPlaneExecutor(
+        workflow=object(), destination=destination, policy=policy(env.operation)
+    ).execute(envelope=env, claim_id=claim.claim_id, attempt_id='receipt-attempt')
+    assert result.status == 'executed'
+    assert result.control_plane_evidence['authority_receipt'] == destination.authority_receipt('receipt-attempt')
+
+
+def test_revocation_waits_while_effect_transaction_is_paused(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    paused, release, revoking, revoked = Event(), Event(), Event(), Event()
+    class PausedDestination(AtomicAuthorityEffectDestination):
+        def _transaction_stage(self, stage):
+            if stage == 'after_effect_insert_before_commit':
+                paused.set()
+                assert release.wait(5)
+    clock, env, destination, claim = setup_atomic(tmp_path)
+    writer = PausedDestination(tmp_path, clock=clock)
+    def revoke():
+        revoking.set()
+        destination.set_grant_status(claim.grant_id, status='revoked')
+        revoked.set()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        effect = pool.submit(writer.execute_claim_atomic, claim.claim_id,
+                             snapshot_envelope(env), attempt_id='paused-effect')
+        assert paused.wait(5)
+        invalidation = pool.submit(revoke)
+        try:
+            assert revoking.wait(5)
+            assert not revoked.is_set()
+        finally:
+            release.set()
+        effect.result(timeout=5)
+        invalidation.result(timeout=5)
+    assert len(effect_rows(destination)) == 1 and revoked.is_set()
+    assert destination.authority_receipt('paused-effect')['grant_status'] == 'active'
+
+
+def test_receipt_migration_does_not_invent_historical_evidence(tmp_path):
+    clock, env, destination, claim = setup_atomic(tmp_path)
+    destination.execute_claim_atomic(claim.claim_id, snapshot_envelope(env), attempt_id='old-effect')
+    with destination._connect() as conn:
+        conn.execute('DROP TABLE authority_effect_receipts_v1')
+    restarted = AtomicAuthorityEffectDestination(tmp_path, clock=clock)
+    assert len(effect_rows(restarted)) == 1
+    assert restarted.authority_receipt('old-effect') is None

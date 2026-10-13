@@ -179,6 +179,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     }
                     if "tenant_id" not in columns:
                         conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT")
+            # Additive migration: historical effects get no fabricated receipts.
+            conn.execute("""CREATE TABLE IF NOT EXISTS authority_effect_receipts_v1 (
+                attempt_id TEXT PRIMARY KEY,
+                effect_id TEXT NOT NULL,
+                claim_id TEXT NOT NULL,
+                receipt_json TEXT NOT NULL
+            )""")
             conn.execute("COMMIT")
 
     def _profile_present(self, conn: sqlite3.Connection) -> bool:
@@ -666,6 +673,24 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             )
             claim = claim_type.model_validate(claim_raw)
             self._validate_claim_state(conn, claim, snapshot, now)
+            # Same write transaction: no authority writer can interleave here.
+            grant_row = dict(conn.execute(
+                "SELECT * FROM authority_grants_v1 WHERE grant_id=?", (claim.grant_id,)
+            ).fetchone())
+            from agent_control_plane.bounded import commitment
+            receipt = {
+                "attempt_id": attempt_id,
+                "effect_id": snapshot.effect_id,
+                "decision_id": snapshot.decision_id,
+                "claim_id": claim_id,
+                "grant_id": claim.grant_id,
+                "grant_revision": grant_row["revision"],
+                "grant_status": grant_row["status"],
+                "grant_state_commitment": commitment(grant_row),
+                "status_version_source": "local_authority_row_commitment",
+                "checked_at": now.isoformat(),
+                "profile": PROFILE,
+            }
 
             budget = conn.execute(
                 "SELECT * FROM effect_budgets_v1 WHERE budget_id=?", (claim.budget_id,)
@@ -731,6 +756,11 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 "INSERT INTO attempt_events(attempt_id,status,error,created_at) VALUES(?,?,?,?)",
                 (attempt_id, "partial" if state == "partial" else "executed", None, now.timestamp()),
             )
+            conn.execute(
+                "INSERT INTO authority_effect_receipts_v1 VALUES(?,?,?,?)",
+                (attempt_id, snapshot.effect_id, claim_id,
+                 json.dumps(receipt, sort_keys=True, separators=(",", ":"))),
+            )
             self._transaction_stage("after_effect_insert_before_commit")
             conn.execute("COMMIT")
             self._transaction_stage("after_commit")
@@ -744,7 +774,17 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "newly_executed": True,
             "observation": observation,
             "linearized_at": now.isoformat(),
+            "authority_receipt": copy.deepcopy(receipt),
         }
+
+    def authority_receipt(self, attempt_id: str) -> dict[str, Any] | None:
+        """Read a retained local commit receipt; absence does not prove non-effect."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT receipt_json FROM authority_effect_receipts_v1 WHERE attempt_id=?",
+                (attempt_id,),
+            ).fetchone()
+        return json.loads(row["receipt_json"]) if row else None
 
     def reconcile_claim(self, claim_id: str, snapshot: FrozenEnvelope) -> dict[str, Any]:
         from engine.local_authority_effect_recovery import reconcile_claim_exact
