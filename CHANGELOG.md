@@ -6,6 +6,7 @@ Docs: https://docs.molt.bot
 Status: beta.
 
 ### Changes
+- Safety: retain same-transaction local authority receipts and qualify both revocation/effect orders (issue #84).
 - CI: build the A2UI scaffold before isolated dependency-guard and macOS test jobs; retain bundle failures instead of bypassing scaffold assertions. (#29) Thanks @titanicprime.
 - Dependencies: narrow the music-metadata 11.16.0 lock update to its parser dependencies while preserving unrelated runtime resolutions. (#37) Thanks @dependabot.
 - Safety: preserve both executor profile guards and reject mixed refund-intent/authority-effect database activation. (#17) Thanks @titanicprime.
