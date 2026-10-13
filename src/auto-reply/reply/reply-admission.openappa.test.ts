@@ -201,4 +201,77 @@ describe.skipIf(!probe)("actual pinned OpenAPPA final-text admission", () => {
     expect(onError).toHaveBeenCalledTimes(2);
     expect(dispatcher.sendFinalReply({ text: "new output" })).toBe(false);
   });
+  it.each(["success", "feedback-unavailable", "feedback-receipt-lost", "send-receipt-lost"])(
+    "keeps synthetic delivery separate from actual feedback: %s",
+    async (mode) => {
+      const destination: string[] = [];
+      let raw: string | undefined;
+      let digest: string | undefined;
+      let receipt: { requestSha256: string; outcome: string } | undefined;
+      const audit = () => JSON.parse(run("audit")) as { event: unknown }[];
+      const closed = (entries: { event: unknown }[]) =>
+        entries.filter(
+          (entry) =>
+            JSON.stringify(entry.event) ===
+            JSON.stringify({ Closed: { outcome: { Ran: { effects: ["egress"] } } } }),
+        ).length;
+      const before = audit();
+      const onError = vi.fn();
+      const deliver = vi.fn(async (payload) => {
+        destination.push(payload.text);
+        if (mode === "send-receipt-lost") throw new Error("synthetic send receipt lost");
+        if (mode === "feedback-unavailable") throw new Error("synthetic feedback unavailable");
+        const observed = JSON.parse(run("feedback", raw));
+        if (mode === "feedback-receipt-lost") throw new Error("synthetic feedback receipt lost");
+        receipt = observed;
+      });
+      const dispatcher = createReplyDispatcher({
+        deliver,
+        onError,
+        textAdmission: {
+          destinationId: "synthetic-public",
+          check: async (request) => {
+            const { requestSha256, ...record } = request;
+            raw = JSON.stringify(record);
+            digest = requestSha256;
+            return check(request);
+          },
+        },
+      });
+      dispatcher.sendFinalReply({ text: "synthetic observed output" });
+      await dispatcher.waitForIdle();
+      expect(raw).toBeDefined();
+      expect(digest).toBeDefined();
+      expect(destination).toEqual(["synthetic observed output"]);
+      expect(deliver).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledTimes(mode === "success" ? 0 : 1);
+      expect(receipt).toEqual(
+        mode === "success" ? { requestSha256: digest, outcome: "ack" } : undefined,
+      );
+      const after = audit();
+      const committed = mode === "success" || mode === "feedback-receipt-lost";
+      expect(closed(after) - closed(before)).toBe(Number(committed));
+      if (committed) {
+        // Explicit fixture-only duplicate feedback; never re-send the output.
+        expect(JSON.parse(run("feedback", raw))).toEqual({
+          requestSha256: digest,
+          outcome: "refuse",
+        });
+        expect(audit()).toEqual(after);
+      }
+      expect(destination).toEqual(["synthetic observed output"]);
+    },
+  );
+
+  it("refuses feedback for an output that was never admitted", () => {
+    const before = JSON.parse(run("audit"));
+    const raw = JSON.stringify({
+      outputId: "synthetic-unreleased-output",
+      kind: "final",
+      destinationId: "synthetic-public",
+      text: "synthetic output",
+    });
+    expect(JSON.parse(run("feedback", raw)).outcome).toBe("refuse");
+    expect(JSON.parse(run("audit"))).toEqual(before);
+  });
 });
