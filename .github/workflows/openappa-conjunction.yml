@@ -60,7 +60,7 @@ jobs:
           python - <<'PY'
           import xml.etree.ElementTree as ET
           cases = ET.parse('conjunction.xml').getroot().findall('.//testcase')
-          assert len(cases) == 94, len(cases)
+          assert len(cases) == 96, len(cases)
           assert all(not any(c.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for c in cases)
           PY
       - uses: actions/upload-artifact@v4
