@@ -1,20 +1,20 @@
 # OpenAPPA integration status
 
 Status reviewed against Execution Runtime
-`f99a31f27aecad0dfe1683b8f5ad833b367699d7` (PR #71 merged).
+`11d44f65b7d24ad6eda5acbb5ec30d3f8f3346c5` (PR #75 merged).
 This directory contains opt-in synthetic qualification tooling and trusted-host
 helpers. It is not an installed production adapter or release acceptance.
 
 ## Verified current scope
 
 The optional final-text reply gate is implemented, with no production caller
-enabling it. The latest inspected [actual reply admission run](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38324725635),
-job `115060643217`, at PR #71 head
-`935b00adf6df7b47894980a7b0380ec295b5a385` passed the pinned Rust build,
-full TypeScript type check and **52 cases**: 44 admission/routing cases plus
-8 connected OpenAPPA cases. The workflow requires exactly 52 JUnit cases with
-no skips, failures or errors. The separate optional-admission workflow passed
-those same 44 cases; they are not additional coverage to add to the total.
+enabling it. The latest inspected [actual reply admission run](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38333063089),
+job `115086943539`, at PR #75 head
+`0301fccc3dfe6c138af9fe7d3ba23eda457faf28` passed the pinned Rust build,
+full TypeScript type check and **57 cases**: 44 admission/routing cases plus
+13 connected OpenAPPA cases. The workflow requires exactly 57 JUnit cases with
+no skips, failures or errors. The 44 admission/routing cases are included in
+that total, not additional coverage to add to it.
 
 This gate snapshots normalized final text, checks current policy before the
 queued delivery callback, and requires a digest-correlated allowance. Timeout,
@@ -25,17 +25,18 @@ a rejected delivery may have partially completed and is not retry permission.
 These are callback-boundary guarantees, not authentication, final provider-wire
 binding, durable outcome recording or complete sink interception.
 
-The recorded conjunction baseline is
-[38314021317](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38314021317),
-job `115026256703`, at PR #64 head
-`d4f8e77841d5900488f9ccb11d6a404ae0d2dae2`: **82 passed in 11.23 seconds**.
-The workflow also required exactly 82 JUnit cases with no skips, failures or
+The latest inspected conjunction run is
+[38333063009](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38333063009),
+job `115086943497`, at PR #75 head
+`0301fccc3dfe6c138af9fe7d3ba23eda457faf28`: **96 passed in 20.61 seconds**.
+The workflow also required exactly 96 JUnit cases with no skips, failures or
 errors. This is evidence for that source revision and bounded fixture scope;
 it does not establish that all repository or platform CI passed.
 
 | Capability | Current implementation and qualification | Boundary |
 | --- | --- | --- |
 | Optional final-text admission | [Reply gate](../../src/auto-reply/reply/reply-admission.ts) and [actual policy cases](../../src/auto-reply/reply/reply-admission.openappa.test.ts) qualify bounded queued text and stop behavior | Trusted host must bind identity and destination; no production caller, provider receipt or policy-generation atomicity |
+| Synthetic reply outcome feedback | [Reply probe](cognous_reply_admission_main.rs) reports explicit synthetic success to actual OpenAPPA and reopens its audit | Persisted closure and observed Ack are separate; no production outcome adapter or durable reply journal |
 | Flow and institutional permission | [Conjunction harness](conjunction_harness.py) checks correlated flow allowance before native authority validation and synthetic SQLite execution | The two permissions remain independent; no comprehensive refund information-flow policy |
 | Persistent trajectory | [Persistent probe](cognous_persistent_join_main.rs) reopens the existing upstream store/root and retains restrictions | Synthetic tool mapping; no rollback protection or complete lifecycle serialization |
 | Local identity and resume | [Local resume](local_resume.py) uses kernel Unix peer UID and explicit host enrollment; missing/replaced state refuses resume | Linux local OS identity, trusted host/directory; no remote identity or hostile same-UID isolation |
@@ -45,11 +46,11 @@ it does not establish that all repository or platform CI passed.
 | Receipt inspection | `read_receipt` in the journal opens existing state read-only and distinguishes absent, unconfirmed and recorded Ack | Absent is not retry permission; unavailable state is an error; no remote receipt proof |
 | Crash and contention checks | [Crash cases](test_journal_crash.py) and [process contention cases](test_journal_contention.py) exercise owned child termination and six claimers | Known process checkpoints, not power failure, storage loss or production-load qualification |
 
-The 82-case conjunction gate includes several scopes in this table. Separate
+The 96-case conjunction gate includes several scopes in this table. Separate
 wire, embedded-runtime, trajectory and local-resume workflows remain distinct
 qualification surfaces. Do not add historical test totals together or infer
-that those independent workflows ran at the same head. The 52 reply cases and
-82 conjunction cases qualify different boundaries and are not one integrated
+that those independent workflows ran at the same head. The 57 reply cases and
+96 conjunction cases qualify different boundaries and are not one integrated
 end-to-end result.
 
 ## Reproduction and source selection
@@ -74,11 +75,10 @@ absent; only the dedicated actual-admission workflow enforces the full count.
 | Action Manifest | `46c950bed37fe3812000895430bc0312d29e37ce` |
 
 These are fixture pins, not an advancement of the selected hub component lock.
-The [PR #64 qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/64#issuecomment-6133427534)
-records that inspected conjunction result. The
-[PR #71 qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/71#issuecomment-6134931736)
-records reply admission qualification and incomplete broader CI at merge.
-Neither record claims all repository or platform checks passed.
+The [PR #75 qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/75#issuecomment-6136216337)
+records both inspected runs and incomplete broader CI at merge. Earlier PR
+records remain historical evidence at their own source revisions, not current
+combined qualification. No record here claims all platform checks passed.
 
 ## Remaining work and order
 
@@ -110,8 +110,7 @@ output enforcement.
    a production outcome adapter or durable reply receipt journal. Stopping after
    a send error does not resolve that outcome. Define
    trusted reassociation with execution evidence, receiver-side receipt
-   requirements, and treatment of
-   non-success outcomes. Keep inspection separate from reconciliation and any
+   requirements, and treatment of non-success outcomes. Keep inspection separate from reconciliation and any
    future retry decision. Duplicate refusal is not acknowledgment.
 5. **Complete journal operations policy.** Optional `max_receipts` now refuses
    new feedback claims at a host-selected row limit without deleting evidence.
@@ -129,6 +128,26 @@ No selected component lock, credential/grant issuance, default runtime
 activation or production effect is authorized by this status document. Preserve
 C0 check-to-commit limitations, optional same-host C1, no C2/C3, no real settlement
 and operational orchestrator #30 HOLD.
+
+
+## Next integration decision
+
+The next production-adapter step requires an owner-selected host contract, not
+another increase in synthetic test counts. The proposed starting point remains
+one trusted Linux host, explicit kernel-UID enrollment and buffered final text.
+That proposal has not selected a real service or accepted its security boundary.
+
+Before wiring a production caller, record the service process, supported
+entrypoints/channels, account-to-tenant mapping, policy owner, private state
+location, revocation/shutdown owners and technical exclusions for every other
+output path. Then bind one selected route end to end, including its final
+provider representation and separate outcome/feedback observations. An available
+test machine alone does not supply these decisions.
+
+Work possible before deployment includes designing durable reply observations,
+policy/lifecycle synchronization and journal retention/backup procedures against
+that proposed contract. Such work must retain its provisional status; fixture
+success cannot choose the host boundary or authorize activation.
 
 ## Historical design notes
 

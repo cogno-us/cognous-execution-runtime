@@ -139,8 +139,13 @@ optional same-host C1, no C2/C3, no real settlement and operational #30 HOLD.
 
 ## Bounded implementation follow-up
 
-The [optional final-text dispatcher gate](openappa-reply-admission.md) implements
+The [optional final-text dispatcher gate](/workstreams/openappa-reply-admission) implements
 one admission interface and tests the actual queue's delivery-callback boundary.
-It is not wired to an authenticated deployment host or actual OpenAPPA policy.
+The synthetic fixture now uses actual pinned OpenAPPA policy and explicit
+ToolResult feedback, with persisted-audit checks for lost receipts and duplicate
+feedback. This qualifies a test-owned callback boundary, not an authenticated
+deployment host, final provider representation or durable reply observation.
+The initial buffering proposal above has this bounded implementation; it does
+not establish complete output buffering or production performance.
 Streaming, other output routes, complete sink coverage and deployment acceptance
 remain unqualified. The proposal's wider requirements are not superseded.
