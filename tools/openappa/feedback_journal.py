@@ -38,6 +38,44 @@ def _database(path, *, readonly=False):
         os.close(fd)
 
 
+def export_journal_snapshot(source, destination):
+    """Explicit private snapshot export; never overwrite, restore or prune state.
+
+    Uses SQLite's backup API, not a live database file copy. The directory owner
+    is trusted. This is not rollback protection, a restore procedure, or proof
+    that the snapshot includes claims committed after its snapshot boundary.
+    Consume the destination only after successful return. Process interruption
+    may leave an incomplete destination; no power-loss guarantee is made.
+    """
+    destination = Path(destination).absolute()
+    _private_directory(destination.parent)
+    with _database(source, readonly=True) as db:
+        # Reject an unavailable journal before creating any destination file.
+        db.execute('SELECT call_key,request_sha256,state FROM receipt LIMIT 0')
+        fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_CLOEXEC, 0o600)
+        identity = os.fstat(fd)
+        complete = False
+        try:
+            def progress(status, remaining, total):
+                if status in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                    raise ValueError('feedback snapshot unavailable')
+            with closing(sqlite3.connect(destination)) as target:
+                db.backup(target, pages=256, progress=progress)
+            os.fsync(fd)
+            complete = True
+        finally:
+            os.close(fd)
+            if not complete:
+                # Remove only the incomplete file created by this invocation.
+                try:
+                    observed = destination.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    if (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino):
+                        destination.unlink()
+
+
 def _identity(binding, raw):
     context = json.loads(raw)['context']
     if (context['tenant_id'], context['principal_id'], context['root_id']) != (
