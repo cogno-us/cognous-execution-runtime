@@ -149,3 +149,55 @@ The initial buffering proposal above has this bounded implementation; it does
 not establish complete output buffering or production performance.
 Streaming, other output routes, complete sink coverage and deployment acceptance
 remain unqualified. The proposal's wider requirements are not superseded.
+
+
+## Gateway route preflight for the Linux development profile
+
+Source inspected at Execution Runtime
+`8245db38e56f5298f260332fccf848556ffb8bbf` (PR #76 merge).
+Use the proposed single-host Linux, buffered-final-text profile as the development
+direction. This inspection does not select a deployed service, OS account,
+recipient, credential or production route. It identifies why connecting the
+existing dispatcher alone would not complete a gateway integration.
+
+The [gateway chat methods](../../src/gateway/server-methods/chat.ts) construct a
+reply dispatcher whose delivery callback collects final text. They pass
+`disableBlockStreaming: true` to the reply resolver. Separately, the
+[gateway event handler](../../src/gateway/server-chat.ts) publishes agent events,
+chat deltas and lifecycle-driven final/error messages. The block-streaming flag
+therefore does not establish an all-output buffering boundary.
+
+| Inspected surface | Observed route | Required control in a future opt-in profile |
+| --- | --- | --- |
+| Agent-run chat output | Assistant events populate buffers and produce chat deltas; lifecycle events produce final/error output through broadcast and session-node delivery | Suppress early content on both output transports; bound the buffer and admit the complete final representation before either transport receives it |
+| Agent event output | Agent payloads are broadcast separately and forwarded to the session node; tool event visibility has a separate verbosity check | Treat event content as an output surface; exclude unsupported streams technically and define the small set of content-free lifecycle events allowed before final admission |
+| Non-agent final reply | The chat method combines and trims collected reply parts, appends a transcript entry and broadcasts a final message | Check the combined representation and concrete audience after transformations; qualify transcript access separately from live output |
+| History | The history method reads, strips envelopes and byte-caps transcript messages before returning them | Disable history in the initial profile or apply an accepted historical-disclosure policy; a prior live-send decision is not automatic permission to disclose history |
+| Injection and errors | Injection writes assistant transcript content; chat methods and event handling have error-response paths outside the final-text callback | Exclude injection until separately governed; use bounded, approved error content and cover direct responses as well as broadcasts |
+
+[Gateway method authorization](../../src/gateway/server-methods.ts) already
+checks client roles and scopes. This inventory does not claim those checks are
+absent or bypassed. Their existence does not establish the proposed Linux
+kernel-UID enrollment, tenant/root binding or OpenAPPA output-admission contract.
+A client-supplied session key or display identity must not substitute for the
+accepted host identity mapping.
+
+Before implementation, choose whether the first supported transport is a
+separate local-only text endpoint or a restricted gateway profile. A gateway
+profile must account for both broadcasts and session-node delivery and all the
+surfaces above. A separate endpoint can have a smaller scope only if existing
+channels and gateway routes are technically excluded from that profile.
+
+The next reviewable implementation should provide a host-owned run context,
+explicit route exclusions and bounded final-output assembly before connecting
+the existing admission gate. Acceptance must observe every included output
+transport: denied, cancelled, oversized, unsupported or unavailable checks emit
+no protected content; allowed output matches the admitted bytes and audience;
+errors, history and lifecycle completion do not introduce another output path.
+The test matrix must also distinguish post-send uncertainty from refusal and
+must not use absence of a receipt to authorize another send.
+
+No gateway behavior is changed by this preflight. End-to-end deployment
+qualification, policy-generation coordination, durable outcome handling and the
+existing C0/C1 limitations remain outstanding. The inspected paths are a bounded
+inventory, not a comprehensive audit of extensions, tools or all gateway methods.
