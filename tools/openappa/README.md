@@ -1,19 +1,19 @@
 # OpenAPPA integration status
 
 Status reviewed against Execution Runtime
-`11d44f65b7d24ad6eda5acbb5ec30d3f8f3346c5` (PR #75 merged).
+`3858c1e2735081187606a038a685e28c22143856` (PR #81 merged).
 This directory contains opt-in synthetic qualification tooling and trusted-host
 helpers. It is not an installed production adapter or release acceptance.
 
 ## Verified current scope
 
 The optional final-text reply gate is implemented, with no production caller
-enabling it. The latest inspected [actual reply admission run](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38333063089),
-job `115086943539`, at PR #75 head
-`0301fccc3dfe6c138af9fe7d3ba23eda457faf28` passed the pinned Rust build,
-full TypeScript type check and **57 cases**: 44 admission/routing cases plus
-13 connected OpenAPPA cases. The workflow requires exactly 57 JUnit cases with
-no skips, failures or errors. The 44 admission/routing cases are included in
+enabling it. The latest inspected [actual reply admission run](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38336597237),
+job `115097967762`, at PR #78 head
+`ed38bf3e466f103819c4d15f585e95fcbf17d1d3` passed the pinned Rust build,
+full TypeScript type check and **60 cases**: 47 admission/routing cases plus
+13 connected OpenAPPA cases. The workflow requires exactly 60 JUnit cases with
+no skips, failures or errors. The 47 admission/routing cases are included in
 that total, not additional coverage to add to it.
 
 This gate snapshots normalized final text, checks current policy before the
@@ -26,10 +26,10 @@ These are callback-boundary guarantees, not authentication, final provider-wire
 binding, durable outcome recording or complete sink interception.
 
 The latest inspected conjunction run is
-[38333063009](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38333063009),
-job `115086943497`, at PR #75 head
-`0301fccc3dfe6c138af9fe7d3ba23eda457faf28`: **96 passed in 20.61 seconds**.
-The workflow also required exactly 96 JUnit cases with no skips, failures or
+[38407722835](https://github.com/cogno-us/cognous-execution-runtime/actions/runs/38407722835),
+job `115331611990`, at PR #81 head
+`baeacfc69a7d33c6306f45ac04893ea0772f669e`: **125 passed in 21.09 seconds**.
+The workflow also required exactly 125 JUnit cases with no skips, failures or
 errors. This is evidence for that source revision and bounded fixture scope;
 it does not establish that all repository or platform CI passed.
 
@@ -49,11 +49,11 @@ it does not establish that all repository or platform CI passed.
 | Receipt inspection | `read_receipt` in the journal opens existing state read-only and distinguishes absent, unconfirmed and recorded Ack | Absent is not retry permission; unavailable state is an error; no remote receipt proof |
 | Crash and contention checks | [Crash cases](test_journal_crash.py) and [process contention cases](test_journal_contention.py) exercise owned child termination and six claimers | Known process checkpoints, not power failure, storage loss or production-load qualification |
 
-The 96-case conjunction gate includes several scopes in this table. Separate
+The 125-case conjunction gate includes several scopes in this table. Separate
 wire, embedded-runtime, trajectory and local-resume workflows remain distinct
 qualification surfaces. Do not add historical test totals together or infer
-that those independent workflows ran at the same head. The 57 reply cases and
-96 conjunction cases qualify different boundaries and are not one integrated
+that those independent workflows ran at the same head. The 60 reply cases and
+125 conjunction cases qualify different boundaries and are not one integrated
 end-to-end result.
 
 ## Reproduction and source selection
@@ -78,8 +78,9 @@ absent; only the dedicated actual-admission workflow enforces the full count.
 | Action Manifest | `46c950bed37fe3812000895430bc0312d29e37ce` |
 
 These are fixture pins, not an advancement of the selected hub component lock.
-The [PR #75 qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/75#issuecomment-6136216337)
-records both inspected runs and incomplete broader CI at merge. Earlier PR
+The [PR #78 reply qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/78#issuecomment-6136851627)
+and [PR #81 conjunction qualification record](https://github.com/cogno-us/cognous-execution-runtime/pull/81#issuecomment-6147096626)
+record their respective inspected runs and broader CI status at merge. Earlier PR
 records remain historical evidence at their own source revisions, not current
 combined qualification. No record here claims all platform checks passed.
 
@@ -119,9 +120,10 @@ output enforcement.
    new feedback claims at a host-selected row limit without deleting evidence.
    All trusted writers must use the same limit; omission preserves existing
    behavior. This is not a byte quota or an execution-admission reservation.
-   Decide retention, deployment capacity/backpressure, backup,
-   migration and rollback policy. Do not silently delete unconfirmed claims or
-   recreate missing journals: that can erase the basis for suppressing duplicate
+   The [journal operations runbook](journal-operations.md) covers current
+   inspection, capacity and snapshot handling. Accept deployment retention,
+   capacity/backpressure, migration and rollback policy before promotion. Do not
+   silently delete unconfirmed claims or recreate missing journals: that can erase the basis for suppressing duplicate
    delivery. These policies can be designed and locally tested without deployment.
 6. **Qualify the accepted deployment.** Exercise identity revocation, shutdown,
    storage recovery, output interception and operational response in the selected
