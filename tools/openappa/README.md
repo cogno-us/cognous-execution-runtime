@@ -41,6 +41,7 @@ it does not establish that all repository or platform CI passed.
 | Local identity and resume | [Local resume](local_resume.py) uses kernel Unix peer UID and explicit host enrollment; missing/replaced state refuses resume | Linux local OS identity, trusted host/directory; no remote identity or hostile same-UID isolation |
 | Result feedback | [Feedback wrapper](feedback_harness.py) reports only correlated applied success and keeps effect status separate from feedback status | Partial/unknown results are not success; unavailable feedback never retries the effect |
 | Durable feedback bookkeeping | [Journal](feedback_journal.py) commits a claim before delivery and records only an exact correlated Ack | Unconfirmed rows remain unresolved; no atomic coupling to effect or remote feedback |
+| Optional receipt capacity | `JournaledReporter(..., max_receipts=N)` counts existing rows and claims under one SQLite writer reservation | Host-configured row bound only; no deletion, byte quota, persisted configuration or prevention of an already-completed effect |
 | Receipt inspection | `read_receipt` in the journal opens existing state read-only and distinguishes absent, unconfirmed and recorded Ack | Absent is not retry permission; unavailable state is an error; no remote receipt proof |
 | Crash and contention checks | [Crash cases](test_journal_crash.py) and [process contention cases](test_journal_contention.py) exercise owned child termination and six claimers | Known process checkpoints, not power failure, storage loss or production-load qualification |
 
@@ -110,7 +111,11 @@ output enforcement.
    requirements, and treatment of
    non-success outcomes. Keep inspection separate from reconciliation and any
    future retry decision. Duplicate refusal is not acknowledgment.
-5. **Bound journal operations.** Decide retention, capacity/backpressure, backup,
+5. **Complete journal operations policy.** Optional `max_receipts` now refuses
+   new feedback claims at a host-selected row limit without deleting evidence.
+   All trusted writers must use the same limit; omission preserves existing
+   behavior. This is not a byte quota or an execution-admission reservation.
+   Decide retention, deployment capacity/backpressure, backup,
    migration and rollback policy. Do not silently delete unconfirmed claims or
    recreate missing journals: that can erase the basis for suppressing duplicate
    delivery. These policies can be designed and locally tested without deployment.

@@ -72,16 +72,28 @@ def read_receipt(path, binding, raw):
     return {'request_sha256': digest, 'outcome': outcome}
 
 
+class JournalCapacityExceeded(ValueError):
+    """No new feedback claim was admitted; existing evidence remains intact."""
+
+
 class JournaledReporter:
     """A recorded claim prevents a second delivery after restart or receipt loss.
 
     The callback remains trusted. Acknowledged means its exact correlated Ack
     was observed and recorded, not independently verified remote settlement.
     Unconfirmed never becomes acknowledged through duplicate refusal.
+
+    max_receipts optionally caps total journal rows, including acknowledged
+    claims. It is trusted host configuration, not persisted policy or a byte
+    quota. Capacity refusal never undoes an effect that already completed.
     """
-    def __init__(self, path, report_success):
+    def __init__(self, path, report_success, *, max_receipts=None):
+        if max_receipts is not None and (type(max_receipts) is not int or max_receipts < 1):
+            raise ValueError('max_receipts must be a positive integer or None')
         self.path = path
         self.report_success = report_success
+        # Trusted host configuration; all writers must use the same limit.
+        self.max_receipts = max_receipts
 
     def __call__(self, binding, raw):
         key, digest = _identity(binding, raw)
@@ -93,6 +105,12 @@ class JournaledReporter:
                     raise ValueError('feedback call identity was reused')
                 return {'request_sha256': digest,
                         'outcome': 'ack' if prior[1] == 'acknowledged' else 'unconfirmed'}
+            # Count and claim share the writer reservation. Never evict receipts
+            # to make room, including acknowledged rows used for deduplication.
+            if self.max_receipts is not None:
+                count = db.execute('SELECT count(*) FROM receipt').fetchone()[0]
+                if count >= self.max_receipts:
+                    raise JournalCapacityExceeded('feedback journal capacity reached')
             db.execute('INSERT INTO receipt VALUES (?,?,?)', (key, digest, 'unconfirmed'))
         # Commit the claim before delivery; a crash leaves it unconfirmed.
         expected = {'request_sha256': digest, 'outcome': 'ack'}
