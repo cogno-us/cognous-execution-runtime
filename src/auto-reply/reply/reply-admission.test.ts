@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TextAdmissionRequest } from "./reply-admission.js";
 import { createReplyDispatcher } from "./reply-dispatcher.js";
@@ -107,6 +108,42 @@ describe("opt-in final text admission", () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(dispatcher.sendFinalReply({ text: "two" })).toBe(false);
   });
+
+  it.each([9, 10, 11])(
+    "checks elapsed time before accepting an allowance at %s ms",
+    async (elapsed) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const clock = vi.spyOn(performance, "now").mockReturnValue(100);
+      try {
+        const deliver = vi.fn();
+        const onError = vi.fn();
+        let checkerSignal: AbortSignal | undefined;
+        const check = vi.fn(async (request: TextAdmissionRequest, signal: AbortSignal) => {
+          checkerSignal = signal;
+          // Model elapsed work without running the scheduled timeout callback.
+          clock.mockReturnValue(100 + elapsed);
+          return allow(request);
+        });
+        const dispatcher = createReplyDispatcher({
+          deliver,
+          onError,
+          textAdmission: { destinationId: "synthetic", timeoutMs: 10, check },
+        });
+        dispatcher.sendFinalReply({ text: "synthetic output" });
+        await dispatcher.waitForIdle();
+        expect(check).toHaveBeenCalledTimes(1);
+        expect(deliver).toHaveBeenCalledTimes(elapsed < 10 ? 1 : 0);
+        expect(onError).toHaveBeenCalledTimes(elapsed < 10 ? 0 : 1);
+        expect(checkerSignal?.aborted).toBe(elapsed >= 10);
+        expect(vi.getTimerCount()).toBe(0);
+        if (elapsed >= 10) {
+          expect(dispatcher.sendFinalReply({ text: "later output" })).toBe(false);
+        }
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
 
   it.each(["media", "channel-data", "block", "tool", "oversize"])(
     "rejects unsupported %s",
