@@ -107,3 +107,24 @@ The revised branch upgrades the envelope to 0.2.0 and replaces the first pilot a
 When an existing pilot SQLite file contains the earlier `attempts(status,error)` schema, Moltbot Safe migrates those rows on open. Each historical row is preserved with operation digest `legacy:unknown` and its prior outcome is retained as an attempt event. The migration does not infer missing authorization or operation content from those legacy rows.
 
 No production-state migration is claimed because PR #4 has not been merged or deployed as a production interface.
+
+## Optional local effective grant precondition
+
+`engine.effective_grant.EffectiveGrantDestination` activates
+`sqlite-effective-grant/0.1` in a synthetic destination database. A trusted
+`set_effective_grant` writer serializes principal, grant revision, semantic
+permissions and status with effect commit. The Control Plane's opt-in
+runtime-authority/0.1 profile supplies an approval-bound expected digest and
+`effective-grant/0.1` derivation. The destination compares them under the actual
+`BEGIN IMMEDIATE` effect transaction. Widening, narrowing, revocation, wrong
+principal, missing state and unknown derivation refuse before inserting an effect.
+Reopening the database through the base destination does not bypass the table.
+
+This is same-database synthetic enforcement. It does not make remote authority,
+purpose or policy stores atomic. Host/database access must separate authority
+writers from untrusted agents; possession of the SQLite file can bypass that
+separation. No new OS isolation or production key custody is claimed. This
+profile is independent of the existing atomic claim and refund-intent profiles;
+unsupported combinations refuse. Historical selected pins and release permissions
+are unchanged. Source provenance: supplied Moltbook 101526_A K3, 15 October 2026;
+tests and code are original synthetic implementations under existing licenses.
