@@ -65,7 +65,9 @@ jobs:
           PYTHONPATH: ".:pinned/control-plane/src"
           MOLTBOT_SAFE_CONTROL_PLANE_ROOT: "pinned/control-plane"
           MOLTBOT_SAFE_MANIFEST_FIXTURE: "pinned/action-manifest/examples/refund_integration_v1_1.manifest.json"
-        run: pytest -q tests
+        # Refusal capture is qualified separately against CP c7f122ba; this
+        # historical profile has no typed refusal interface.
+        run: pytest -q tests --ignore=tests/test_refusal_capture.py
 
       - name: Compile optional OpenShell helpers
         run: python -m compileall -q engine examples/openshell

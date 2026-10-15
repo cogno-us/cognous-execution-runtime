@@ -22,9 +22,15 @@ class _ReconciliationCapture:
     def __init__(self, records):
         self.records = records
         self.reconciliations = []
+        self.refusals = []
 
     def __getattr__(self, name):
         return getattr(self.records, name)
+
+    def append_refusal(self, value):
+        # Capture only after the authoritative store confirms this call's write.
+        self.records.append_refusal(value)
+        self.refusals.append(copy.deepcopy(value))
 
     def append_reconciliation(self, value):
         self.records.append_reconciliation(value)
@@ -282,6 +288,10 @@ class PinnedControlPlaneExecutor:
             if records.reconciliations:
                 result.control_plane_evidence = {"reconciliation":
                     records.reconciliations[-1].model_dump(mode="json", exclude_none=False)}
+            if records.refusals:
+                result.control_plane_evidence["refusal"] = records.refusals[-1].model_dump(
+                    mode="json", exclude_none=False
+                )
             return result
 
         local = adapter.outcome.result

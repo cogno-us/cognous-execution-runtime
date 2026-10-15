@@ -6,6 +6,7 @@ Docs: https://docs.molt.bot
 Status: beta.
 
 ### Changes
+- Safety: retain the current call's durable effect-time refusal in executor/producer evidence; qualify storage failure and concurrent attribution. Thanks @titanicprime.
 - Safety: retain same-transaction local authority receipts and qualify both revocation/effect orders (#85; issue #84). Thanks @titanicprime.
 - CI: build the A2UI scaffold before isolated dependency-guard and macOS test jobs; retain bundle failures instead of bypassing scaffold assertions. (#29) Thanks @titanicprime.
 - Dependencies: narrow the music-metadata 11.16.0 lock update to its parser dependencies while preserving unrelated runtime resolutions. (#37) Thanks @dependabot.
