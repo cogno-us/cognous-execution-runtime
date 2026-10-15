@@ -4,12 +4,12 @@ Design proposal against Execution Runtime
 `97e38f14520c04c6c02c01ec18b6232089561ecc` (PR #65 merge).
 This document specifies candidate implementation requirements. Merging it does
 not accept a deployment host, enable enforcement, or qualify production coverage.
-See the [current status](../../tools/openappa/README.md) for executed evidence.
+See the [current status](https://github.com/cogno-us/cognous-stack-qualification/blob/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime/tools/openappa/README.md) for executed evidence.
 
 ## First bounded host profile
 
 Propose an opt-in Linux, single trusted host profile, building on
-[local resume](../../tools/openappa/local_resume.py). A connected Unix socket's
+[local resume](https://github.com/cogno-us/cognous-stack-qualification/blob/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime/tools/openappa/local_resume.py). A connected Unix socket's
 kernel UID selects an explicitly enrolled tenant/principal/session/root/store.
 The model supplies neither identity replacements nor policy selection. The
 profile trusts host code, its operator, and the private directory owner. It does

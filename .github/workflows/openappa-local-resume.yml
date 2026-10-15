@@ -1,54 +1,21 @@
+# Cross-component suite delegated to its canonical testing repository.
 name: OpenAPPA local host resume
-on:
+'on':
   pull_request:
     paths:
-      - 'tools/openappa/local_resume.py'
-      - 'tools/openappa/test_local_resume.py'
-      - 'tools/openappa/cognous_local_resume_main.rs'
-      - 'tools/openappa/cognous_trajectory_contract.rs'
-      - '.github/workflows/openappa-local-resume.yml'
-  workflow_dispatch:
+    - tools/openappa/local_resume.py
+    - tools/openappa/test_local_resume.py
+    - tools/openappa/cognous_local_resume_main.rs
+    - tools/openappa/cognous_trajectory_contract.rs
+    - .github/workflows/openappa-local-resume.yml
+  workflow_dispatch: null
 permissions:
   contents: read
 jobs:
-  local-resume:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: archestra-ai/OpenAPPA
-          ref: 10aa0e09e32d8c6704bdb030dc3c66140bf81915
-          path: pinned/openappa
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Compile existing-only resume probe against pinned upstream
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git -C pinned/openappa rev-parse HEAD)" = 10aa0e09e32d8c6704bdb030dc3c66140bf81915
-          rustup toolchain install stable --profile minimal
-          cat tools/openappa/cognous_trajectory_contract.rs tools/openappa/cognous_local_resume_main.rs > pinned/openappa/appa-runtime/examples/cognous_local_resume.rs
-          cd pinned/openappa
-          cargo +stable build --locked -p appa --no-default-features --example cognous_local_resume
-      - name: Exercise kernel peer identity and persisted resume
-        env:
-          PYTHONPATH: '.'
-          COGNOUS_OPENAPPA_RESUME_PROBE: pinned/openappa/target/debug/examples/cognous_local_resume
-        run: |
-          python -m pip install pytest==8.3.5
-          python -m pytest -q tools/openappa/test_local_resume.py --junitxml=local-resume.xml
-          python - <<'PY'
-          import xml.etree.ElementTree as ET
-          cases = ET.parse('local-resume.xml').getroot().findall('.//testcase')
-          assert len(cases) == 25, len(cases)
-          assert all(not any(c.find(tag) is not None for tag in ('skipped', 'failure', 'error')) for c in cases)
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: openappa-local-resume-results
-          path: local-resume.xml
-          if-no-files-found: error
+  cross-component:
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-local-resume.yml@39f038435afdd71ba162860faa5718d90d7bde64
+    with:
+      source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
+      qualification_revision: 39f038435afdd71ba162860faa5718d90d7bde64
+    permissions:
+      contents: read

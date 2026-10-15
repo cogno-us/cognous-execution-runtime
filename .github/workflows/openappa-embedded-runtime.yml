@@ -1,29 +1,18 @@
+# Cross-component suite delegated to its canonical testing repository.
 name: OpenAPPA pinned embedded runtime
-on:
+'on':
   pull_request:
     paths:
-      - 'tools/openappa/cognous_embedded_contract.rs'
-      - '.github/workflows/openappa-embedded-runtime.yml'
-  workflow_dispatch:
+    - tools/openappa/cognous_embedded_contract.rs
+    - .github/workflows/openappa-embedded-runtime.yml
+  workflow_dispatch: null
 permissions:
   contents: read
 jobs:
-  embedded-runtime:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: archestra-ai/OpenAPPA
-          ref: 10aa0e09e32d8c6704bdb030dc3c66140bf81915
-          path: upstream-openappa
-      - name: Exercise actual pinned runtime decisions
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git -C upstream-openappa rev-parse HEAD)" = 10aa0e09e32d8c6704bdb030dc3c66140bf81915
-          rustup toolchain install stable --profile minimal
-          cp tools/openappa/cognous_embedded_contract.rs upstream-openappa/appa-runtime/tests/
-          cd upstream-openappa
-          cargo +stable test --locked -p appa --no-default-features --test cognous_embedded_contract
+  cross-component:
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-embedded-runtime.yml@39f038435afdd71ba162860faa5718d90d7bde64
+    with:
+      source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
+      qualification_revision: 39f038435afdd71ba162860faa5718d90d7bde64
+    permissions:
+      contents: read
