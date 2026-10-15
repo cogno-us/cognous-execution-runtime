@@ -38,9 +38,9 @@ jobs:
         PYTHONPATH: .:src
         PYTHONDONTWRITEBYTECODE: '1'
   cross-component:
-    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--python-safety.yml@f99bb7591f52ca5a26d64a50d9ef466b4749ad4e
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--python-safety.yml@43fb81dc3ec0da17402bef274dcec1831cc5e160
     with:
       source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
-      qualification_revision: f99bb7591f52ca5a26d64a50d9ef466b4749ad4e
+      qualification_revision: 43fb81dc3ec0da17402bef274dcec1831cc5e160
     permissions:
       contents: read
