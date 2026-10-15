@@ -1,21 +1,44 @@
 import { afterEach, expect, test } from "vitest";
 
-import { resetProcessRegistryForTests } from "./bash-process-registry";
+import { listRunningSessions, resetProcessRegistryForTests } from "./bash-process-registry";
 import { createExecTool } from "./bash-tools.exec";
 import { createProcessTool } from "./bash-tools.process";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-afterEach(() => {
+async function waitForInputReady(
+  processTool: ReturnType<typeof createProcessTool>,
+  sessionId: string,
+) {
+  // Background exec returns before PowerShell has launched Node on Windows.
+  // The marker is constructed by the child, so terminal command echo cannot match it.
+  const deadline = Date.now() + 10_000;
+  let output = "";
+  while (Date.now() < deadline) {
+    const poll = await processTool.execute("toolcall", { action: "poll", sessionId });
+    const details = poll.details as { status?: string; aggregated?: string };
+    output = details.aggregated ?? "";
+    expect(details.status, output).toBe("running");
+    if (output.includes("INPUT_READY")) return;
+    await wait(50);
+  }
+  throw new Error(`PTY child did not become ready for input: ${output}`);
+}
+
+afterEach(async () => {
+  const processTool = createProcessTool();
+  for (const session of listRunningSessions()) {
+    await processTool.execute("cleanup", { action: "kill", sessionId: session.id });
+  }
   resetProcessRegistryForTests();
 });
 
-test("process send-keys encodes Enter for pty sessions", async () => {
+test.each([0, 300])("process send-keys encodes Enter after %i ms startup", async (startupMs) => {
   const execTool = createExecTool();
   const processTool = createProcessTool();
   const result = await execTool.execute("toolcall", {
     command:
-      'node -e "const dataEvent=String.fromCharCode(100,97,116,97);process.stdin.on(dataEvent,d=>{process.stdout.write(d);if(d.includes(10)||d.includes(13))process.exit(0);});"',
+      `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);process.stdin.on(dataEvent,d=>{process.stdout.write(d);if(d.includes(10)||d.includes(13))process.exit(0);});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
     pty: true,
     background: true,
   });
@@ -23,6 +46,8 @@ test("process send-keys encodes Enter for pty sessions", async () => {
   expect(result.details.status).toBe("running");
   const sessionId = result.details.sessionId;
   expect(sessionId).toBeTruthy();
+
+  await waitForInputReady(processTool, sessionId);
 
   await processTool.execute("toolcall", {
     action: "send-keys",
@@ -45,12 +70,12 @@ test("process send-keys encodes Enter for pty sessions", async () => {
   throw new Error("PTY session did not exit after send-keys");
 });
 
-test("process submit sends Enter for pty sessions", async () => {
+test.each([0, 300])("process submit sends Enter after %i ms startup", async (startupMs) => {
   const execTool = createExecTool();
   const processTool = createProcessTool();
   const result = await execTool.execute("toolcall", {
     command:
-      'node -e "const dataEvent=String.fromCharCode(100,97,116,97);const submitted=String.fromCharCode(115,117,98,109,105,116,116,101,100);process.stdin.on(dataEvent,d=>{if(d.includes(10)||d.includes(13)){process.stdout.write(submitted);process.exit(0);}});"',
+      `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);const submitted=String.fromCharCode(115,117,98,109,105,116,116,101,100);process.stdin.on(dataEvent,d=>{if(d.includes(10)||d.includes(13)){process.stdout.write(submitted);process.exit(0);}});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
     pty: true,
     background: true,
   });
@@ -58,6 +83,8 @@ test("process submit sends Enter for pty sessions", async () => {
   expect(result.details.status).toBe("running");
   const sessionId = result.details.sessionId;
   expect(sessionId).toBeTruthy();
+
+  await waitForInputReady(processTool, sessionId);
 
   await processTool.execute("toolcall", {
     action: "submit",
