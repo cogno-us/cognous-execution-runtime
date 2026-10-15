@@ -37,8 +37,7 @@ test.each([0, 300])("process send-keys encodes Enter after %i ms startup", async
   const execTool = createExecTool();
   const processTool = createProcessTool();
   const result = await execTool.execute("toolcall", {
-    command:
-      `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);process.stdin.on(dataEvent,d=>{process.stdout.write(d);if(d.includes(10)||d.includes(13))process.exit(0);});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
+    command: `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);process.stdin.on(dataEvent,d=>{process.stdout.write(d);if(d.includes(10)||d.includes(13))process.exit(0);});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
     pty: true,
     background: true,
   });
@@ -74,8 +73,7 @@ test.each([0, 300])("process submit sends Enter after %i ms startup", async (sta
   const execTool = createExecTool();
   const processTool = createProcessTool();
   const result = await execTool.execute("toolcall", {
-    command:
-      `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);const submitted=String.fromCharCode(115,117,98,109,105,116,116,101,100);process.stdin.on(dataEvent,d=>{if(d.includes(10)||d.includes(13)){process.stdout.write(submitted);process.exit(0);}});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
+    command: `node -e "setTimeout(()=>{const dataEvent=String.fromCharCode(100,97,116,97);const submitted=String.fromCharCode(115,117,98,109,105,116,116,101,100);process.stdin.on(dataEvent,d=>{if(d.includes(10)||d.includes(13)){process.stdout.write(submitted);process.exit(0);}});process.stdout.write(String.fromCharCode(73,78,80,85,84,95,82,69,65,68,89));},${startupMs});"`,
     pty: true,
     background: true,
   });
