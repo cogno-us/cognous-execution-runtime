@@ -1,6 +1,6 @@
 # Durable local feedback status
 
-> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> Historical workstream note. See the [current OpenAPPA status](https://github.com/cogno-us/cognous-stack-qualification/blob/f99bb7591f52ca5a26d64a50d9ef466b4749ad4e/suites/cognous-execution-runtime/tools/openappa/README.md)
 > for consolidated evidence, current scope and remaining work.
 
 Candidate based on Runtime `89556d5aa7c6278a726b5815544c9aee82c1864c`.

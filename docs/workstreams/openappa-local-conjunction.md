@@ -1,6 +1,6 @@
 # Local host binding through persistent flow and authority
 
-> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> Historical workstream note. See the [current OpenAPPA status](https://github.com/cogno-us/cognous-stack-qualification/blob/f99bb7591f52ca5a26d64a50d9ef466b4749ad4e/suites/cognous-execution-runtime/tools/openappa/README.md)
 > for consolidated evidence, current scope and remaining work.
 
 Candidate based on Runtime `8068e9e67c3f76bd6b87876499704c87cd0a446b`.

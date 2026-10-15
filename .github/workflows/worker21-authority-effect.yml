@@ -1,45 +1,29 @@
+# Cross-component suite delegated to its canonical testing repository.
 name: Worker21 local authority-effect profile
-on:
+'on':
   pull_request:
     paths:
-      - 'engine/local_authority_effect.py'
-      - 'engine/atomic_local_control_plane_executor.py'
-      - 'engine/local_authority_effect_recovery.py'
-      - 'engine/safe_executor.py'
-      - 'engine/refund_intent.py'
-      - 'tests/test_profile_exclusivity.py'
-      - 'tests/test_refund_intent.py'
-      - 'tests/test_local_authority_effect.py'
-      - 'tests/test_w2_refusal_history.py'
-      - 'tests/test_w2_stop_recovery.py'
-      - 'docs/local-authority-effect-profile.md'
-      - 'docs/workstreams/local-authority-effect-checkpoint.md'
-      - '.github/workflows/worker21-authority-effect.yml'
-  workflow_dispatch:
+    - engine/local_authority_effect.py
+    - engine/atomic_local_control_plane_executor.py
+    - engine/local_authority_effect_recovery.py
+    - engine/safe_executor.py
+    - engine/refund_intent.py
+    - tests/test_profile_exclusivity.py
+    - tests/test_refund_intent.py
+    - tests/test_local_authority_effect.py
+    - tests/test_w2_refusal_history.py
+    - tests/test_w2_stop_recovery.py
+    - docs/local-authority-effect-profile.md
+    - docs/workstreams/local-authority-effect-checkpoint.md
+    - .github/workflows/worker21-authority-effect.yml
+  workflow_dispatch: null
 permissions:
   contents: read
 jobs:
-  focused:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: cogno-us/cognous-control-plane
-          ref: e66e5f163c5d5c112ff345a2f332b4c3893ee183
-          path: pinned/control-plane
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install -q pytest pydantic
-      - name: Run profile compatibility batch
-        timeout-minutes: 2
-        env:
-          PYTHONPATH: .:pinned/control-plane/src
-        run: python -m pytest -q tests/test_profile_exclusivity.py tests/test_refund_intent.py
-      - name: Run focused atomic profile suite
-        timeout-minutes: 2
-        env:
-          PYTHONPATH: .:pinned/control-plane/src
-        run: python -m pytest -q tests/test_local_authority_effect.py tests/test_w2_refusal_history.py tests/test_w2_stop_recovery.py
+  cross-component:
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--worker21-authority-effect.yml@f99bb7591f52ca5a26d64a50d9ef466b4749ad4e
+    with:
+      source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
+      qualification_revision: f99bb7591f52ca5a26d64a50d9ef466b4749ad4e
+    permissions:
+      contents: read

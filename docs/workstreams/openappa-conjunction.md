@@ -1,6 +1,6 @@
 # Synthetic OpenAPPA and authority conjunction candidate
 
-> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> Historical workstream note. See the [current OpenAPPA status](https://github.com/cogno-us/cognous-stack-qualification/blob/f99bb7591f52ca5a26d64a50d9ef466b4749ad4e/suites/cognous-execution-runtime/tools/openappa/README.md)
 > for consolidated evidence, current scope and remaining work.
 
 Runtime base: `383fbd972220992ce60e1662053720f2076485f3` (embedded gate #49).

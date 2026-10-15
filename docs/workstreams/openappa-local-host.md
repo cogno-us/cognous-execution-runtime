@@ -1,6 +1,6 @@
 # Opt-in Linux local-host resume candidate
 
-> Historical workstream note. See the [current OpenAPPA status](../../tools/openappa/README.md)
+> Historical workstream note. See the [current OpenAPPA status](https://github.com/cogno-us/cognous-stack-qualification/blob/f99bb7591f52ca5a26d64a50d9ef466b4749ad4e/suites/cognous-execution-runtime/tools/openappa/README.md)
 > for consolidated evidence, current scope and remaining work.
 
 Base Runtime `a26a1e29b7a6ef67dba5ebd45de977c1b1c81b47`; upstream OpenAPPA
