@@ -59,7 +59,7 @@ The accepted hub lock at [hub PR #31's merge](https://github.com/cogno-us/cognou
 
 The public `engine.producer_contract` exports executor producer profile **2.0.0** and Execution Envelope **0.2.0**, retaining results, effects, attempts, events and observations. Exports do not grant authority. See [the producer contract](docs/executor-producer-profile.md).
 
-Component workflows and hub qualification are different evidence sets. The legacy [Python safety workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime/.github/workflows/python-safety.yml) pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the [atomic-profile workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime/.github/workflows/worker21-authority-effect.yml) pins reviewed Control Plane head `73e3c65acc47dc43593dcb0420d14032ed410b14`. The hub separately qualifies the merged revisions listed above. Do not substitute one set of test results for another.
+Component workflows and hub qualification are different evidence sets. The legacy [Python safety workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime/.github/workflows/python-safety.yml) pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the [atomic-profile workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime/.github/workflows/worker21-authority-effect.yml) pins reviewed Control Plane head `73e3c65acc47dc43593dcb0420d14032ed410b14`. The hub separately qualifies the merged revisions listed above. Do not substitute one set of test results for another.
 
 ## Execution Envelope 0.2.0
 
@@ -209,4 +209,4 @@ execution authority.
 
 ## Cross component qualification
 
-Executable integration suites and harnesses moved to the [qualification repository](https://github.com/cogno-us/cognous-stack-qualification/tree/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime). See [the path migration map](CROSS_COMPONENT_TESTS.md) for current commands and source identity rules. Component-local tests remain here; historical qualification results retain their original scope.
+Executable integration suites and harnesses moved to the [qualification repository](https://github.com/cogno-us/cognous-stack-qualification/tree/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime). See [the path migration map](CROSS_COMPONENT_TESTS.md) for current commands and source identity rules. Component-local tests remain here; historical qualification results retain their original scope.
