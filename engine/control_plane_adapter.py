@@ -140,6 +140,9 @@ class ControlPlaneRefundDestinationAdapter:
         if result.status == "denied":
             raise PermissionError(result.error or "local destination denied")
         if result.status == "failed":
+            if result.error in {"effective_grant_changed_at_commit", "effective_grant_precondition_required", "atomic_authority_capability_unavailable"}:
+                from agent_control_plane.bounded import DefinitiveDestinationRejection
+                raise DefinitiveDestinationRejection(result.error)
             raise RuntimeError(result.error or "local destination failed")
         if result.status == "unknown":
             # Preserve Control Plane lost-ack semantics.
