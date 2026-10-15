@@ -67,6 +67,10 @@ class ControlPlaneRefundDestinationAdapter:
         self.trusted_authority_domain = trusted_authority_domain
         self.outcome = _AdapterOutcome()
 
+    @property
+    def runtime_authority_capability(self):
+        return getattr(self.destination, "runtime_authority_capability", None)
+
     def _check_trusted_context(self) -> None:
         op = self.snapshot.operation
         if op.institution_id != self.trusted_institution_id:
@@ -107,6 +111,8 @@ class ControlPlaneRefundDestinationAdapter:
         payload: dict,
         lose_ack: bool = False,
         partial: bool = False,
+        expected_effective_grant_digest: str | None = None,
+        effective_grant_derivation_version: str | None = None,
     ) -> dict:
         self._check_trusted_context()
         op = self.snapshot.operation
@@ -126,11 +132,17 @@ class ControlPlaneRefundDestinationAdapter:
             )
 
         simulate = "partial" if partial else ("lost_ack" if lose_ack else None)
-        result = self.executor.execute_snapshot(self.snapshot, simulate=simulate)
+        result = self.executor.execute_snapshot(self.snapshot, simulate=simulate,
+            **({"expected_effective_grant_digest":expected_effective_grant_digest,
+                "effective_grant_derivation_version":effective_grant_derivation_version}
+               if expected_effective_grant_digest is not None else {}))
         self.outcome.result = result
         if result.status == "denied":
             raise PermissionError(result.error or "local destination denied")
         if result.status == "failed":
+            if result.error in {"effective_grant_changed_at_commit", "effective_grant_precondition_required", "atomic_authority_capability_unavailable"}:
+                from agent_control_plane.bounded import DefinitiveDestinationRejection
+                raise DefinitiveDestinationRejection(result.error)
             raise RuntimeError(result.error or "local destination failed")
         if result.status == "unknown":
             # Preserve Control Plane lost-ack semantics.
@@ -181,9 +193,16 @@ class PinnedControlPlaneExecutor:
 
         # Derive institution/domain only from the resolver context used by the
         # trusted Control Plane workflow. Caller labels alone cannot satisfy it.
-        context = self.workflow.resolver.authority_context(
-            proposal.authority_context_ref or ""
-        )
+        if getattr(self.workflow, "runtime_authority_profile", None):
+            # Use host manifest scope here. The actual authority-context read is
+            # performed once under the Control Plane write-ahead journal.
+            action = next((x for x in self.workflow.manifest.get("actions", [])
+                           if x.get("action_id") == proposal.action_id), {})
+            context = {"institution":action.get("authority_context", {})}
+        else:
+            context = self.workflow.resolver.authority_context(
+                proposal.authority_context_ref or ""
+            )
         if not isinstance(context, dict):
             return self._denied(snapshot, "trusted authority context unavailable")
         institution = context.get("institution") or {}
@@ -269,6 +288,9 @@ class PinnedControlPlaneExecutor:
             mandate_max_age_seconds=self.workflow.mandate_max_age_seconds,
             approval_max_age_seconds=self.workflow.approval_max_age_seconds,
             clock_tolerance_seconds=self.workflow.clock_tolerance_seconds,
+            **({"runtime_authority_profile":self.workflow.runtime_authority_profile,
+                "allow_test_time":self.workflow.allow_test_time}
+               if getattr(self.workflow, "runtime_authority_profile", None) else {}),
         )
         kwargs = {
             "proposal": proposal,

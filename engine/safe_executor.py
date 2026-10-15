@@ -621,7 +621,9 @@ class DurableRefundDestination:
             return int(row["n"])
 
     def commit(
-        self, snapshot: FrozenEnvelope, *, simulate: str | None = None
+        self, snapshot: FrozenEnvelope, *, simulate: str | None = None,
+        expected_effective_grant_digest: str | None = None,
+        effective_grant_derivation_version: str | None = None,
     ) -> dict:
         op = snapshot.operation
         digest = op.digest
@@ -636,6 +638,15 @@ class DurableRefundDestination:
                     "authority-effect-profile destination requires atomic claim execution"
                 )
             self._check_commit_profile(conn, snapshot)
+            # Minimal historical worker images contain only safe_executor.py.
+            # Load the optional module only for an explicit or activated profile.
+            effective_profile = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='effective_grants_v1'"
+            ).fetchone()
+            if expected_effective_grant_digest is not None or effective_profile:
+                from .effective_grant import check_effective_grant
+                check_effective_grant(conn, snapshot, expected_effective_grant_digest,
+                                      effective_grant_derivation_version)
             existing = conn.execute(
                 "SELECT operation_digest,state FROM effects WHERE effect_id = ?",
                 (snapshot.effect_id,),
@@ -700,7 +711,9 @@ class LocalDestinationExecutor:
         self.policy = policy
 
     def execute_snapshot(
-        self, snapshot: FrozenEnvelope, *, simulate: str | None = None
+        self, snapshot: FrozenEnvelope, *, simulate: str | None = None,
+        expected_effective_grant_digest: str | None = None,
+        effective_grant_derivation_version: str | None = None,
     ) -> ExecutionResult:
         self.policy.check(snapshot.operation)
         try:
@@ -763,7 +776,10 @@ class LocalDestinationExecutor:
             )
 
         try:
-            ack = self.destination.commit(snapshot, simulate=simulate)
+            ack = self.destination.commit(snapshot, simulate=simulate,
+                **({"expected_effective_grant_digest":expected_effective_grant_digest,
+                    "effective_grant_derivation_version":effective_grant_derivation_version}
+                   if expected_effective_grant_digest is not None else {}))
             observation = ack["observation"]
             status = "partial" if observation["state"] == "partial" else (
                 "reconciled" if ack["duplicate"] else "executed"
