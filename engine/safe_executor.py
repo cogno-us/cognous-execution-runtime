@@ -638,9 +638,15 @@ class DurableRefundDestination:
                     "authority-effect-profile destination requires atomic claim execution"
                 )
             self._check_commit_profile(conn, snapshot)
-            from .effective_grant import check_effective_grant
-            check_effective_grant(conn, snapshot, expected_effective_grant_digest,
-                                  effective_grant_derivation_version)
+            # Minimal historical worker images contain only safe_executor.py.
+            # Load the optional module only for an explicit or activated profile.
+            effective_profile = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='effective_grants_v1'"
+            ).fetchone()
+            if expected_effective_grant_digest is not None or effective_profile:
+                from .effective_grant import check_effective_grant
+                check_effective_grant(conn, snapshot, expected_effective_grant_digest,
+                                      effective_grant_derivation_version)
             existing = conn.execute(
                 "SELECT operation_digest,state FROM effects WHERE effect_id = ?",
                 (snapshot.effect_id,),

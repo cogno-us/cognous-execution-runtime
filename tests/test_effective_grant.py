@@ -62,3 +62,14 @@ def test_comparison_occurs_in_effect_transaction(tmp_path,monkeypatch):
     check=next(i for i,x in enumerate(trace) if 'SELECT principal,digest,derivation,status FROM effective_grants_v1' in x)
     write=next(i for i,x in enumerate(trace) if 'INSERT INTO effects' in x)
     assert begin<check<write
+
+def test_legacy_worker_does_not_require_optional_profile_module(tmp_path,monkeypatch):
+    import builtins
+    op=operation();snap=snapshot_envelope(ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION,'legacy-decision','legacy-effect',op))
+    dest=DurableRefundDestination(tmp_path/'legacy');original=builtins.__import__
+    def guarded(name,*args,**kwargs):
+        if name.endswith('effective_grant'):raise ModuleNotFoundError('optional profile is not packaged')
+        return original(name,*args,**kwargs)
+    monkeypatch.setattr(builtins,'__import__',guarded)
+    result=LocalDestinationExecutor(dest,policy(op)).execute_snapshot(snap)
+    assert result.status=='executed' and dest.effect_count(op.grant_id)==1
