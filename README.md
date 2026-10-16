@@ -42,24 +42,17 @@ A persisted historical `authorized` decision is not an execution credential. An 
 
 ## Which Runtime revision is supported?
 
-The current [hub component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) selects **`c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`**. This repository's accepted source main is **`1b0a9e32d010797711004ae612051a277b07912a`**, which includes an **optional** durable revocation-disposition and original-attempt closeout profile at [`engine/revocation_closeout.py`](engine/revocation_closeout.py). The newer source is not thereby selected by the hub. The hub PR #31 lock pointer in the next section identifies a **historical acceptance snapshot**, not a standing instruction to use that commit instead of the current hub lock.
+Use the [current hub component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) to identify the selected revision. Optional profiles in this repository are not automatically selected or enabled by the hub.
 
-**Worked recovery example:** a single synthetic refund effect `E1` has original attempt `A1`; the destination may commit but the acknowledgement is lost. Record `A1` as `in_doubt` after an ordering-based grant revocation. On restart, an `unknown` or `absent` observation does **not** create permission to issue attempt `A2` or another effect. A separately supplied `applied` or `partial` observation can close the **original** `A1` record in the optional profile, but its source authenticity and external settlement are not established merely by the record. The orchestration [O6-Q6 example](https://github.com/cogno-us/cognous-stack-orchestrator/blob/main/development/acceptance/o6-q6/README.md) tests these boundaries synthetically and notes that a recorded `unknown` cannot later be silently overwritten by a new observation without an additional reviewed transition contract.
+**Worked recovery example:** a synthetic refund effect can commit while its acknowledgement is lost. Preserve the original effect and attempt identity, record the outcome as unknown and reconcile that attempt. Unknown or absent observations do not authorize a replacement. A supplied observation does not by itself prove source authenticity or external settlement.
 
-This Python safety layer does not cover the repository's retained TypeScript application, real payment processors or independently authenticated deployment. Review the [hub release status](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) and [operational trust HOLD](https://github.com/cogno-us/cognous-stack-orchestrator/issues/30) before making deployment claims.
+This Python layer does not cover the retained TypeScript application, real payment processors or independently authenticated deployment. Operational trust remains [HOLD](https://github.com/cogno-us/cognous-stack-orchestrator/issues/30).
 
-## Accepted integration and versioned evidence
+## Integration and producer contract
 
-The accepted hub lock at [hub PR #31's merge](https://github.com/cogno-us/cognous-open-control-stack/blob/649df22a1392af2c4fa77e4c71749c482f82649c/component-lock.json) selects:
+The [current component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) defines the selected integration. The public `engine.producer_contract` exports executor producer profile **2.0.0** and Execution Envelope **0.2.0**, retaining results, effects, attempts, events and observations. Exports do not grant authority. See [the producer contract](docs/executor-producer-profile.md).
 
-- Execution Runtime: `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`.
-- Control Plane: `d3dadee70bd319812b207389ab1e0f6efe511916`.
-- Action Manifest v1.1: `46c950bed37fe3812000895430bc0312d29e37ce`.
-- Institutional Governance: `fb3d97938969a89e149e8ff8db2756091d1233fc`.
-
-The public `engine.producer_contract` exports executor producer profile **2.0.0** and Execution Envelope **0.2.0**, retaining results, effects, attempts, events and observations. Exports do not grant authority. See [the producer contract](docs/executor-producer-profile.md).
-
-Component workflows and hub qualification are different evidence sets. The legacy [Python safety workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime/.github/workflows/python-safety.yml) pins Control Plane `2ea9528eeb87e14ff10f05de06473122b9df540f`; the [atomic-profile workflow](https://github.com/cogno-us/cognous-stack-qualification/blob/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime/.github/workflows/worker21-authority-effect.yml) pins reviewed Control Plane head `73e3c65acc47dc43593dcb0420d14032ed410b14`. The hub separately qualifies the merged revisions listed above. Do not substitute one set of test results for another.
+Revision-specific test results and workflow commentary are maintained in the [central test hub](https://github.com/cogno-us/cognous-stack-qualification/blob/main/results/readme-commentary/index.md).
 
 ## Execution Envelope 0.2.0
 
@@ -143,9 +136,7 @@ These are application-level restrictions, **not OS confinement**. Filesystem che
 
 ## Evidence and deployment scope
 
-Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) and [release ledger](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) for the selected integrated reference and exact qualification evidence. The accepted atomic-profile qualification and optional-profile runners do not establish distributed execution, remote revocation, external-destination atomicity, hostile-host resistance, production identity or production readiness.
-
-The separately accepted [protected-worker campaign](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/workstreams/protected-qualification-checkpoint.md) applies to its fixed Linux/bubblewrap worker and recorded host. It does not qualify this entire repository, arbitrary agents or live OpenShell. Historical checkpoints retain the status of their original observations.
+Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) for the selected reference and the [central test hub](https://github.com/cogno-us/cognous-stack-qualification/blob/main/results/readme-commentary/index.md) for qualification records. Local profiles do not establish distributed execution, remote revocation, external-destination atomicity, hostile-host resistance, production identity or production readiness. The fixed-worker confinement profile does not qualify arbitrary agents, the entire retained upstream application or live OpenShell.
 
 For stakeholder orientation, see the [business overview](collateral/business-collateral.md) and [one-page overview](collateral/one-page-overview.md).
 
@@ -210,3 +201,6 @@ execution authority.
 ## Cross component qualification
 
 Executable integration suites and harnesses moved to the [qualification repository](https://github.com/cogno-us/cognous-stack-qualification/tree/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime). See [the path migration map](CROSS_COMPONENT_TESTS.md) for current commands and source identity rules. Component-local tests remain here; historical qualification results retain their original scope.
+
+<!-- Retained anchors for existing documentation links. -->
+<a id="accepted-integration-and-versioned-evidence"></a>
