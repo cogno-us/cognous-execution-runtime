@@ -18,12 +18,11 @@ If you discover a vulnerability, open a private security advisory or contact the
 
 The engine should never grant an agent more access than explicitly defined in `permissions.json`.
 
-### 2. Isolation by Default
-All agent actions must occur inside the sandbox directory.  
-No direct filesystem access outside the sandbox is permitted.
+### 2. Isolation by Default (engine/ only)
+Within the `engine/` boundary, the legacy `AgentEngine` performs no side effects (it only validates, permission-checks and logs), and the supported `SafeExecutor` path writes only to an operator-selected SQLite state root. These are application-level checks, not OS confinement: residual filesystem check/use races remain, and a separate host process with sufficient permissions can bypass this Python package. The quarantined upstream application is not covered.
 
-### 3. Transparent Execution
-Every attempted action—allowed or denied—must be logged in `audit.log`.
+### 3. Transparent Execution (engine/ only)
+The engine records the audit and attempt events it implements: legacy `AgentEngine` entries for requests that pass schema validation, and durable attempt identities and append-only attempt events on the supported path. This does not guarantee that every attempted request, on every path, produces a log entry.
 
 ### 4. No Implicit Capabilities
 The engine must never infer or assume permissions.  

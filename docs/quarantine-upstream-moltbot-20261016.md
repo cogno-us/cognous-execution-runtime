@@ -18,6 +18,40 @@ That application was already outside the reviewed Cognous execution boundary (se
 
 The tag preserves the exact tree, which includes the upstream application. The preserved application is **not maintained**, **not reviewed** and **not part of the V1 boundary**. Do not build, deploy or run it as part of the Cognous stack.
 
+### Creating the tag
+
+The tag could not be pushed from the session that prepared this change; the repository owner creates it. Save the message below to a file (for example `tagmsg.txt`), then run:
+
+```bash
+git tag -a upstream-moltbot-quarantine-20261016 fd6b76fa0e85feb5b67324114bf790d3a12fdaf1 -F tagmsg.txt
+git push origin refs/tags/upstream-moltbot-quarantine-20261016
+```
+
+Tag message:
+
+```text
+Quarantine: unreviewed upstream Moltbot application (2026-10-16)
+
+This tag preserves the exact tree of cognous-execution-runtime main at
+fd6b76fa0e85feb5b67324114bf790d3a12fdaf1, including the retained upstream
+Moltbot TypeScript/native application (MIT License, Copyright (c) 2025
+Peter Steinberger).
+
+The upstream application preserved here is QUARANTINED:
+- not maintained by Cognous;
+- not reviewed, audited or hardened;
+- not part of the Cognous V1 constrained execution boundary (engine/);
+- carries 18 known, unrepaired security findings (6 high) from the
+  2026-10-16 scan, listed in docs/quarantine-upstream-moltbot-20261016.md
+  on main after the quarantine change.
+
+Do not build, deploy or run this application as part of the Cognous stack.
+No release, security clearance or production authorization is implied.
+
+Owner decision:
+https://github.com/cogno-us/cognous-open-control-stack/issues/68#issuecomment-6214239202
+```
+
 Removing the application from `main` does not erase it. Every prior commit stays in public Git history and remains reachable from the tag.
 
 ## What remains on `main`

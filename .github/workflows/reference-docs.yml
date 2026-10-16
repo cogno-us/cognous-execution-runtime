@@ -6,7 +6,6 @@ on:
       - 'collateral/business-collateral.md'
       - 'collateral/one-page-overview.md'
       - '.github/workflows/reference-docs.yml'
-      - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
@@ -14,7 +13,6 @@ on:
       - 'collateral/business-collateral.md'
       - 'collateral/one-page-overview.md'
       - '.github/workflows/reference-docs.yml'
-      - '.github/workflows/ci.yml'
 permissions:
   contents: read
 concurrency:
