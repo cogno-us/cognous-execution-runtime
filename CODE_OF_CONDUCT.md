@@ -27,7 +27,7 @@ Please avoid posting public issues for conduct or security concerns.
 
 ## Attribution
 
-This Code of Conduct is adapted from widely used open‑source community guidelines, tailored to the safety‑critical nature of **moltbot-safe**.
+This Code of Conduct is adapted from widely used open‑source community guidelines, tailored to the safety‑critical nature of **Cognous Execution Runtime**.
 
 ---
 

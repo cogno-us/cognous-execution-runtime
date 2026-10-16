@@ -1,6 +1,6 @@
 # Internal Module Guide
 
-This document explains the responsibilities, invariants, and safety constraints of the core modules in moltbot-safe.
+This document explains the responsibilities, invariants, and safety constraints of the core modules in Cognous Execution Runtime.
 
 ## engine/engine.py
 - Orchestrates action validation, permission checks, sandboxed execution, and audit logging.

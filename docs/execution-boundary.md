@@ -4,7 +4,7 @@ Status: synthetic local pilot. Not a production payment, identity, authority or 
 
 ## Runtime selection
 
-The supported Moltbot Safe boundary is the Python path under `engine/`.
+The supported Execution Runtime boundary is the Python path under `engine/`.
 
 The upstream TypeScript Moltbot application is outside this reviewed boundary; it is quarantined at tag `upstream-moltbot-quarantine-20261016` and is not on `main` (see [quarantine record](quarantine-upstream-moltbot-20261016.md)). The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
 
@@ -12,16 +12,16 @@ The upstream TypeScript Moltbot application is outside this reviewed boundary; i
 
 Execution is supported only through the pinned Control Plane's `BoundedAuthorizationWorkflow.execute()` at commit `2ea9528eeb87e14ff10f05de06473122b9df540f`.
 
-A historical persisted `RuntimeDecision(result="authorized")` is insufficient by itself. Immediately before effect, the pinned workflow re-resolves and rechecks its authorization-critical inputs. Moltbot Safe is invoked only as the bounded destination adapter after those checks pass.
+A historical persisted `RuntimeDecision(result="authorized")` is insufficient by itself. Immediately before effect, the pinned workflow re-resolves and rechecks its authorization-critical inputs. Execution Runtime is invoked only as the bounded destination adapter after those checks pass.
 
 The resulting path is:
 
-1. deep-snapshot the complete Moltbot Safe execution envelope;
+1. deep-snapshot the complete Execution Runtime execution envelope;
 2. bind the snapshot to the actual pinned `RuntimeProposal` and persisted decision identity;
 3. derive institution/domain from the trusted resolver's Authority Context;
 4. invoke `BoundedAuthorizationWorkflow.execute()`;
 5. allow that workflow to revalidate current grant, identity/delegation, mandate, approvals, policy, conflict and required evidence state;
-6. only then invoke the Moltbot Safe destination adapter;
+6. only then invoke the Execution Runtime destination adapter;
 7. apply stricter local restrictions and commit the exact frozen operation to SQLite;
 8. observe destination state separately from the submission acknowledgement.
 
@@ -53,7 +53,7 @@ For the single-refund adapter, `effects` must be exactly integer `1`. Boolean, z
 
 The pinned Control Plane `AuthorizationBinding` does not expose `institution_id` or `authority_domain`.
 
-For this pilot, both are derived from the Authority Context returned by the same trusted resolver used by the revalidating workflow. Moltbot Safe compares those trusted values exactly to the frozen execution operation. Caller labels cannot satisfy the boundary on their own.
+For this pilot, both are derived from the Authority Context returned by the same trusted resolver used by the revalidating workflow. Execution Runtime compares those trusted values exactly to the frozen execution operation. Caller labels cannot satisfy the boundary on their own.
 
 This is a bounded integration workaround, not a silent upstream schema fork. See [control-plane-interface-gap.md](control-plane-interface-gap.md).
 
@@ -104,7 +104,7 @@ No claim is made for whole-upstream Moltbot bypass resistance, container isolati
 
 The revised branch upgrades the envelope to 0.2.0 and replaces the first pilot attempt table with immutable attempt identities plus append-only attempt events.
 
-When an existing pilot SQLite file contains the earlier `attempts(status,error)` schema, Moltbot Safe migrates those rows on open. Each historical row is preserved with operation digest `legacy:unknown` and its prior outcome is retained as an attempt event. The migration does not infer missing authorization or operation content from those legacy rows.
+When an existing pilot SQLite file contains the earlier `attempts(status,error)` schema, Execution Runtime migrates those rows on open. Each historical row is preserved with operation digest `legacy:unknown` and its prior outcome is retained as an attempt event. The migration does not infer missing authorization or operation content from those legacy rows.
 
 No production-state migration is claimed because PR #4 has not been merged or deployed as a production interface.
 

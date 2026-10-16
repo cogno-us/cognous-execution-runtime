@@ -1,6 +1,6 @@
 # Design Philosophy
 
-moltbot-safe is built on these principles:
+Cognous Execution Runtime is built on these principles:
 
 ## Minimalism
 Only essential features are included. No unnecessary abstractions or hidden behaviors.
@@ -24,7 +24,7 @@ No hidden side effects. All behavior is documented and testable.
 Logs and permission checks are easy to review and verify.
 
 
-moltbot-safe is built on the following principles:
+Cognous Execution Runtime is built on the following principles:
 
 ## Minimalism
 
@@ -116,7 +116,7 @@ Predictability is essential for safety, testing, and reasoning about agent behav
 
 # 7. No Autonomy by Default
 
-**moltbot-safe** is intentionally *not* an autonomous agent.
+**Cognous Execution Runtime** is intentionally *not* an autonomous agent.
 
 It is:
 
@@ -171,13 +171,13 @@ If forced to choose between:
 
 The project will always choose safety.
 
-This is the defining principle of **moltbot-safe**.
+This is the defining principle of **Cognous Execution Runtime**.
 
 ---
 
 # Summary
 
-**moltbot-safe** is a deliberately minimal, explicit, isolated, permissioned, transparent, predictable, and auditable execution engine for AI agents.  
+**Cognous Execution Runtime** is a deliberately minimal, explicit, isolated, permissioned, transparent, predictable, and auditable execution engine for AI agents.
 These principles guide every design decision and ensure the system remains safe, trustworthy, and easy to reason about.
 
 Future contributors should treat this document as the north star for all development.

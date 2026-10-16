@@ -75,7 +75,7 @@ The default legacy destination remains unchanged for non-profile databases.
 Profile activation refuses prior legacy effects/attempts. Legacy writes are
 blocked after opt-in.
 
-Moltbot Safe PR #14 (`governor/refund-intent-registry`) remains unaccepted and
+Execution Runtime PR #14 (`governor/refund-intent-registry`) remains unaccepted and
 is not consumed. Its business-intent ownership table is independent. A future
 integration must compose both profile guards and transactions deliberately; it
 must not release or migrate held intent ownership implicitly.

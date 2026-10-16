@@ -1,6 +1,5 @@
 <!-- cognous-banner:start -->
 
-Cross-component test commands below now run in a disposable checkout assembled by the [qualification workflows](CROSS_COMPONENT_TESTS.md). Plain local test discovery covers the component-local tests retained here. Historical reports and dependency pins keep their original scope.
 ```text
 ──────────────────────────────────────────────────
    __________  _______   ______  __  _______
@@ -17,9 +16,9 @@ Cross-component test commands below now run in a disposable checkout assembled b
 
 # Cognous Execution Runtime
 
-Cognous Execution Runtime provides the **single-agent constrained execution boundary** in the Cognous Open Control Stack. Its retained Python package and producer identities continue to use Moltbot Safe names for compatibility.
+Cognous Execution Runtime provides the **single-agent constrained execution boundary** in the Cognous Open Control Stack.
 
-**Stack group: 04 · Constrained Execution.** See the [six-group component map](#cognous-stack-components).
+**Stack group: 04 · Constrained Execution.** See the [component map](#cognous-stack-components).
 
 ## Supported runtime
 
@@ -34,7 +33,7 @@ The supported path is:
 ```text
 Pinned Control Plane BoundedAuthorizationWorkflow.execute()
         -> current grant / approval / policy / evidence revalidation
-        -> Moltbot Safe ControlPlaneRefundDestinationAdapter
+        -> Execution Runtime ControlPlaneRefundDestinationAdapter
         -> strict local execution policy
         -> durable synthetic SQLite refund
         -> destination observation / reconciliation
@@ -58,7 +57,7 @@ Revision-specific test results and workflow commentary are maintained in the [ce
 
 ## Execution Envelope 0.2.0
 
-At API entry Moltbot Safe deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
+At API entry Execution Runtime deep-snapshots the complete operation, including nested payload values, before any trusted resolver or Control Plane callback can run. Validation and destination execution use only this frozen snapshot.
 
 For the single-refund adapter:
 
@@ -71,7 +70,7 @@ For the single-refund adapter:
 
 The pinned Control Plane checks institution and authority domain but does not export them in `AuthorizationBinding`.
 
-Until the upstream contract is extended, Moltbot Safe derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
+Until the upstream contract is extended, Execution Runtime derives both values from the **trusted Authority Context resolver used by the revalidating Control Plane workflow** and compares them exactly with the execution snapshot. A caller-supplied institution/domain label alone cannot satisfy the boundary.
 
 The exact requested upstream extension is documented in [docs/control-plane-interface-gap.md](docs/control-plane-interface-gap.md).
 
@@ -175,7 +174,7 @@ See the [research bibliography](https://github.com/cogno-us/cognous-open-control
 
 ## Cognous stack components
 
-The six groups organize component responsibilities. They are not an execution
+The five groups organize component responsibilities. They are not an execution
 sequence or a requirement to install every component. The [hub lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json)
 defines the selected integration; [release status](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md)
 defines its evidence and limits.
@@ -185,18 +184,16 @@ defines its evidence and limits.
 | **01 · Knowledge & Provenance** | [The Index (Evidence Registry)](https://github.com/cogno-us/cognous-evidence-registry) · [BitRep (Evidence Attestation)](https://github.com/cogno-us/cognous-evidence-attestation) |
 | **02 · Institutional Governance** | [Alvorada (Institutional Governance)](https://github.com/cogno-us/cognous-institutional-governance) · authority contracts |
 | **03 · Declaration & Policy Control** | [Action Manifest](https://github.com/cogno-us/cognous-action-manifest) · [Control Plane](https://github.com/cogno-us/cognous-control-plane) |
-| **04 · Constrained Execution** | [Execution Runtime (Moltbot Safe)](https://github.com/cogno-us/cognous-execution-runtime) |
+| **04 · Constrained Execution** | [Execution Runtime](https://github.com/cogno-us/cognous-execution-runtime) |
 | **05 · Replay & Evidence** | [Replay Bundle](https://github.com/cogno-us/cognous-replay-bundle) · [Governance Evidence Pack](https://github.com/cogno-us/cognous-governance-evidence-pack) · [ODES](https://github.com/cogno-us/open-decision-evidence-standard) |
-| **06 · Reasoning & Human Oversight** | [PRP](https://github.com/cogno-us/portable-reasoning-protocol) · [Research Intelligence](https://github.com/cogno-us/research-intelligence-protocol) · [TFA](https://github.com/cogno-us/truth-freedom-agency-protocol) |
 
 **Cross-cutting exchange:** [Governed Exchange (GAX/IMX)](https://github.com/cogno-us/cognous-governed-exchange) connects
 governed messages, recipient assessment and continuity across the groups. It is
 separate from Alvorada's institutional authority framework.
 
-Execution Runtime and Moltbot Safe name the same repository here. The supported
-Cognous Python execution boundary remains distinct from the quarantined upstream
-application. PRP, Research Intelligence and TFA are optional behavioral
-instructions; they do not enforce authorization or substitute for human oversight.
+The supported Execution Runtime boundary is the Cognous Python layer under
+`engine/`. The upstream application is quarantined outside this boundary. Human
+oversight requires an actual review process and accountable people.
 A signature, registry entry, message receipt or evidence summary does not grant
 execution authority.
 
