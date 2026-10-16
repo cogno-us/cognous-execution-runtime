@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 
-import { createExecTool } from "./bash-tools.exec";
+import { createExecTool as rawCreateExecTool } from "./bash-tools.exec";
 import {
   getFinishedSession,
   getSession,
@@ -138,3 +138,7 @@ test("yielded background exec still times out", async () => {
     if (pid) killProcessTree(pid);
   }
 });
+
+// Process-lifecycle tests explicitly authorize their synthetic host commands.
+const createExecTool = (defaults?: Parameters<typeof rawCreateExecTool>[0]) =>
+  rawCreateExecTool({ host: "gateway", security: "full", ask: "off", ...defaults });

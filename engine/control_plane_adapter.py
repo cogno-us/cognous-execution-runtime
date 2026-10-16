@@ -189,7 +189,8 @@ class PinnedControlPlaneExecutor:
         simulate: str | None = None,
         refund_intent: Any = None,
     ) -> ExecutionResult:
-        snapshot = snapshot_envelope(envelope)
+        from .safe_executor import snapshot_or_record_rejection
+        snapshot = snapshot_or_record_rejection(envelope, self.destination)
 
         # Derive institution/domain only from the resolver context used by the
         # trusted Control Plane workflow. Caller labels alone cannot satisfy it.
@@ -349,7 +350,8 @@ class PinnedControlPlaneExecutor:
 
     def reconcile(self, envelope: ExecutionEnvelope, *, now: datetime):
         """Effect-free reconciliation; absence never grants dispatch permission."""
-        snapshot = snapshot_envelope(envelope)
+        from .safe_executor import snapshot_or_record_rejection
+        snapshot = snapshot_or_record_rejection(envelope, self.destination)
         adapter = ControlPlaneRefundDestinationAdapter(
             snapshot=snapshot, destination=self.destination, policy=self.policy,
             trusted_institution_id=snapshot.operation.institution_id,
@@ -366,8 +368,10 @@ class PinnedControlPlaneExecutor:
             self.destination, self.policy
         ).observe_historical(envelope)
 
-    @staticmethod
-    def _denied(snapshot: FrozenEnvelope, error: str) -> ExecutionResult:
+    def _denied(self, snapshot: FrozenEnvelope, error: str) -> ExecutionResult:
+        failure_id = self.destination.record_failure(snapshot,
+            failure_class="authority_hold", reason_code="admission_rejected",
+            stage="pre_dispatch", detail=error)
         return ExecutionResult(
             status="denied",
             decision_id=snapshot.decision_id,
@@ -378,4 +382,5 @@ class PinnedControlPlaneExecutor:
             observed_state="unknown",
             newly_executed=False,
             error=error,
+            control_plane_evidence={"failure_record_id": failure_id},
         )

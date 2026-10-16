@@ -1,6 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => vi.resetModules());
 
 import { fetchRemoteMedia } from "./fetch.js";
+
+vi.mock("../infra/net/ssrf.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../infra/net/ssrf.js")>("../infra/net/ssrf.js");
+  return {
+    ...actual,
+    resolvePinnedHostname: (host: string) =>
+      actual.resolvePinnedHostname(host, async () => [{ address: "93.184.216.34", family: 4 }]),
+  };
+});
 
 function makeStream(chunks: Uint8Array[]) {
   return new ReadableStream<Uint8Array>({
@@ -44,4 +56,25 @@ describe("fetchRemoteMedia", () => {
       }),
     ).rejects.toThrow("exceeds maxBytes");
   });
+});
+
+it("blocks private redirect before the second fetch", async () => {
+  const fetchImpl = vi.fn(
+    async () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "http://127.0.0.1/private" },
+      }),
+  );
+  await expect(fetchRemoteMedia({ url: "https://example.com/a", fetchImpl })).rejects.toThrow(
+    "Blocked",
+  );
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+});
+
+it("enforces the default download budget before reading a large declared body", async () => {
+  const fetchImpl = async () => new Response(null, { headers: { "content-length": "20971521" } });
+  await expect(
+    fetchRemoteMedia({ url: "https://example.com/oversized", fetchImpl }),
+  ).rejects.toThrow("exceeds maxBytes");
 });

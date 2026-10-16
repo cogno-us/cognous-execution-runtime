@@ -7,11 +7,15 @@ import hashlib
 import math
 import re
 import subprocess
+import selectors
+import signal
+import os
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .safe_executor import DurableRefundDestination, FrozenEnvelope, commitment
+from .safe_executor import DurableRefundDestination, FrozenEnvelope, commitment, _admit_plain_data
 
 ADAPTER_VERSION = "0.1.0"
 UPSTREAM_COMMIT = "6648bd0c290efbc41ba131ee9831ee45cd431f94"
@@ -26,6 +30,32 @@ POLICY = {
     "process": {"run_as_user": "1000", "run_as_group": "1000"},
     "network_policies": {},
 }
+
+
+def _bounded_json(value):
+    if len(value) > 1048576:
+        raise ValueError("OpenShell JSON byte budget exceeded")
+    depth = 0
+    quoted = escaped = False
+    for char in value:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in '[{':
+            depth += 1
+            if depth > 32:
+                raise ValueError("OpenShell JSON depth budget exceeded")
+        elif char in ']}':
+            depth -= 1
+    parsed = json.loads(value)
+    _admit_plain_data(parsed)
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -82,6 +112,68 @@ class OpenShellConfig:
                            **asdict(self)})
 
 
+def _bounded_cli_output(argv, *, stdin, timeout, env, max_bytes=1048576):
+    """Drain both pipes with one total byte budget, deadline and process-group cleanup."""
+    data = (stdin or "").encode("utf-8")
+    if len(data) > 65536:
+        raise ValueError("OpenShell CLI input exceeds 64 KiB")
+    output = bytearray()
+    total = 0
+    deadline = time.monotonic() + timeout
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, env=env, shell=False, start_new_session=True)
+    try:
+        with selectors.DefaultSelector() as selector:
+            for pipe in (proc.stdout, proc.stderr):
+                os.set_blocking(pipe.fileno(), False)
+                selector.register(pipe, selectors.EVENT_READ)
+            if data:
+                os.set_blocking(proc.stdin.fileno(), False)
+                selector.register(proc.stdin, selectors.EVENT_WRITE)
+            else:
+                proc.stdin.close()
+            offset = 0
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("OpenShell CLI deadline exceeded")
+                for key, mask in selector.select(min(remaining, 0.1)):
+                    pipe = key.fileobj
+                    if mask & selectors.EVENT_WRITE:
+                        try:
+                            offset += os.write(pipe.fileno(), data[offset:offset + 8192])
+                        except BrokenPipeError:
+                            offset = len(data)
+                        if offset == len(data):
+                            selector.unregister(pipe)
+                            pipe.close()
+                        continue
+                    chunk = os.read(pipe.fileno(), min(65536, max_bytes - total + 1))
+                    if not chunk:
+                        selector.unregister(pipe)
+                        pipe.close()
+                        continue
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError("OpenShell CLI output exceeds 1 MiB")
+                    if pipe is proc.stdout:
+                        output.extend(chunk)
+            status = proc.wait(timeout=max(0.001, deadline - time.monotonic()))
+            if status:
+                raise subprocess.CalledProcessError(status, argv)
+        return output.decode("utf-8", errors="strict")
+    finally:
+        # Descendants may retain pipe handles or survive their parent.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+        for pipe in (proc.stdin, proc.stdout, proc.stderr):
+            if not pipe.closed:
+                pipe.close()
+
+
 class OpenShellCLI:
     """Fixed argv, bounded input, no inherited host secrets or shell evaluation.
 
@@ -95,21 +187,21 @@ class OpenShellCLI:
     def run(self, config, args, *, stdin=None):
         if hashlib.sha256(Path(self.binary).read_bytes()).hexdigest() != config.cli_sha256:
             raise PermissionError("CLI executable digest changed")
-        return subprocess.run(
+        return _bounded_cli_output(
             [self.binary, "--gateway", config.gateway, "--workspace", config.workspace, *args],
-            input=stdin, text=True, capture_output=True, check=True,
-            timeout=config.timeout_seconds + 15, shell=False,
+            stdin=stdin, timeout=config.timeout_seconds + 15,
             env={"HOME": self.home, "PATH": "/usr/local/bin:/usr/bin:/bin",
                  "XDG_CONFIG_HOME": str(Path(self.home) / ".config")},
-        ).stdout
+        )
+
 
     def inspect(self, config):
-        runtime = json.loads(self.run(config, ["gateway", "info", "--output", "json"]))
+        runtime = _bounded_json(self.run(config, ["gateway", "info", "--output", "json"]))
         if (runtime.get("version") != "0.1.2" or runtime.get("status") != "healthy"
                 or urlparse(runtime.get("server", "")).hostname not in {"localhost", "127.0.0.1", "::1"}
                 or [d.get("capabilities", {}).get("driver_name") for d in runtime.get("compute_drivers", [])] != ["docker"]):
             raise PermissionError("requires pinned 0.1.2 healthy local Docker gateway")
-        result = json.loads(self.run(config, ["sandbox", "get", config.sandbox, "--output", "json"]))
+        result = _bounded_json(self.run(config, ["sandbox", "get", config.sandbox, "--output", "json"]))
         result["runtime_evidence"] = runtime
         return result
 
@@ -121,7 +213,7 @@ class OpenShellCLI:
                          "--workdir", config.workdir, "--timeout", str(config.timeout_seconds),
                          "--no-tty", "--no-login-shell", "--env", "BASH_ENV=/dev/null",
                          "--", *config.executable], stdin=data)
-        return json.loads(output)
+        return _bounded_json(output)
 
     def request_stop(self, config):
         # A successful stop request is not proof of rollback or absence.

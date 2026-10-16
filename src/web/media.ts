@@ -189,7 +189,10 @@ async function loadWebMediaInternal(
   };
 
   if (/^https?:\/\//i.test(mediaUrl)) {
-    const fetched = await fetchRemoteMedia({ url: mediaUrl });
+    const fetched = await fetchRemoteMedia({
+      url: mediaUrl,
+      maxBytes: 20 * 1024 * 1024,
+    });
     const { buffer, contentType, fileName } = fetched;
     const kind = mediaKindFromMime(contentType);
     return await clampAndFinalize({ buffer, contentType, kind, fileName });

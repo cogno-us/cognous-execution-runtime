@@ -84,6 +84,7 @@ export function createMoltbotTools(options?: {
       agentSessionKey: options?.agentSessionKey,
     }),
     createMessageTool({
+      sandboxed: options?.sandboxed,
       agentAccountId: options?.agentAccountId,
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,

@@ -56,16 +56,20 @@ async function ensureRelayConnection() {
   relayConnectPromise = (async () => {
     const port = await getRelayPort()
     const httpBase = `http://127.0.0.1:${port}`
+    const { relayToken = '' } = await chrome.storage.local.get(['relayToken'])
+    if (relayToken.length < 32) throw new Error('Set the browser relay token in extension options')
     const wsUrl = `ws://127.0.0.1:${port}/extension`
+    const bytes = new TextEncoder().encode(relayToken)
+    const encoded = btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 
     // Fast preflight: is the relay server up?
     try {
-      await fetch(`${httpBase}/`, { method: 'HEAD', signal: AbortSignal.timeout(2000) })
+      await fetch(`${httpBase}/`, { method: 'HEAD', headers: { Authorization: `Bearer ${relayToken}` }, signal: AbortSignal.timeout(2000) })
     } catch (err) {
       throw new Error(`Relay server not reachable at ${httpBase} (${String(err)})`)
     }
 
-    const ws = new WebSocket(wsUrl)
+    const ws = new WebSocket(wsUrl, `moltbot-relay.${encoded}`)
     relayWs = ws
 
     await new Promise((resolve, reject) => {

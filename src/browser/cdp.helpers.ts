@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { relayAuthHeaders } from "./extension-relay.js";
 
 import { rawDataToString } from "../infra/ws.js";
 
@@ -40,7 +41,7 @@ export function getHeadersWithAuth(url: string, headers: Record<string, string> 
   } catch {
     // ignore
   }
-  return headers;
+  return { ...relayAuthHeaders(url), ...headers };
 }
 
 export function appendCdpPath(cdpUrl: string, path: string): string {

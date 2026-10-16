@@ -25,7 +25,7 @@ async function checkRelayReachable(port) {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 900)
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: ctrl.signal })
+    const res = await fetch(url, { method: 'HEAD', headers: { Authorization: `Bearer ${document.getElementById('token').value}` }, signal: ctrl.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     setStatus('ok', `Relay reachable at ${url}`)
   } catch {
@@ -39,7 +39,8 @@ async function checkRelayReachable(port) {
 }
 
 async function load() {
-  const stored = await chrome.storage.local.get(['relayPort'])
+  const stored = await chrome.storage.local.get(['relayPort', 'relayToken'])
+  document.getElementById('token').value = stored.relayToken || ''
   const port = clampPort(stored.relayPort)
   document.getElementById('port').value = String(port)
   updateRelayUrl(port)
@@ -49,7 +50,9 @@ async function load() {
 async function save() {
   const input = document.getElementById('port')
   const port = clampPort(input.value)
-  await chrome.storage.local.set({ relayPort: port })
+  const relayToken = document.getElementById('token').value.trim()
+  if (relayToken.length < 32) return setStatus('error', 'Token must contain at least 32 characters')
+  await chrome.storage.local.set({ relayPort: port, relayToken })
   input.value = String(port)
   updateRelayUrl(port)
   await checkRelayReachable(port)

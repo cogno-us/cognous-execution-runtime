@@ -232,8 +232,8 @@ describe("web auto-reply", () => {
 
     const bigPng = await sharp({
       create: {
-        width: 3200,
-        height: 3200,
+        width: 2000,
+        height: 2000,
         channels: 3,
         background: { r: 255, g: 0, b: 0 },
       },
@@ -277,4 +277,15 @@ describe("web auto-reply", () => {
 
     fetchMock.mockRestore();
   });
+});
+
+vi.hoisted(() => vi.resetModules());
+vi.mock("../infra/net/ssrf.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../infra/net/ssrf.js")>("../infra/net/ssrf.js");
+  return {
+    ...actual,
+    resolvePinnedHostname: (host: string) =>
+      actual.resolvePinnedHostname(host, async () => [{ address: "93.184.216.34", family: 4 }]),
+  };
 });

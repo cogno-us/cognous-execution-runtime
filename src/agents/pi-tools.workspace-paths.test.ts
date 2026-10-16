@@ -31,7 +31,10 @@ describe("workspace path resolution", () => {
 
         process.chdir(otherDir);
         try {
-          const tools = createMoltbotCodingTools({ workspaceDir });
+          const tools = createMoltbotCodingTools({
+            workspaceDir,
+            exec: { host: "gateway", security: "full", ask: "off" },
+          });
           const readTool = tools.find((tool) => tool.name === "read");
           expect(readTool).toBeDefined();
 
@@ -53,7 +56,10 @@ describe("workspace path resolution", () => {
 
         process.chdir(otherDir);
         try {
-          const tools = createMoltbotCodingTools({ workspaceDir });
+          const tools = createMoltbotCodingTools({
+            workspaceDir,
+            exec: { host: "gateway", security: "full", ask: "off" },
+          });
           const writeTool = tools.find((tool) => tool.name === "write");
           expect(writeTool).toBeDefined();
 
@@ -80,7 +86,10 @@ describe("workspace path resolution", () => {
 
         process.chdir(otherDir);
         try {
-          const tools = createMoltbotCodingTools({ workspaceDir });
+          const tools = createMoltbotCodingTools({
+            workspaceDir,
+            exec: { host: "gateway", security: "full", ask: "off" },
+          });
           const editTool = tools.find((tool) => tool.name === "edit");
           expect(editTool).toBeDefined();
 
@@ -101,7 +110,10 @@ describe("workspace path resolution", () => {
 
   it("defaults exec cwd to workspaceDir when workdir is omitted", async () => {
     await withTempDir("moltbot-ws-", async (workspaceDir) => {
-      const tools = createMoltbotCodingTools({ workspaceDir });
+      const tools = createMoltbotCodingTools({
+        workspaceDir,
+        exec: { host: "gateway", security: "full", ask: "off" },
+      });
       const execTool = tools.find((tool) => tool.name === "exec");
       expect(execTool).toBeDefined();
 
@@ -124,7 +136,10 @@ describe("workspace path resolution", () => {
   it("lets exec workdir override the workspace default", async () => {
     await withTempDir("moltbot-ws-", async (workspaceDir) => {
       await withTempDir("moltbot-override-", async (overrideDir) => {
-        const tools = createMoltbotCodingTools({ workspaceDir });
+        const tools = createMoltbotCodingTools({
+          workspaceDir,
+          exec: { host: "gateway", security: "full", ask: "off" },
+        });
         const execTool = tools.find((tool) => tool.name === "exec");
         expect(execTool).toBeDefined();
 

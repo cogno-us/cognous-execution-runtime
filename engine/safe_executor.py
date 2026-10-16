@@ -8,7 +8,7 @@ import os
 import sqlite3
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Literal
 
@@ -143,9 +143,63 @@ class FrozenEnvelope:
     requested_attempt_id: str | None = None
 
 
+def _admit_plain_data(value: object, *, max_bytes: int = 1048576) -> None:
+    """Bound exact JSON-like values before copying or invoking serialization hooks."""
+    stack = [(value, 0)]
+    nodes = 0
+    size = 0
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if depth > 32 or nodes > 10000:
+            raise ValueError("execution input exceeds structural budget")
+        kind = type(item)
+        if item is None or kind is bool:
+            size += 5
+        elif kind is str:
+            if len(item) > max_bytes:
+                raise ValueError("execution string exceeds byte budget")
+            size += len(item.encode("utf-8")) + 2
+        elif kind in (int, float):
+            if kind is int and item.bit_length() > 256:
+                raise ValueError("execution integer exceeds budget")
+            if kind is float and not math.isfinite(item):
+                raise ValueError("execution number must be finite")
+            size += 80
+        elif kind is dict:
+            if len(item) > 10000:
+                raise ValueError("execution object exceeds budget")
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("execution object keys must be exact strings")
+                stack.extend(((key, depth + 1), (child, depth + 1)))
+        elif kind in (list, tuple):
+            if len(item) > 10000:
+                raise ValueError("execution array exceeds budget")
+            stack.extend((child, depth + 1) for child in item)
+        else:
+            raise ValueError("execution input requires plain builtin values")
+        if size > max_bytes:
+            raise ValueError("execution input exceeds byte budget")
+
+
+def snapshot_or_record_rejection(envelope, destination):
+    try:
+        return snapshot_envelope(envelope)
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        destination.record_admission_rejection()
+        raise
+
+
 def snapshot_envelope(envelope: ExecutionEnvelope) -> FrozenEnvelope:
     """Deep-snapshot request data before any trusted callback can run."""
+    if type(envelope) is not ExecutionEnvelope or type(envelope.operation) is not ExecutionOperation:
+        raise ValueError("exact execution envelope and operation required")
     op = envelope.operation
+    _admit_plain_data({
+        "envelope": {f.name: getattr(envelope, f.name) for f in fields(envelope) if f.name != "operation"},
+        "operation": {f.name: getattr(op, f.name) for f in fields(op)},
+    })
     payload_copy = copy.deepcopy(op.payload)
     payload_json = json.dumps(
         payload_copy,
@@ -214,36 +268,39 @@ def _strict_finite_number(value: object, *, name: str) -> float:
 
 
 def validate_snapshot(envelope: FrozenEnvelope) -> None:
+    if type(envelope) is not FrozenEnvelope or type(envelope.operation) is not FrozenOperation:
+        raise ValueError("exact frozen envelope and operation required")
+    _admit_plain_data({f.name: getattr(envelope.operation, f.name) for f in fields(envelope.operation)})
     if envelope.version != EXECUTION_ENVELOPE_VERSION:
         raise ValueError("unsupported execution envelope version")
     if (
-        not isinstance(envelope.decision_id, str)
+        type(envelope.decision_id) is not str
         or not envelope.decision_id
-        or not isinstance(envelope.effect_id, str)
+        or type(envelope.effect_id) is not str
         or not envelope.effect_id
     ):
         raise ValueError("decision_id and effect_id must be non-empty strings")
     if envelope.requested_attempt_id is not None and (
-        not isinstance(envelope.requested_attempt_id, str)
+        type(envelope.requested_attempt_id) is not str
         or not envelope.requested_attempt_id
     ):
         raise ValueError("attempt_id must be a non-empty string when supplied")
     op = envelope.operation
-    if not isinstance(op.payload_commitment, str) or not op.payload_commitment:
+    if type(op.payload_commitment) is not str or not op.payload_commitment:
         raise ValueError("payload_commitment must be a non-empty string")
     if op.payload_commitment != commitment(op.payload()):
         raise ValueError("payload commitment mismatch")
     if not isinstance(op.requested_permissions, tuple) or any(
-        not isinstance(value, str) or not value for value in op.requested_permissions
+        type(value) is not str or not value for value in op.requested_permissions
     ):
         raise ValueError("requested_permissions must contain non-empty strings")
-    if not isinstance(op.unit, str) or not op.unit:
+    if type(op.unit) is not str or not op.unit:
         raise ValueError("unit must be a non-empty string")
     _strict_finite_number(op.amount, name="amount")
     _strict_positive_int(op.effects, name="effects", exactly_one=True)
     _strict_positive_int(op.effective_max_effects, name="effective_max_effects")
     if op.tenant_id is not None and (
-        not isinstance(op.tenant_id, str) or not (1 <= len(op.tenant_id) <= 128)
+        type(op.tenant_id) is not str or not (1 <= len(op.tenant_id) <= 128)
     ):
         raise ValueError("tenant_id must be an exact non-empty string up to 128 characters")
     required = [
@@ -263,7 +320,7 @@ def validate_snapshot(envelope: FrozenEnvelope) -> None:
         op.grant_id,
         op.grant_revision,
     ]
-    if any(not isinstance(value, str) or not value for value in required):
+    if any(type(value) is not str or not value for value in required):
         raise ValueError("execution operation contains empty required fields")
 
 
@@ -471,6 +528,16 @@ class DurableRefundDestination:
             );
             """
         )
+
+    def record_admission_rejection(self):
+        # Do not stringify malformed caller objects or retain their sensitive payload.
+        rejection_id = str(uuid.uuid4())
+        with self._connect() as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS admission_rejections_v1 "
+                         "(rejection_id TEXT PRIMARY KEY, reason_code TEXT NOT NULL, created_at REAL NOT NULL)")
+            conn.execute("INSERT INTO admission_rejections_v1 VALUES (?, ?, ?)",
+                         (rejection_id, "invalid_execution_envelope", time.time()))
+        return rejection_id
 
     def record_failure(
         self,
@@ -715,7 +782,13 @@ class LocalDestinationExecutor:
         expected_effective_grant_digest: str | None = None,
         effective_grant_derivation_version: str | None = None,
     ) -> ExecutionResult:
-        self.policy.check(snapshot.operation)
+        try:
+            validate_snapshot(snapshot)
+            self.policy.check(snapshot.operation)
+        except (ValueError, PermissionError) as exc:
+            self.destination.record_failure(snapshot, failure_class="policy_denial",
+                reason_code="local_policy_rejected", stage="pre_dispatch", detail=str(exc))
+            raise
         try:
             attempt_id = self.destination.begin_attempt(
                 snapshot.requested_attempt_id, snapshot

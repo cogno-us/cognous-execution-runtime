@@ -240,6 +240,7 @@ const MessageToolSchema = buildMessageToolSchemaFromActions(AllMessageActions, {
 });
 
 type MessageToolOptions = {
+  sandboxed?: boolean;
   agentAccountId?: string;
   agentSessionKey?: string;
   config?: MoltbotConfig;
@@ -345,6 +346,18 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         throw err;
       }
       const params = args as Record<string, unknown>;
+      if (
+        options?.sandboxed &&
+        (["media", "path", "filePath"].some((key) => params[key] != null) ||
+          (typeof params.message === "string" && /\bMEDIA\s*:/i.test(params.message)))
+      ) {
+        throw new Error(
+          "Sandboxed messaging requires inline attachments; host paths and remote fetches are unavailable",
+        );
+      }
+      if (typeof params.buffer === "string" && params.buffer.length > 8 * 1024 * 1024) {
+        throw new Error("Inline attachment exceeds 8 MiB encoded limit");
+      }
       const cfg = options?.config ?? loadConfig();
       const action = readStringParam(params, "action", {
         required: true,
