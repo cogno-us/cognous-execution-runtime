@@ -276,3 +276,14 @@ describe("resolveSlackMedia", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
+
+vi.hoisted(() => vi.resetModules());
+vi.mock("../../infra/net/ssrf.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../infra/net/ssrf.js")>("../../infra/net/ssrf.js");
+  return {
+    ...actual,
+    resolvePinnedHostname: (host: string) =>
+      actual.resolvePinnedHostname(host, async () => [{ address: "93.184.216.34", family: 4 }]),
+  };
+});

@@ -3,7 +3,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { peekSystemEvents, resetSystemEventsForTest } from "../infra/system-events.js";
 import { getFinishedSession, resetProcessRegistryForTests } from "./bash-process-registry.js";
-import { createExecTool, createProcessTool, execTool, processTool } from "./bash-tools.js";
+import {
+  createExecTool as rawCreateExecTool,
+  createProcessTool,
+  processTool,
+} from "./bash-tools.js";
 import { buildDockerExecArgs } from "./bash-tools.shared.js";
 import { sanitizeBinaryOutput } from "./shell-utils.js";
 
@@ -56,7 +60,10 @@ describe("exec tool backgrounding", () => {
   });
 
   afterEach(() => {
-    if (!isWin) process.env.SHELL = originalShell;
+    if (!isWin) {
+      if (originalShell === undefined) delete process.env.SHELL;
+      else process.env.SHELL = originalShell;
+    }
   });
 
   it(
@@ -287,7 +294,10 @@ describe("exec PATH handling", () => {
 
   afterEach(() => {
     process.env.PATH = originalPath;
-    if (!isWin) process.env.SHELL = originalShell;
+    if (!isWin) {
+      if (originalShell === undefined) delete process.env.SHELL;
+      else process.env.SHELL = originalShell;
+    }
   });
 
   it("prepends configured path entries", async () => {
@@ -298,6 +308,7 @@ describe("exec PATH handling", () => {
     const tool = createExecTool({ pathPrepend: prepend });
     const result = await tool.execute("call1", {
       command: isWin ? "Write-Output $env:PATH" : "echo $PATH",
+      env: { PATH: basePath },
     });
 
     const text = normalizeText(result.content.find((c) => c.type === "text")?.text);
@@ -395,3 +406,9 @@ describe("buildDockerExecArgs", () => {
     expect(args).toContain("-t");
   });
 });
+
+// Process-lifecycle tests explicitly authorize their synthetic host commands.
+const createExecTool = (defaults?: Parameters<typeof rawCreateExecTool>[0]) =>
+  rawCreateExecTool({ host: "gateway", security: "full", ask: "off", ...defaults });
+
+const execTool = createExecTool();

@@ -398,15 +398,8 @@ private fun CanvasView(viewModel: MainViewModel, modifier: Modifier = Modifier) 
           }
         // Use default layer/background; avoid forcing a black fill over WebView content.
 
-        val a2uiBridge =
-          CanvasA2UIActionBridge { payload ->
-            viewModel.handleCanvasA2UIActionFromWebView(payload)
-          }
-        addJavascriptInterface(a2uiBridge, CanvasA2UIActionBridge.interfaceName)
-        addJavascriptInterface(
-          CanvasA2UIActionLegacyBridge(a2uiBridge),
-          CanvasA2UIActionLegacyBridge.interfaceName,
-        )
+        // addJavascriptInterface exposes its methods to every frame and origin.
+        // Keep Canvas display-only until an origin-bound, consent-gated bridge exists.
         viewModel.canvas.attach(this)
       }
     },

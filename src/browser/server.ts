@@ -1,4 +1,5 @@
 import type { Server } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import express from "express";
 
 import { loadConfig } from "../config/config.js";
@@ -20,7 +21,24 @@ export async function startBrowserControlServerFromConfig(): Promise<BrowserServ
   const resolved = resolveBrowserConfig(cfg.browser, cfg);
   if (!resolved.enabled) return null;
 
+  const token = process.env.CLAWDBOT_BROWSER_TOKEN?.trim();
+  if (!token || token.length < 32) {
+    logServer.warn("Browser HTTP control requires CLAWDBOT_BROWSER_TOKEN (at least 32 characters)");
+    return null;
+  }
   const app = express();
+  app.use((req, res, next) => {
+    const supplied = req.headers.authorization ?? "";
+    const expected = `Bearer ${token}`;
+    const valid =
+      Buffer.byteLength(supplied) === Buffer.byteLength(expected) &&
+      timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+    if (!valid || req.headers.origin) {
+      res.status(401).end("Unauthorized");
+      return;
+    }
+    next();
+  });
   app.use(express.json({ limit: "1mb" }));
 
   const ctx = createBrowserRouteContext({

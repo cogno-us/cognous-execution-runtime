@@ -78,6 +78,10 @@ export function resolveEnableState(
   if (config.allow.length > 0 && !config.allow.includes(id)) {
     return { enabled: false, reason: "not in allowlist" };
   }
+  // Workspace content is data until the operator explicitly authorizes a plugin.
+  if (origin === "workspace" && config.entries[id]?.enabled !== true) {
+    return { enabled: false, reason: "workspace plugin requires explicit enablement" };
+  }
   if (config.slots.memory === id) {
     return { enabled: true };
   }

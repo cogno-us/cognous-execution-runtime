@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 
-import { createExecTool } from "./bash-tools.exec";
+import { createExecTool as rawCreateExecTool } from "./bash-tools.exec";
 import { resetProcessRegistryForTests } from "./bash-process-registry";
 
 afterEach(() => {
@@ -18,3 +18,7 @@ test("exec supports pty output", async () => {
   const text = result.content?.[0]?.text ?? "";
   expect(text).toContain("ok");
 });
+
+// Process-lifecycle tests explicitly authorize their synthetic host commands.
+const createExecTool = (defaults?: Parameters<typeof rawCreateExecTool>[0]) =>
+  rawCreateExecTool({ host: "gateway", security: "full", ask: "off", ...defaults });

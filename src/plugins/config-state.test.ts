@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePluginsConfig } from "./config-state.js";
+import { normalizePluginsConfig, resolveEnableState } from "./config-state.js";
 
 describe("normalizePluginsConfig", () => {
   it("uses default memory slot when not specified", () => {
@@ -48,5 +48,20 @@ describe("normalizePluginsConfig", () => {
       slots: { memory: "   " },
     });
     expect(result.slots.memory).toBe("memory-core");
+  });
+});
+
+describe("workspace plugin admission", () => {
+  it("requires explicit enablement even when workspace code takes the memory slot", () => {
+    expect(resolveEnableState("memory-core", "workspace", normalizePluginsConfig({})).enabled).toBe(
+      false,
+    );
+    expect(
+      resolveEnableState(
+        "local",
+        "workspace",
+        normalizePluginsConfig({ entries: { local: { enabled: true } } }),
+      ).enabled,
+    ).toBe(true);
   });
 });

@@ -83,7 +83,7 @@ export async function handleToolsInvokeHttpRequest(
   const cfg = loadConfig();
   const token = getBearerToken(req);
   const authResult = await authorizeGatewayConnect({
-    auth: opts.auth,
+    auth: { ...opts.auth, allowTailscale: false },
     connectAuth: token ? { token, password: token } : null,
     req,
     trustedProxies: opts.trustedProxies ?? cfg.gateway?.trustedProxies,

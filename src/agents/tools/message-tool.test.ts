@@ -162,3 +162,19 @@ describe("message tool description", () => {
     setActivePluginRegistry(createTestRegistry([]));
   });
 });
+
+describe("sandbox message attachment boundary", () => {
+  it.each([
+    { path: "/etc/passwd" },
+    { filePath: "../secret" },
+    { media: "http://127.0.0.1/private" },
+    { message: "MEDIA:/etc/passwd" },
+  ])("rejects host-mediated attachment inputs before dispatch: %j", async (input) => {
+    mocks.runMessageAction.mockClear();
+    const tool = createMessageTool({ sandboxed: true, config: {} as never });
+    await expect(
+      tool.execute("sandbox", { action: "send", target: "synthetic", ...input }),
+    ).rejects.toThrow("Sandboxed messaging");
+    expect(mocks.runMessageAction).not.toHaveBeenCalled();
+  });
+});

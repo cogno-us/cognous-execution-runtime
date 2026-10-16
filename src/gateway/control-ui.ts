@@ -172,15 +172,25 @@ interface ControlUiInjectionOpts {
   assistantAvatar?: string;
 }
 
+export function scriptJson(value: string): string {
+  // HTML parses </script> before JavaScript interprets a string literal.
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 function injectControlUiConfig(html: string, opts: ControlUiInjectionOpts): string {
   const { basePath, assistantName, assistantAvatar } = opts;
   const script =
     `<script>` +
-    `window.__CLAWDBOT_CONTROL_UI_BASE_PATH__=${JSON.stringify(basePath)};` +
-    `window.__CLAWDBOT_ASSISTANT_NAME__=${JSON.stringify(
+    `window.__CLAWDBOT_CONTROL_UI_BASE_PATH__=${scriptJson(basePath)};` +
+    `window.__CLAWDBOT_ASSISTANT_NAME__=${scriptJson(
       assistantName ?? DEFAULT_ASSISTANT_IDENTITY.name,
     )};` +
-    `window.__CLAWDBOT_ASSISTANT_AVATAR__=${JSON.stringify(
+    `window.__CLAWDBOT_ASSISTANT_AVATAR__=${scriptJson(
       assistantAvatar ?? DEFAULT_ASSISTANT_IDENTITY.avatar,
     )};` +
     `</script>`;

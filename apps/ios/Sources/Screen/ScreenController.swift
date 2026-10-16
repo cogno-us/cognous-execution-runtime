@@ -360,7 +360,8 @@ private final class ScreenNavigationDelegate: NSObject, WKNavigationDelegate {
         // Intercept moltbot:// deep links
         if url.scheme == "moltbot" {
             decisionHandler(.cancel)
-            self.controller?.onDeepLink?(url)
+            // A web navigation is not an operator-authorized agent invocation.
+            // Deep links from outside Canvas retain the app's normal intake path.
             return
         }
 

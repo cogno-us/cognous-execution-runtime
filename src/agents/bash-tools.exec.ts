@@ -851,6 +851,14 @@ export function createExecTool(
       }
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;
+      if (security === "deny") {
+        throw new Error("exec denied: security=deny");
+      }
+      if (host === "sandbox" && !sandbox) {
+        throw new Error(
+          "exec denied: sandbox is unavailable; explicit host execution configuration required",
+        );
+      }
       const rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
       let workdir = rawWorkdir;
       let containerWorkdir = sandbox?.containerWorkdir;

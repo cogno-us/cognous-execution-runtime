@@ -504,6 +504,7 @@ describe("Agent-specific tool filtering", () => {
     };
 
     const tools = createMoltbotCodingTools({
+      exec: { host: "gateway", security: "full", ask: "off" },
       config: cfg,
       sessionKey: "agent:main:main",
       workspaceDir: "/tmp/test-main",

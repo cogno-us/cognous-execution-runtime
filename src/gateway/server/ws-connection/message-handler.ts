@@ -375,7 +375,15 @@ export function attachGatewayWsMessageHandler(params: {
         const allowControlUiBypass = allowInsecureControlUi || disableControlUiDeviceAuth;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
         if (!device) {
-          const canSkipDevice = allowControlUiBypass ? hasSharedAuth : hasTokenAuth;
+          // Presence of a token is not proof that the shared credential matched.
+          const sharedAuth = await authorizeGatewayConnect({
+            auth: { ...resolvedAuth, allowTailscale: false },
+            connectAuth: connectParams.auth,
+            req: upgradeReq,
+            trustedProxies,
+          });
+          const canSkipDevice =
+            sharedAuth.ok && (allowControlUiBypass ? hasSharedAuth : hasTokenAuth);
 
           if (isControlUi && !allowControlUiBypass) {
             const errorMessage = "control ui requires HTTPS or localhost (secure context)";

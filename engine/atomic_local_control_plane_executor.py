@@ -21,7 +21,8 @@ class AtomicLocalControlPlaneExecutor:
         return provision_local_execution_claim(self.workflow, proposal, decision, provision=self.destination.provision_claim, now=now, claim_id=claim_id, budget_id=budget_id, expires_at=expires_at, decision_input_commitment=decision_input_commitment, decision_input_profile_version=decision_input_profile_version)
 
     def execute(self, *, envelope: ExecutionEnvelope, claim_id: str, simulate: str | None = None, attempt_id: str | None = None) -> ExecutionResult:
-        snapshot = snapshot_envelope(envelope)
+        from .safe_executor import snapshot_or_record_rejection
+        snapshot = snapshot_or_record_rejection(envelope, self.destination)
         try:
             self.policy.check(snapshot.operation)
         except PermissionError as exc:
@@ -85,7 +86,8 @@ class AtomicLocalControlPlaneExecutor:
         return ExecutionResult(status="partial" if observation["state"] == "partial" else "executed", decision_id=snapshot.decision_id, effect_id=snapshot.effect_id, attempt_id=attempt_id, attempted=True, acknowledged=True, observed_state=observation["state"], newly_executed=True, observation=copy.deepcopy(observation), control_plane_evidence={"local_authority_effect_profile":PROFILE,"claim_id":claim_id,"linearized_at":value["linearized_at"],"authority_receipt":copy.deepcopy(value["authority_receipt"])})
 
     def reconcile(self, *, claim_id: str, envelope: ExecutionEnvelope) -> ExecutionResult:
-        snapshot = snapshot_envelope(envelope)
+        from .safe_executor import snapshot_or_record_rejection
+        snapshot = snapshot_or_record_rejection(envelope, self.destination)
         value = self.destination.reconcile_claim(claim_id, snapshot)
         state = value["status"] if value["status"] in {"applied","partial"} else "unknown"
         return ExecutionResult(status="observed", decision_id=snapshot.decision_id, effect_id=snapshot.effect_id, attempt_id=None, attempted=False, acknowledged=False, observed_state=state, newly_executed=False, observation=value)

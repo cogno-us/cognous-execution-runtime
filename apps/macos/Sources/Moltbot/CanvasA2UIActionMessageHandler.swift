@@ -15,13 +15,11 @@ final class CanvasA2UIActionMessageHandler: NSObject, WKScriptMessageHandler {
     }
 
     func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == Self.messageName else { return }
+        guard message.name == Self.messageName, message.frameInfo.isMainFrame else { return }
 
         // Only accept actions from local Canvas content (not arbitrary web pages).
         guard let webView = message.webView, let url = webView.url else { return }
         if url.scheme == CanvasScheme.scheme {
-            // ok
-        } else if Self.isLocalNetworkCanvasURL(url) {
             // ok
         } else {
             return

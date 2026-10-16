@@ -1,4 +1,9 @@
 import path from "node:path";
+import {
+  closeDispatcher,
+  createPinnedDispatcher,
+  resolvePinnedHostname,
+} from "../infra/net/ssrf.js";
 
 import { detectMime, extensionForMime } from "./mime.js";
 
@@ -52,7 +57,7 @@ function parseContentDispositionFileName(header?: string | null): string | undef
 
 async function readErrorBodySnippet(res: Response, maxChars = 200): Promise<string | undefined> {
   try {
-    const text = await res.text();
+    const text = (await readResponseWithLimit(res, 4096)).toString("utf8");
     if (!text) return undefined;
     const collapsed = text.replace(/\s+/g, " ").trim();
     if (!collapsed) return undefined;
@@ -64,79 +69,108 @@ async function readErrorBodySnippet(res: Response, maxChars = 200): Promise<stri
 }
 
 export async function fetchRemoteMedia(options: FetchMediaOptions): Promise<FetchMediaResult> {
-  const { url, fetchImpl, filePathHint, maxBytes } = options;
+  const { url, fetchImpl, filePathHint } = options;
+  const maxBytes = options.maxBytes ?? 20 * 1024 * 1024;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Invalid media byte limit");
   const fetcher: FetchLike | undefined = fetchImpl ?? globalThis.fetch;
   if (!fetcher) {
     throw new Error("fetch is not available");
   }
 
   let res: Response;
+  let dispatcher: ReturnType<typeof createPinnedDispatcher> | undefined;
+  const signal = AbortSignal.timeout(30_000);
   try {
-    res = await fetcher(url);
+    let current = new URL(url);
+    for (let hop = 0; ; hop += 1) {
+      if (!["http:", "https:"].includes(current.protocol) || current.username || current.password) {
+        throw new Error("Media URL must be HTTP(S) without credentials");
+      }
+      const pinned = await resolvePinnedHostname(current.hostname);
+      dispatcher = createPinnedDispatcher(pinned);
+      res = await fetcher(current.toString(), {
+        redirect: "manual",
+        signal,
+        dispatcher,
+      } as RequestInit);
+      if (![301, 302, 303, 307, 308].includes(res.status)) break;
+      const location = res.headers.get("location");
+      if (typeof res.body?.cancel === "function") await res.body.cancel();
+      await closeDispatcher(dispatcher);
+      dispatcher = undefined;
+      if (!location || hop >= 5) throw new Error("Invalid or excessive media redirect");
+      current = new URL(location, current);
+    }
   } catch (err) {
+    await closeDispatcher(dispatcher);
     throw new MediaFetchError("fetch_failed", `Failed to fetch media from ${url}: ${String(err)}`);
   }
 
-  if (!res.ok) {
-    const statusText = res.statusText ? ` ${res.statusText}` : "";
-    const redirected = res.url && res.url !== url ? ` (redirected to ${res.url})` : "";
-    let detail = `HTTP ${res.status}${statusText}`;
-    if (!res.body) {
-      detail = `HTTP ${res.status}${statusText}; empty response body`;
-    } else {
-      const snippet = await readErrorBodySnippet(res);
-      if (snippet) detail += `; body: ${snippet}`;
-    }
-    throw new MediaFetchError(
-      "http_error",
-      `Failed to fetch media from ${url}${redirected}: ${detail}`,
-    );
-  }
-
-  const contentLength = res.headers.get("content-length");
-  if (maxBytes && contentLength) {
-    const length = Number(contentLength);
-    if (Number.isFinite(length) && length > maxBytes) {
+  try {
+    if (!res.ok) {
+      const statusText = res.statusText ? ` ${res.statusText}` : "";
+      const redirected = res.url && res.url !== url ? ` (redirected to ${res.url})` : "";
+      let detail = `HTTP ${res.status}${statusText}`;
+      if (!res.body) {
+        detail = `HTTP ${res.status}${statusText}; empty response body`;
+      } else {
+        const snippet = await readErrorBodySnippet(res);
+        if (snippet) detail += `; body: ${snippet}`;
+      }
       throw new MediaFetchError(
-        "max_bytes",
-        `Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
+        "http_error",
+        `Failed to fetch media from ${url}${redirected}: ${detail}`,
       );
     }
+
+    const contentLength = res.headers.get("content-length");
+    if (maxBytes && contentLength) {
+      const length = Number(contentLength);
+      if (Number.isFinite(length) && length > maxBytes) {
+        throw new MediaFetchError(
+          "max_bytes",
+          `Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
+        );
+      }
+    }
+
+    const buffer = maxBytes
+      ? await readResponseWithLimit(res, maxBytes)
+      : Buffer.from(await res.arrayBuffer());
+    let fileNameFromUrl: string | undefined;
+    try {
+      const parsed = new URL(url);
+      const base = path.basename(parsed.pathname);
+      fileNameFromUrl = base || undefined;
+    } catch {
+      // ignore parse errors; leave undefined
+    }
+
+    const headerFileName = parseContentDispositionFileName(res.headers.get("content-disposition"));
+    let fileName =
+      headerFileName || fileNameFromUrl || (filePathHint ? path.basename(filePathHint) : undefined);
+
+    const filePathForMime =
+      headerFileName && path.extname(headerFileName) ? headerFileName : (filePathHint ?? url);
+    const contentType = await detectMime({
+      buffer,
+      headerMime: res.headers.get("content-type"),
+      filePath: filePathForMime,
+    });
+    if (fileName && !path.extname(fileName) && contentType) {
+      const ext = extensionForMime(contentType);
+      if (ext) fileName = `${fileName}${ext}`;
+    }
+
+    return {
+      buffer,
+      contentType: contentType ?? undefined,
+      fileName,
+    };
+  } finally {
+    if (typeof res.body?.cancel === "function") await res.body.cancel().catch(() => {});
+    await closeDispatcher(dispatcher);
   }
-
-  const buffer = maxBytes
-    ? await readResponseWithLimit(res, maxBytes)
-    : Buffer.from(await res.arrayBuffer());
-  let fileNameFromUrl: string | undefined;
-  try {
-    const parsed = new URL(url);
-    const base = path.basename(parsed.pathname);
-    fileNameFromUrl = base || undefined;
-  } catch {
-    // ignore parse errors; leave undefined
-  }
-
-  const headerFileName = parseContentDispositionFileName(res.headers.get("content-disposition"));
-  let fileName =
-    headerFileName || fileNameFromUrl || (filePathHint ? path.basename(filePathHint) : undefined);
-
-  const filePathForMime =
-    headerFileName && path.extname(headerFileName) ? headerFileName : (filePathHint ?? url);
-  const contentType = await detectMime({
-    buffer,
-    headerMime: res.headers.get("content-type"),
-    filePath: filePathForMime,
-  });
-  if (fileName && !path.extname(fileName) && contentType) {
-    const ext = extensionForMime(contentType);
-    if (ext) fileName = `${fileName}${ext}`;
-  }
-
-  return {
-    buffer,
-    contentType: contentType ?? undefined,
-    fileName,
-  };
 }
 
 async function readResponseWithLimit(res: Response, maxBytes: number): Promise<Buffer> {

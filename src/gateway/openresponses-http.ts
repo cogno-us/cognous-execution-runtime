@@ -329,7 +329,7 @@ export async function handleOpenResponsesHttpRequest(
 
   const token = getBearerToken(req);
   const authResult = await authorizeGatewayConnect({
-    auth: opts.auth,
+    auth: { ...opts.auth, allowTailscale: false },
     connectAuth: { token, password: token },
     req,
     trustedProxies: opts.trustedProxies,

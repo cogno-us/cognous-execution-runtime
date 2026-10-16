@@ -1,4 +1,5 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 
@@ -147,6 +148,28 @@ function rejectUpgrade(socket: Duplex, status: number, bodyText: string) {
   }
 }
 
+const relayTokensByPort = new Map<number, string>();
+
+export function relayAuthHeaders(url: string): Record<string, string> {
+  const parsed = new URL(url);
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) return {};
+  const token = relayTokensByPort.get(Number(parsed.port));
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function relayAuthorized(req: IncomingMessage, token: string): boolean {
+  if (req.headers.origin && !req.headers.origin.startsWith("chrome-extension://")) return false;
+  const protocol = `moltbot-relay.${Buffer.from(token).toString("base64url")}`;
+  const supplied =
+    req.headers.authorization ??
+    (req.headers["sec-websocket-protocol"] === protocol ? `Bearer ${token}` : "");
+  const expected = `Bearer ${token}`;
+  return (
+    Buffer.byteLength(supplied) === Buffer.byteLength(expected) &&
+    timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))
+  );
+}
+
 const serversByPort = new Map<number, ChromeExtensionRelayServer>();
 
 export async function ensureChromeExtensionRelayServer(opts: {
@@ -160,6 +183,9 @@ export async function ensureChromeExtensionRelayServer(opts: {
   const existing = serversByPort.get(info.port);
   if (existing) return existing;
 
+  const token = process.env.CLAWDBOT_BROWSER_TOKEN?.trim();
+  if (!token || token.length < 32)
+    throw new Error("Extension relay requires CLAWDBOT_BROWSER_TOKEN (at least 32 characters)");
   let extensionWs: WebSocket | null = null;
   const cdpClients = new Set<WebSocket>();
   const connectedTargets = new Map<string, ConnectedTarget>();
@@ -288,6 +314,11 @@ export async function ensureChromeExtensionRelayServer(opts: {
   };
 
   const server = createServer((req, res) => {
+    if (!relayAuthorized(req, token)) {
+      res.writeHead(401);
+      res.end("Unauthorized");
+      return;
+    }
     const url = new URL(req.url ?? "/", info.baseUrl);
     const path = url.pathname;
 
@@ -404,7 +435,7 @@ export async function ensureChromeExtensionRelayServer(opts: {
     const pathname = url.pathname;
     const remote = req.socket.remoteAddress;
 
-    if (!isLoopbackAddress(remote)) {
+    if (!isLoopbackAddress(remote) || !relayAuthorized(req, token)) {
       rejectUpgrade(socket, 403, "Forbidden");
       return;
     }
@@ -638,6 +669,7 @@ export async function ensureChromeExtensionRelayServer(opts: {
     extensionConnected: () => Boolean(extensionWs),
     stop: async () => {
       serversByPort.delete(port);
+      relayTokensByPort.delete(port);
       try {
         extensionWs?.close(1001, "server stopping");
       } catch {
@@ -658,6 +690,7 @@ export async function ensureChromeExtensionRelayServer(opts: {
     },
   };
 
+  relayTokensByPort.set(port, token);
   serversByPort.set(port, relay);
   return relay;
 }

@@ -156,7 +156,10 @@ describe("telegram inbound media", () => {
       });
 
       expect(runtimeError).not.toHaveBeenCalled();
-      expect(fetchSpy).toHaveBeenCalledWith("https://api.telegram.org/file/bottok/photos/1.jpg");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://api.telegram.org/file/bottok/photos/1.jpg",
+        expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) }),
+      );
       expect(replySpy).toHaveBeenCalledTimes(1);
       const payload = replySpy.mock.calls[0][0];
       expect(payload.Body).toContain("<media:image>");
@@ -211,7 +214,10 @@ describe("telegram inbound media", () => {
     });
 
     expect(runtimeError).not.toHaveBeenCalled();
-    expect(proxyFetch).toHaveBeenCalledWith("https://api.telegram.org/file/bottok/photos/2.jpg");
+    expect(proxyFetch).toHaveBeenCalledWith(
+      "https://api.telegram.org/file/bottok/photos/2.jpg",
+      expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) }),
+    );
 
     globalFetchSpy.mockRestore();
   });
@@ -484,6 +490,7 @@ describe("telegram stickers", () => {
       expect(runtimeError).not.toHaveBeenCalled();
       expect(fetchSpy).toHaveBeenCalledWith(
         "https://api.telegram.org/file/bottok/stickers/sticker.webp",
+        expect.objectContaining({ redirect: "manual", signal: expect.any(AbortSignal) }),
       );
       expect(replySpy).toHaveBeenCalledTimes(1);
       const payload = replySpy.mock.calls[0][0];
@@ -762,4 +769,15 @@ describe("telegram text fragments", () => {
     },
     TEXT_FRAGMENT_TEST_TIMEOUT_MS,
   );
+});
+
+vi.hoisted(() => vi.resetModules());
+vi.mock("../infra/net/ssrf.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../infra/net/ssrf.js")>("../infra/net/ssrf.js");
+  return {
+    ...actual,
+    resolvePinnedHostname: (host: string) =>
+      actual.resolvePinnedHostname(host, async () => [{ address: "93.184.216.34", family: 4 }]),
+  };
 });

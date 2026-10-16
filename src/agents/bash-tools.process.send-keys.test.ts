@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 
 import { listRunningSessions, resetProcessRegistryForTests } from "./bash-process-registry";
-import { createExecTool } from "./bash-tools.exec";
+import { createExecTool as rawCreateExecTool } from "./bash-tools.exec";
 import { createProcessTool } from "./bash-tools.process";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -103,3 +103,7 @@ test.each([0, 300])("process submit sends Enter after %i ms startup", async (sta
 
   throw new Error("PTY session did not exit after submit");
 });
+
+// Process-lifecycle tests explicitly authorize their synthetic host commands.
+const createExecTool = (defaults?: Parameters<typeof rawCreateExecTool>[0]) =>
+  rawCreateExecTool({ host: "gateway", security: "full", ask: "off", ...defaults });

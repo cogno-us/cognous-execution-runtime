@@ -1,5 +1,5 @@
 import { type AddressInfo, createServer } from "node:net";
-import { fetch as realFetch } from "undici";
+import { fetch as rawRealFetch } from "undici";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -484,3 +484,13 @@ describe("backward compatibility (profile parameter)", () => {
     expect(body.error).toContain("not found");
   });
 });
+
+// Existing endpoint tests exercise authorized local clients.
+const browserTestToken = "synthetic-browser-control-token-0123456789";
+beforeEach(() => vi.stubEnv("CLAWDBOT_BROWSER_TOKEN", browserTestToken));
+afterEach(() => vi.unstubAllEnvs());
+const realFetch: typeof rawRealFetch = (input, init) => {
+  const headers = new Headers(init?.headers as HeadersInit | undefined);
+  headers.set("Authorization", `Bearer ${browserTestToken}`);
+  return rawRealFetch(input, { ...init, headers });
+};
