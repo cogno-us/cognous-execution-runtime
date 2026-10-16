@@ -31,3 +31,34 @@ def test_denied_legacy_attempt_is_logged(tmp_path):
         )
     entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert entry["allowed"] is False
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        {"type": "write", "target": "x", "params": {"v": 1}, "extra": True},
+        {"type": "", "target": "x"},
+        {"type": "write", "target": 7},
+        {"type": "write", "params": {"v": object()}, "extra": object()},
+        "not-a-dict",
+    ],
+)
+def test_malformed_legacy_attempt_is_logged_as_rejected(tmp_path, action):
+    engine, log = make_engine(tmp_path)
+    with pytest.raises(ValueError):
+        engine.execute_action("agent1", action)
+    entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["allowed"] is False
+    assert entry["rejected"] is True
+    assert entry["agent_id"] == "agent1"
+
+
+def test_non_serializable_params_still_produce_audit_entry(tmp_path):
+    engine, log = make_engine(tmp_path)
+    with pytest.raises(PermissionError):
+        engine.execute_action(
+            "agent1", {"type": "delete", "target": "x", "params": {"v": object()}}
+        )
+    entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["allowed"] is False
+    assert "object" in entry["action"]["params"]["v"]

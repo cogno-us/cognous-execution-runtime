@@ -18,7 +18,12 @@ class AgentEngine:
         os.makedirs(sandbox_dir, exist_ok=True)
 
     def execute_action(self, agent_id, action):
-        validate_action(action)
+        try:
+            validate_action(action)
+        except Exception:
+            # Record the denied attempt before refusing malformed input.
+            self.audit_log.log(agent_id, action, allowed=False, rejected=True)
+            raise
         allowed = self.permissions.is_allowed(agent_id, action["type"])
         self.audit_log.log(agent_id, action, allowed=allowed)
         if not allowed:

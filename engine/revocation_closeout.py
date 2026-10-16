@@ -245,24 +245,26 @@ class RevocationCloseoutStore:
         if not self.disposition_writer_enabled:
             raise RuntimeError("revocation disposition writer disabled")
         with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT * FROM runtime_items_v1
-                WHERE grant_id=? AND grant_revision=?
-                ORDER BY effect_id""",
-                (grant_id, grant_revision),
-            ).fetchall()
-            dispositions = [
-                self._disposition_for(
-                    row,
-                    revocation=revocation,
-                    owner=owner,
-                    deadline=deadline,
-                    reconciliation_ref=reconciliation_ref,
-                )
-                for row in rows
-            ]
+            # Take the write lock before reading so no item can be admitted for
+            # this grant between the sweep's read and its disposition writes.
             conn.execute("BEGIN IMMEDIATE")
             try:
+                rows = conn.execute(
+                    """SELECT * FROM runtime_items_v1
+                    WHERE grant_id=? AND grant_revision=?
+                    ORDER BY effect_id""",
+                    (grant_id, grant_revision),
+                ).fetchall()
+                dispositions = [
+                    self._disposition_for(
+                        row,
+                        revocation=revocation,
+                        owner=owner,
+                        deadline=deadline,
+                        reconciliation_ref=reconciliation_ref,
+                    )
+                    for row in rows
+                ]
                 for item in dispositions:
                     conn.execute(
                         """INSERT INTO revocation_dispositions_v1(
