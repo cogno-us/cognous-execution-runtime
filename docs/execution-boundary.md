@@ -6,7 +6,7 @@ Status: synthetic local pilot. Not a production payment, identity, authority or 
 
 The supported Moltbot Safe boundary is the Python path under `engine/`.
 
-The retained TypeScript Moltbot application is upstream code outside this reviewed boundary. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
+The upstream TypeScript Moltbot application is outside this reviewed boundary; it is quarantined at tag `upstream-moltbot-quarantine-20261016` and is not on `main` (see [quarantine record](quarantine-upstream-moltbot-20261016.md)). The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
 
 ## Supported authorization-to-effect path
 

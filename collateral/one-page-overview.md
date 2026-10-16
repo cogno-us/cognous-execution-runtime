@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Python execution layer under engine/ provides the stack's bounded synthetic destination and adapter boundary. The repository also retains the upstream TypeScript Moltbot application; that application is outside the reviewed Cognous Python execution boundary.
+The Python execution layer under engine/ provides the stack's bounded synthetic destination and adapter boundary. The upstream TypeScript Moltbot application formerly in this repository is quarantined at a Git tag, is not shipped on main, and is outside the reviewed Cognous Python execution boundary.
 
 ## Problem
 

@@ -23,7 +23,9 @@ Cognous Execution Runtime provides the **single-agent constrained execution boun
 
 ## Supported runtime
 
-The supported safety-layer runtime is the Python package under `engine/`. The repository also retains a substantial upstream TypeScript Moltbot application and its history. That application is **not** part of this reviewed execution boundary, and this work does not claim to audit or harden the whole upstream application.
+The supported safety-layer runtime is the Python package under `engine/`.
+
+**Upstream application quarantined.** The upstream Moltbot TypeScript/native application formerly retained in this repository is **quarantined**. It is preserved only at the tag [`upstream-moltbot-quarantine-20261016`](https://github.com/cogno-us/cognous-execution-runtime/tree/upstream-moltbot-quarantine-20261016) (commit `fd6b76fa0e85feb5b67324114bf790d3a12fdaf1`) and is **not shipped on `main`**. It is not maintained, not reviewed and not part of this execution boundary, and it carries 18 known unrepaired security findings (6 high). Its earlier commits remain in public Git history. See the [quarantine record](docs/quarantine-upstream-moltbot-20261016.md).
 
 The legacy `engine.AgentEngine` is compatibility-only. It validates, permission-checks and logs, but performs no effect and therefore cannot report successful execution.
 
@@ -46,7 +48,7 @@ Use the [current hub component lock](https://github.com/cogno-us/cognous-open-co
 
 **Worked recovery example:** a synthetic refund effect can commit while its acknowledgement is lost. Preserve the original effect and attempt identity, record the outcome as unknown and reconcile that attempt. Unknown or absent observations do not authorize a replacement. A supplied observation does not by itself prove source authenticity or external settlement.
 
-This Python layer does not cover the retained TypeScript application, real payment processors or independently authenticated deployment. Operational trust remains [HOLD](https://github.com/cogno-us/cognous-stack-orchestrator/issues/30).
+This Python layer does not cover the quarantined upstream application, real payment processors or independently authenticated deployment. Operational trust remains [HOLD](https://github.com/cogno-us/cognous-stack-orchestrator/issues/30).
 
 ## Integration and producer contract
 
@@ -136,7 +138,7 @@ These are application-level restrictions, **not OS confinement**. Filesystem che
 
 ## Evidence and deployment scope
 
-Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) for the selected reference and the [central test hub](https://github.com/cogno-us/cognous-stack-qualification/blob/main/results/readme-commentary/index.md) for qualification records. Local profiles do not establish distributed execution, remote revocation, external-destination atomicity, hostile-host resistance, production identity or production readiness. The fixed-worker confinement profile does not qualify arbitrary agents, the entire retained upstream application or live OpenShell.
+Use the [hub quickstart](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/quickstart.md) for the selected reference and the [central test hub](https://github.com/cogno-us/cognous-stack-qualification/blob/main/results/readme-commentary/index.md) for qualification records. Local profiles do not establish distributed execution, remote revocation, external-destination atomicity, hostile-host resistance, production identity or production readiness. The fixed-worker confinement profile does not qualify arbitrary agents, the quarantined upstream application or live OpenShell.
 
 For stakeholder orientation, see the [business overview](collateral/business-collateral.md) and [one-page overview](collateral/one-page-overview.md).
 
@@ -151,11 +153,11 @@ MOLTBOT_SAFE_MANIFEST_FIXTURE="pinned/action-manifest/examples/refund_integratio
 pytest -q tests
 ```
 
-The retained TypeScript Moltbot test suite is upstream application coverage and is reported separately from this Python execution-boundary evidence.
+The upstream TypeScript Moltbot test suite and its CI were quarantined with the application at the tag above; they are not run on `main` and are not Python execution-boundary evidence.
 
 ## License and attribution
 
-The Cognous Python execution layer is licensed under [Apache 2.0](LICENSE-APACHE-2.0); see [NOTICE](NOTICE) for scope. The retained upstream Moltbot application remains [MIT-licensed](LICENSE), with all third-party notices preserved. Licensing does not change the reviewed execution boundary or establish an audit of the upstream application.
+The Cognous Python execution layer is licensed under [Apache 2.0](LICENSE-APACHE-2.0); see [NOTICE](NOTICE) for scope. The quarantined upstream Moltbot application remains [MIT-licensed](LICENSE) at the quarantine tag, with all third-party notices preserved there; the MIT license file is kept on `main` for upstream-derived retained material and the tag history. Licensing does not change the reviewed execution boundary or establish an audit of the upstream application.
 
 ## Repository locations
 
@@ -192,7 +194,7 @@ governed messages, recipient assessment and continuity across the groups. It is
 separate from Alvorada's institutional authority framework.
 
 Execution Runtime and Moltbot Safe name the same repository here. The supported
-Cognous Python execution boundary remains distinct from the retained upstream
+Cognous Python execution boundary remains distinct from the quarantined upstream
 application. PRP, Research Intelligence and TFA are optional behavioral
 instructions; they do not enforce authorization or substitute for human oversight.
 A signature, registry entry, message receipt or evidence summary does not grant
