@@ -1,4 +1,4 @@
-# Contributing to moltbot-safe
+# Contributing to Cognous Execution Runtime
 
 Thank you for your interest in contributing! All contributions must reinforce safety, minimalism, and transparency.
 

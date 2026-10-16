@@ -1,6 +1,6 @@
 # Optional OpenShell synthetic execution adapter
 
-Adapter **0.1.0**, Execution Envelope **0.2.0**. Starting Moltbot Safe commit:
+Adapter **0.1.0**, Execution Envelope **0.2.0**. Starting Execution Runtime commit:
 `4ed7c9b9fbc8159be70d68f2ca9bd8a8ddc012e3`. This adds the accepted licensing
 update to baseline `6b0ba1185bcd390f71df947dda349415e4105f5f`; execution code
 was unchanged between those commits.

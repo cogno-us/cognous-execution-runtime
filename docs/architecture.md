@@ -1,6 +1,6 @@
 # Architecture
 
-Moltbot Safe provides one supported constrained execution boundary for the current Cognous synthetic pilot.
+Execution Runtime provides one supported constrained execution boundary for the current Cognous synthetic pilot.
 
 ## Supported path
 

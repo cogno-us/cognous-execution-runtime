@@ -35,7 +35,7 @@ The engine must not add new abilities, escalate privileges, or modify its own pe
 
 ## Threat Model (High-Level)
 
-**moltbot-safe** assumes the following:
+**Cognous Execution Runtime** assumes the following:
 
 ### In-Scope Threats
 - Malicious or buggy agent requests  
@@ -74,4 +74,4 @@ Use responsibly, and always review permissions before deploying.
 
 ---
 
-Thank you for helping keep **moltbot-safe** secure.
+Thank you for helping keep **Cognous Execution Runtime** secure.

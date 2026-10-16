@@ -31,7 +31,7 @@
 - Industry adoption as a safety baseline
 
 
-This roadmap outlines the planned evolution of **moltbot-safe**, a minimal, permissioned, sandboxed execution engine for AI agents.  
+This roadmap outlines the planned evolution of **Cognous Execution Runtime**, a minimal, permissioned, sandboxed execution engine for AI agents.
 The goal is to maintain a clear, safe, and auditable foundation while gradually expanding capabilities in a controlled, transparent way.
 
 ---
@@ -118,7 +118,7 @@ The goal is to maintain a clear, safe, and auditable foundation while gradually 
 # 5. Integrations
 
 ### 🧠 Reasoning Layer Interfaces
-While *moltbot-safe* intentionally contains **no intelligence**, future versions may include:
+While *Cognous Execution Runtime* intentionally contains **no intelligence**, future versions may include:
 
 - A stable API for connecting planners or LLMs  
 - A safe “action proposal” interface  
@@ -134,7 +134,7 @@ While *moltbot-safe* intentionally contains **no intelligence**, future versions
 # 6. Long-Term Vision
 
 ### 🌐 A Standard for Safe Agent Execution
-The long-term goal is for **moltbot-safe** to become:
+The long-term goal is for **Cognous Execution Runtime** to become:
 
 - A reference implementation for safe agent substrates  
 - A minimal, auditable foundation for research and production  
@@ -169,4 +169,4 @@ All proposals should include safety considerations and alignment with the projec
 
 ---
 
-**moltbot-safe** will evolve carefully, deliberately, and transparently — always prioritizing safety and clarity over feature creep.
+**Cognous Execution Runtime** will evolve carefully, deliberately, and transparently — always prioritizing safety and clarity over feature creep.

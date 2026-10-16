@@ -4,9 +4,9 @@ This repository does not modify the Agent Control Plane. This is a Governor-revi
 
 ## Current integration
 
-Moltbot Safe now executes only through `BoundedAuthorizationWorkflow.execute()`, so the pinned Control Plane performs its current authorization revalidation immediately before the destination adapter is invoked.
+Execution Runtime now executes only through `BoundedAuthorizationWorkflow.execute()`, so the pinned Control Plane performs its current authorization revalidation immediately before the destination adapter is invoked.
 
-For institution/domain, the executor currently derives both values from the trusted Authority Context resolver used by that same workflow and compares them against the frozen Moltbot Safe request.
+For institution/domain, the executor currently derives both values from the trusted Authority Context resolver used by that same workflow and compares them against the frozen Execution Runtime request.
 
 That keeps caller-supplied labels from creating authority, but the values still are not present in the persisted `AuthorizationBinding`.
 
@@ -44,4 +44,4 @@ The executor-facing object must remain a record of what was authorized, not a tr
 
 ## Explicit non-proposal
 
-Moltbot Safe does **not** propose treating a copied decision document, matching digest, caller-supplied institution, or historical `authorized` state as sufficient authority for effect.
+Execution Runtime does **not** propose treating a copied decision document, matching digest, caller-supplied institution, or historical `authorized` state as sufficient authority for effect.
