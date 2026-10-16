@@ -32,7 +32,7 @@ The execution caller does not provide an authoritative decision body. `InProcess
 
 The supported safety layer is the Python `engine/` package, specifically `SafeExecutor`.
 
-The retained TypeScript Moltbot application is not inside this reviewed execution boundary. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
+The upstream TypeScript Moltbot application is not inside this reviewed execution boundary; it is quarantined at tag `upstream-moltbot-quarantine-20261016` and is not on `main`. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
 
 ## Consistency boundary
 

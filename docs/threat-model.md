@@ -1,6 +1,6 @@
 # Threat Model
 
-Scope: the supported Python `SafeExecutor` synthetic refund path only. This document does not claim to cover the retained TypeScript Moltbot application or host operating system.
+Scope: the supported Python `SafeExecutor` synthetic refund path only. This document does not claim to cover the upstream TypeScript Moltbot application (quarantined at tag `upstream-moltbot-quarantine-20261016`, not on `main`) or host operating system.
 
 ## Assets
 

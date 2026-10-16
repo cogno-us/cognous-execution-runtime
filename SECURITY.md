@@ -1,11 +1,11 @@
 # Security Policy
 
-moltbot-safe is security-first: minimal, explicit, isolated, and auditable by design.
+This policy covers the Cognous Python execution boundary under `engine/` only. The upstream Moltbot TypeScript/native application is **quarantined**: it is preserved only at the tag `upstream-moltbot-quarantine-20261016`, is not shipped on `main`, is not maintained or reviewed, and carries 18 known unrepaired security findings. See [docs/quarantine-upstream-moltbot-20261016.md](docs/quarantine-upstream-moltbot-20261016.md). Do not deploy that application as part of the Cognous stack.
 
-## Security Posture
-- **Least Privilege**: Agents can only perform actions explicitly allowed in `permissions.json`.
-- **Isolation**: All agent actions are sandboxed; no access outside the sandbox.
-- **Transparency**: Every action—allowed or denied—is logged.
+## Security Posture (engine/ boundary only)
+- **Least Privilege**: The legacy `AgentEngine` checks requests against explicit `permissions.json` entries; the supported `SafeExecutor` path applies exact local restrictions on institution, authority domain, adapter, action, target prefix, unit, amount and effect count.
+- **Isolation**: Application-level restrictions only, **not OS confinement**. The default path performs no subprocess or network calls from the destination adapter and rejects path traversal and existing symlink components, but residual filesystem check/use races remain and a separate host process with sufficient permissions can bypass this Python package. See [docs/execution-boundary.md](docs/execution-boundary.md).
+- **Transparency**: The supported path records durable attempt identities and append-only attempt events for destination submissions it handles. Audit coverage is limited to the events the engine actually records; it is not a guarantee that every attempted request, on every path, produces a log entry.
 - **No Implicit Capabilities**: No inferred or default permissions.
 - **No Autonomous Expansion**: The engine cannot grant itself new abilities.
 

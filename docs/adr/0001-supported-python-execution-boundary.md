@@ -21,3 +21,7 @@ SQLite supplies a concrete durable local effect, transactionally serialized effe
 - Full-upstream bypass resistance is not claimed.
 - Transport authentication remains external.
 - The Control Plane institution/domain binding gap is returned to the Governor as an interface proposal.
+
+## Addendum (2026-10-16)
+
+Superseded in part: the retained upstream TypeScript Moltbot application was quarantined by owner decision and removed from `main`; it remains at tag `upstream-moltbot-quarantine-20261016` and in Git history. See [the quarantine record](../quarantine-upstream-moltbot-20261016.md). The Python boundary decision above is unchanged.
