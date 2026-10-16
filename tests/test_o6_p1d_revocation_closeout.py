@@ -240,3 +240,53 @@ def test_disabled_closeout_writer_is_detectable_mutation_control(tmp_path):
             observation_ref="observation:effect",
         )
     assert ledger.closeout("attempt-original") is None
+
+
+def test_item_admitted_concurrently_with_revocation_is_dispositioned_or_serialized(tmp_path, monkeypatch):
+    import sqlite3
+
+    ledger = store(tmp_path)
+    add_item(ledger, effect="first", grant="g1", state="queued", order=1)
+    original = RevocationCloseoutStore._disposition_for
+    attempts = {"count": 0, "outcome": None}
+
+    def racing_disposition(self, row, **kwargs):
+        if attempts["count"] == 0:
+            attempts["count"] += 1
+            # A second writer admits a new item for the same grant while the
+            # revocation sweep is between its read and its write.
+            try:
+                second = sqlite3.connect(ledger.path, timeout=0.05)
+                with second:
+                    second.execute(
+                        """INSERT INTO runtime_items_v1(
+                            effect_id,attempt_id,decision_id,grant_id,grant_revision,state,
+                            state_order,ordering_ref,completed_order,completion_ref,created_at
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                        ("late", None, "decision-late", "g1", "r1", "executing", 2,
+                         "queue:late:2", None, None, BASE.isoformat()),
+                    )
+                second.close()
+                attempts["outcome"] = "inserted"
+            except sqlite3.OperationalError:
+                attempts["outcome"] = "blocked"
+        return original(self, row, **kwargs)
+
+    monkeypatch.setattr(RevocationCloseoutStore, "_disposition_for", racing_disposition)
+    result = ledger.record_revocation(
+        grant_id="g1",
+        grant_revision="r1",
+        revocation=OrderingEvidence(3, "authority-log:g1:r1:3"),
+        owner="ops:oncall",
+        deadline=BASE + timedelta(hours=1),
+        reconciliation_ref="reconcile:g1:r1",
+    )
+    dispositioned = {item.effect_id for item in result}
+    if attempts["outcome"] == "inserted":
+        # The concurrent writer committed: the sweep must have covered it.
+        assert "late" in dispositioned
+    else:
+        # The concurrent writer was serialized behind the sweep's write lock.
+        assert attempts["outcome"] == "blocked"
+        assert dispositioned == {"first"}
+    assert {item.effect_id for item in ledger.dispositions()} == dispositioned
