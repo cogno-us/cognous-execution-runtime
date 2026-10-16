@@ -335,6 +335,26 @@ class LocalExecutionPolicy:
     max_amount: float
     max_effects: int
 
+    def __post_init__(self) -> None:
+        # Fail closed at construction: an empty prefix matches every target via
+        # str.startswith, and a non-frozenset "set" (e.g. a str) would turn
+        # membership checks into substring matches.
+        for name in (
+            "allowed_institutions",
+            "allowed_authority_domains",
+            "allowed_adapters",
+            "allowed_actions",
+            "allowed_units",
+        ):
+            value = getattr(self, name)
+            if type(value) is not frozenset or any(type(item) is not str or not item for item in value):
+                raise ValueError(f"{name} must be a frozenset of non-empty strings")
+        prefixes = self.allowed_target_prefixes
+        if type(prefixes) is not tuple or not prefixes or any(
+            type(prefix) is not str or not prefix for prefix in prefixes
+        ):
+            raise ValueError("allowed_target_prefixes must be a non-empty tuple of non-empty strings")
+
     def check(self, op: FrozenOperation) -> None:
         max_amount = _strict_finite_number(self.max_amount, name="local max_amount")
         max_effects = _strict_positive_int(self.max_effects, name="local max_effects")

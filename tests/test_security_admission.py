@@ -82,3 +82,16 @@ def test_cli_deadline_and_small_success():
     with pytest.raises(TimeoutError):
         _bounded_cli_output([sys.executable, '-c', 'import time;time.sleep(2)'],
                             stdin=None, timeout=0.1, env={})
+
+
+@pytest.mark.parametrize('prefixes', [('',), ('urn:cognous:synthetic-account:', ''), (None,), ['urn:cognous:synthetic-account:'], 'urn:'])
+def test_local_policy_rejects_universal_or_malformed_target_prefixes(prefixes):
+    with pytest.raises(ValueError, match='allowed_target_prefixes'):
+        replace(policy(operation()), allowed_target_prefixes=prefixes)
+
+
+@pytest.mark.parametrize('field_name', ['allowed_institutions', 'allowed_authority_domains', 'allowed_adapters', 'allowed_actions', 'allowed_units'])
+@pytest.mark.parametrize('value', ['substring-matching-string', {'mutable'}, frozenset({1})])
+def test_local_policy_rejects_non_frozenset_allowed_sets(field_name, value):
+    with pytest.raises(ValueError, match=field_name):
+        replace(policy(operation()), **{field_name: value})
