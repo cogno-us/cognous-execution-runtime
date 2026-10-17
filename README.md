@@ -202,7 +202,7 @@ execution authority.
 
 ## Cross component qualification
 
-Executable integration suites and harnesses moved to the [qualification repository](https://github.com/cogno-us/cognous-stack-qualification/tree/39f038435afdd71ba162860faa5718d90d7bde64/suites/cognous-execution-runtime). See [the path migration map](CROSS_COMPONENT_TESTS.md) for current commands and source identity rules. Component-local tests remain here; historical qualification results retain their original scope.
+Executable integration suites and harnesses moved to the [qualification repository](https://github.com/cogno-us/cognous-stack-qualification/tree/fba734edb12bfc7e73a313a1d156876146eebe0a/suites/cognous-execution-runtime). See [the path migration map](CROSS_COMPONENT_TESTS.md) for current commands and source identity rules. Component-local tests remain here; historical qualification results retain their original scope.
 
 <!-- Retained anchors for existing documentation links. -->
 <a id="accepted-integration-and-versioned-evidence"></a>
