@@ -74,6 +74,18 @@ Historical observation checks the expected operation digest. It may report what 
 
 Lost acknowledgement after durable commit remains an `unknown` attempt outcome until observation establishes destination state. When the follow-up validated observation establishes the state, the result is `reconciled` (applied) or `partial` and the attempt's terminal event says the same; the result is not newly executed and not acknowledged. When the observation fails, the result stays `unknown` with observation null and `observed_state` `unknown`. When it is a validated `absent` or `unknown` observation, the result stays `unknown` and carries that observation, with `observed_state` equal to the observation's state (never `failed`, never retry permission; `absent` right after an ambiguous dispatch does not prove the effect will not appear). The same holds for a validated `unknown` observation found before dispatch and for the Control Plane adapter. Whenever `observation` is null, `observed_state` is `unknown`, for every status (denied and failed included); `observation` is never `{}`. Partial delivery remains partial and is not blindly retried.
 
+## Route names (A, B, C)
+
+Cross-component qualification and the execution-attempt lifecycle contract refer to the runtime's execution paths as routes A, B and C. The letters are qualification vocabulary; the runtime itself defines only the class and module names below.
+
+| Route | Runtime name | Module | What it is |
+|---|---|---|---|
+| A | `PinnedControlPlaneExecutor` | `engine/control_plane_adapter.py` | Supported path: the pinned Control Plane workflow revalidates current authority, then invokes the local destination. The low-level `LocalDestinationExecutor` and `DurableRefundDestination` it drives live in `engine/safe_executor.py`. |
+| B | `AtomicLocalControlPlaneExecutor` | `engine/atomic_local_control_plane_executor.py` | Atomic claim route: a provisioned local claim is consumed inside the destination's own transaction. |
+| C | the Control Plane adapter (`ControlPlaneRefundDestinationAdapter` and the `control_plane_attempts` / resolution-journal records written by the Control Plane) | `engine/control_plane_adapter.py` | Qualification's term for the Control Plane side of the adapter path. The runtime does not define a route C class and does not write `control_plane_attempts` rows. |
+
+"Route A", "route B" and "route C" in qualification reports, the failure register and the contract fixtures (whose ids keep the `route-b` wording for stability) map to this table. Code and API documentation should use the runtime names.
+
 ## Consistency boundary
 
 SQLite `BEGIN IMMEDIATE` serializes the local effect-content check, duplicate check, cumulative grant count and insert for processes sharing the same database file.
