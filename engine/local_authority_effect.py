@@ -28,6 +28,14 @@ from .safe_executor import (
 )
 
 PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
+
+
+class PostCommitObservationUnavailable(TimeoutError):
+    """The atomic effect is committed and its claim consumed, but the post-commit read failed.
+
+    A TimeoutError subclass so every caller that already treats an unavailable acknowledgement
+    as an unresolved (``unknown``) outcome keeps doing so; it is never a pre-dispatch refusal.
+    """
 MARKER_TABLE = "authority_effect_profile_v1"
 
 
@@ -765,7 +773,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             conn.execute("COMMIT")
             self._transaction_stage("after_commit")
 
-        observation = self.observe_bound(snapshot)
+        try:
+            observation = self.observe_bound(snapshot)
+        except Exception as exc:
+            # The effect is durably committed and the claim consumed. The caller must
+            # not see this as a pre-dispatch refusal (issue #96 / F-08).
+            raise PostCommitObservationUnavailable(
+                f"post-commit observation unavailable after atomic commit: {type(exc).__name__}"
+            ) from exc
         if simulate == "lost_ack":
             raise TimeoutError("synthetic acknowledgement unavailable after atomic commit")
         return {

@@ -14,6 +14,7 @@ Status: beta.
 - Dependencies: narrow the music-metadata 11.16.0 lock update to its parser dependencies while preserving unrelated runtime resolutions. (#37) Thanks @dependabot.
 - Safety: preserve both executor profile guards and reject mixed refund-intent/authority-effect database activation. (#17) Thanks @titanicprime.
 - Safety: add an opt-in synthetic refund intent registry with durable original ownership, authorized dispatch binding and process-boundary tests; hub adoption remains pending. (#14) Thanks @titanicprime.
+- Safety: report a failed post-commit observation on the atomic claim route as unresolved (status unknown, attempted) instead of denied; the effect and consumed claim are unchanged. Behaviour change: callers keyed on denied for this case now see unknown. (issue #96)
 - Rebrand: rename the npm package/CLI to `moltbot`, add a `moltbot` compatibility shim, and move extensions to the `@moltbot/*` scope.
 - Commands: group /help and /commands output with Telegram paging. (#2504) Thanks @hougangdev.
 - macOS: limit project-local `node_modules/.bin` PATH preference to debug builds (reduce PATH hijacking risk).

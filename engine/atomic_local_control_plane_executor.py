@@ -43,11 +43,20 @@ class AtomicLocalControlPlaneExecutor:
         try:
             value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate)
         except TimeoutError as exc:
-            recovery = self.destination.reconcile_claim(claim_id, snapshot)
+            from engine.local_authority_effect import PostCommitObservationUnavailable
+            try:
+                recovery = self.destination.reconcile_claim(claim_id, snapshot)
+            except Exception:
+                # Effect state stays unresolved; never downgrade a possible effect to a refusal.
+                recovery = {"status": "unknown", "retry_eligible": False, "reason": "reconciliation_unavailable"}
             failure_id = self.destination.record_failure(
                 snapshot,
                 failure_class="dispatch_error",
-                reason_code="acknowledgement_unavailable",
+                reason_code=(
+                    "post_commit_observation_unavailable"
+                    if isinstance(exc, PostCommitObservationUnavailable)
+                    else "acknowledgement_unavailable"
+                ),
                 stage="post_dispatch",
                 attempt_id=attempt_id,
                 detail=str(exc),
