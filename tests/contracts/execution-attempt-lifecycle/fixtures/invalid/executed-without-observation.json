@@ -34,7 +34,7 @@
     "execution_result": {
       "status": "executed",
       "attempt_id": "syn-attempt-1",
-      "observed_state": "applied",
+      "observed_state": "unknown",
       "observation": null,
       "attempted": true,
       "acknowledged": true,

@@ -350,7 +350,8 @@ class PinnedControlPlaneExecutor:
         if cp_observation is None:
             status = "unknown"
         elif status == "unknown" and state in {"applied", "partial"}:
-            # Lifecycle contract: 'unknown' never carries a validated observation.
+            # Lifecycle contract: 'unknown' never carries a validated applied/partial observation;
+            # a validated absent/unknown observation is carried (decision 14), observed_state equal to its state.
             status = "reconciled" if state == "applied" else "partial"
         # Keep the attempt's terminal event in agreement with the reported status.
         if (local is not None and local.attempt_id is not None and status != local.status
