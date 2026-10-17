@@ -1,0 +1,25 @@
+{
+  "fixture_id": "control-plane-reconciled-existing-partial",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Same as the acknowledged case for an accepted partial observation: single row, status 'partial', acknowledgement {reconciled_existing: true}. Replay finding F-21.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "partial",
+        "acknowledgement": {
+          "reconciled_existing": true
+        },
+        "error": null
+      }
+    ]
+  }
+}

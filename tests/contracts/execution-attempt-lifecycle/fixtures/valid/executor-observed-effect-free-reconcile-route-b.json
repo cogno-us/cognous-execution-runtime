@@ -1,0 +1,50 @@
+{
+  "fixture_id": "executor-observed-effect-free-reconcile-route-b",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Real runtime route B effect-free reconcile (AtomicLocalControlPlaneExecutor.reconcile, captured via the replay F-24 fixtures at runtime 4a83b175): result 'observed', attempt_id null, attempted/acknowledged/newly_executed false, observed_state equals the recovery status 'applied', observation = the reconcile_claim recovery report. The report is still not validated Control Plane evidence.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "observed",
+      "attempt_id": null,
+      "attempted": false,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": null,
+      "observed_state": "applied",
+      "observation": {
+        "status": "applied",
+        "claim_state": "consumed",
+        "retry_eligible": false,
+        "effect_id": "syn-effect-1",
+        "operation_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  }
+}

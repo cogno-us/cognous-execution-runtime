@@ -1,0 +1,49 @@
+{
+  "fixture_id": "executor-unknown-with-validated-observation",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Result 'unknown' that carries a validated Control Plane observation (state 'applied', observed_at set) with acknowledged true. 'unknown' asserts that no validated observation exists. A validated applied observation plus an acknowledgement is a 'reconciled' or 'executed' outcome, so the combination contradicts itself. Distinct from the valid route B shape, whose observation is an unvalidated recovery record (status/retry_eligible, no state). Open item: runtime route C sets status from the local result when an observation exists, so it could in principle produce this shape; whether it ever does needs runtime-owner confirmation.",
+  "expected_refusal": "unknown_with_validated_observation",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "applied",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "applied",
+        "observed_at": "2026-01-01T00:00:05Z",
+        "destination_state": {}
+      },
+      "attempted": true,
+      "acknowledged": true,
+      "newly_executed": true
+    }
+  }
+}

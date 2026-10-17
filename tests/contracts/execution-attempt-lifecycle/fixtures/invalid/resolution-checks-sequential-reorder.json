@@ -1,0 +1,196 @@
+{
+  "fixture_id": "resolution-checks-sequential-reorder",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Checks A and B do not overlap (A completes before B opens) but resolution checks are listed B then A. Only overlapping checks may be reordered.",
+  "expected_refusal": "resolution_checks_out_of_order",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "resolution_journal": [
+      {
+        "check_id": "jA",
+        "phase": "opened",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:01Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": null,
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      },
+      {
+        "check_id": "jA",
+        "phase": "input",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:02Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": {
+          "input_type": "policy",
+          "input_id": "syn-policy-1",
+          "expected": {
+            "version": "1"
+          },
+          "observed": {
+            "version": "1"
+          },
+          "record_commitment": null,
+          "missing": false,
+          "previous_observed_at": null,
+          "read_state": null
+        },
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      },
+      {
+        "check_id": "jA",
+        "phase": "completed",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:03Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": null,
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      },
+      {
+        "check_id": "jB",
+        "phase": "opened",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:04Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": null,
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      },
+      {
+        "check_id": "jB",
+        "phase": "input",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:05Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": {
+          "input_type": "policy",
+          "input_id": "syn-policy-2",
+          "expected": {
+            "version": "1"
+          },
+          "observed": {
+            "version": "1"
+          },
+          "record_commitment": null,
+          "missing": false,
+          "previous_observed_at": null,
+          "read_state": null
+        },
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      },
+      {
+        "check_id": "jB",
+        "phase": "completed",
+        "stage": "effect",
+        "recorded_at": "2026-01-01T00:00:06Z",
+        "owner": {
+          "component": "syn-control-plane"
+        },
+        "proposal_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision_id": null,
+        "effect_id": null,
+        "action_class": {
+          "name": "syn.action"
+        },
+        "input": null,
+        "reasons": [],
+        "reason_vocabulary_version": "runtime-authority-reasons/0.1"
+      }
+    ],
+    "resolution_checks": [
+      {
+        "check_id": "cB",
+        "stage": "effect",
+        "evaluated_at": "2026-01-01T00:00:30Z",
+        "time_source": "test_override",
+        "inputs": [
+          {
+            "input_type": "policy",
+            "input_id": "syn-policy-2",
+            "expected": {
+              "version": "1"
+            },
+            "observed": {
+              "version": "1"
+            },
+            "record_commitment": null,
+            "missing": false,
+            "previous_observed_at": null,
+            "read_state": null
+          }
+        ],
+        "reasons": []
+      },
+      {
+        "check_id": "cA",
+        "stage": "effect",
+        "evaluated_at": "2026-01-01T00:00:30Z",
+        "time_source": "test_override",
+        "inputs": [
+          {
+            "input_type": "policy",
+            "input_id": "syn-policy-1",
+            "expected": {
+              "version": "1"
+            },
+            "observed": {
+              "version": "1"
+            },
+            "record_commitment": null,
+            "missing": false,
+            "previous_observed_at": null,
+            "read_state": null
+          }
+        ],
+        "reasons": []
+      }
+    ]
+  }
+}

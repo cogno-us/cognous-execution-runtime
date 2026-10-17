@@ -1,0 +1,50 @@
+{
+  "fixture_id": "executor-unknown-recovery-observation-route-b",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Real runtime route B shape (AtomicLocalControlPlaneExecutor, post-commit observation failure, runtime PR #101, captured from the runtime at 4a83b175 via SCN-C06 route B with synthetic ids): result 'unknown', attempted true, acknowledged false, observed_state 'applied', observation = the reconcile_claim recovery record, terminal event 'executed'. The observation is a recovery report, not a validated Control Plane observation, so consumers must not treat it as validated evidence of effect.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": "post-commit observation unavailable after atomic commit: ConnectionError",
+      "observed_state": "applied",
+      "observation": {
+        "status": "applied",
+        "claim_state": "consumed",
+        "retry_eligible": false,
+        "effect_id": "syn-effect-1",
+        "operation_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  }
+}
