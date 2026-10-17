@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import re
+import sqlite3
 from .safe_executor import DurableRefundDestination, FrozenEnvelope
 
 CAPABILITY = "sqlite-effective-grant/0.1"
@@ -30,7 +31,15 @@ class EffectiveGrantDestination(DurableRefundDestination):
         with self._connect() as conn:
             conn.execute('CREATE TABLE IF NOT EXISTS effective_grants_v1 ('
                          'grant_id TEXT PRIMARY KEY,principal TEXT NOT NULL,digest TEXT NOT NULL,'
-                         'derivation TEXT NOT NULL,status TEXT NOT NULL)')
+                         'derivation TEXT NOT NULL,status TEXT NOT NULL,permissions_json TEXT)')
+            # Databases created before the permission set was retained: add the column, leave rows NULL.
+            # A NULL row cannot be checked against a request and therefore fails closed at commit.
+            if 'permissions_json' not in {r[1] for r in conn.execute('PRAGMA table_info(effective_grants_v1)')}:
+                try:
+                    conn.execute('ALTER TABLE effective_grants_v1 ADD COLUMN permissions_json TEXT')
+                except sqlite3.OperationalError:
+                    if 'permissions_json' not in {r[1] for r in conn.execute('PRAGMA table_info(effective_grants_v1)')}:
+                        raise
 
     def set_effective_grant(self, *, principal: str, grant_id: str, revision: str,
                             permissions: list[str], status: str = 'active') -> str:
@@ -41,10 +50,13 @@ class EffectiveGrantDestination(DurableRefundDestination):
                                       permissions=permissions,status=status)
         with self._connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
-            conn.execute('INSERT INTO effective_grants_v1 VALUES(?,?,?,?,?) '
+            conn.execute('INSERT INTO effective_grants_v1(grant_id,principal,digest,derivation,status,permissions_json) '
+                         'VALUES(?,?,?,?,?,?) '
                          'ON CONFLICT(grant_id) DO UPDATE SET principal=excluded.principal,'
-                         'digest=excluded.digest,derivation=excluded.derivation,status=excluded.status',
-                         (grant_id,principal,digest,DERIVATION,status))
+                         'digest=excluded.digest,derivation=excluded.derivation,status=excluded.status,'
+                         'permissions_json=excluded.permissions_json',
+                         (grant_id,principal,digest,DERIVATION,status,
+                          json.dumps(sorted(set(permissions)),separators=(',',':'),ensure_ascii=False)))
             conn.execute('COMMIT')
         return digest
 
@@ -63,3 +75,15 @@ def check_effective_grant(conn, snapshot: FrozenEnvelope, expected: str | None,
     if (row is None or row['principal']!=snapshot.operation.principal or row['digest']!=expected
             or row['derivation']!=derivation or row['status']!='active'):
         raise PermissionError('effective_grant_changed_at_commit')
+    # The digest only proves the caller read this row. The row's own permission set must also cover
+    # the request, so a caller holding the stored digest cannot commit beyond a narrowed grant.
+    try:  # same effect transaction; a legacy table without the column fails closed
+        stored=conn.execute('SELECT permissions_json FROM effective_grants_v1 WHERE grant_id=?',
+                            (snapshot.operation.grant_id,)).fetchone()[0]
+        permissions=json.loads(stored) if stored is not None else None
+    except (sqlite3.OperationalError,ValueError):
+        permissions=None
+    if not isinstance(permissions,list) or any(type(x) is not str for x in permissions):
+        raise PermissionError('effective_grant_permissions_unavailable')
+    if not set(snapshot.operation.requested_permissions)<=set(permissions):
+        raise PermissionError('effective_grant_permissions_insufficient')
