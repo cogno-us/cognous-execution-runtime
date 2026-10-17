@@ -20,7 +20,7 @@ Route B uses a synthetic subclass of the real `AtomicAuthorityEffectDestination`
 
 ## Cases
 
-Route names: route A = `PinnedControlPlaneExecutor` / `LocalDestinationExecutor` (`engine/safe_executor.py`), route B = `AtomicLocalControlPlaneExecutor`.
+Route names: route A = `PinnedControlPlaneExecutor` (`engine/control_plane_adapter.py`) over `LocalDestinationExecutor` (`engine/safe_executor.py`), route B = `AtomicLocalControlPlaneExecutor`. See "Route names" in [execution-boundary.md](execution-boundary.md).
 
 | Case | Status |
 |---|---|
