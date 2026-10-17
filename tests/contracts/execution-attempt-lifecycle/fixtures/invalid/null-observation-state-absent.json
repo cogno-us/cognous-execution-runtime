@@ -1,0 +1,44 @@
+{
+  "fixture_id": "null-observation-state-absent",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Denied result with a null observation and observed_state 'absent'. Strict rule (owner decision 2026-10-17): whenever observation is null, observed_state must be 'unknown', whatever the result status.",
+  "expected_refusal": "null_observation_state_mismatch",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "denied",
+        "error": null,
+        "created_at": 1001.0
+      }
+    ],
+    "execution_result": {
+      "status": "denied",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "absent",
+      "observation": null,
+      "attempted": false,
+      "acknowledged": false,
+      "newly_executed": false
+    }
+  }
+}

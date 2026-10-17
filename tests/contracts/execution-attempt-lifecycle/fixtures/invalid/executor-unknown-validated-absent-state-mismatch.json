@@ -1,0 +1,49 @@
+{
+  "fixture_id": "executor-unknown-validated-absent-state-mismatch",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Result 'unknown' with a validated 'absent' observation but observed_state 'unknown'. For a validated absent/unknown observation, observed_state must equal observation.state.",
+  "expected_refusal": "unknown_state_mismatch",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1001.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "unknown",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "absent",
+        "observed_at": "2026-01-01T00:00:05Z",
+        "destination_state": {}
+      },
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false
+    }
+  }
+}

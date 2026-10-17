@@ -2,7 +2,7 @@
   "fixture_id": "executor-denied-attempt-event",
   "synthetic": true,
   "expected_outcome": "accept",
-  "reason": "Route A policy denial: the attempt row is created, its events are 'attempted' then 'denied', and the result is 'denied' with null observation and no attempt claimed. 'denied' is an attempt-event status the runtime really writes (engine/safe_executor.py), added to the closed enumeration in the P3 draft change.",
+  "reason": "Route A policy denial: the attempt row is created, its events are 'attempted' then 'denied', and the result is 'denied' with null observation and no attempt claimed. 'denied' is an attempt-event status the runtime really writes (engine/safe_executor.py), added to the closed enumeration in the P3 draft change. Observation is null, so observed_state is 'unknown' (strict null-observation rule, owner decision 2026-10-17); it was 'absent' before that decision.",
   "document": {
     "contract": "execution-attempt-lifecycle",
     "contract_version": "0.1.0-draft",
@@ -33,7 +33,7 @@
     "execution_result": {
       "status": "denied",
       "attempt_id": "syn-attempt-1",
-      "observed_state": "absent",
+      "observed_state": "unknown",
       "observation": null,
       "attempted": false,
       "acknowledged": false,

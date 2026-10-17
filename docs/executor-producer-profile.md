@@ -43,7 +43,8 @@ accept 2.0.0 without an explicit compatibility change.
   profile id and version do not distinguish this layout from the earlier one in
   which the report sat in `observations`, so a consumer must accept or refuse
   `recovery_observations` explicitly.
-- Failed and denied results carry `observation` null (previously `{}`).
+- Failed and denied results carry `observation` null (previously `{}`) and `observed_state` `unknown`. Whenever `observation` is null, `observed_state` is `unknown` for every status (strict rule, lifecycle contract decision 15); `observation` is never `{}`.
+- An `unknown` result may carry a validated `absent` or `unknown` observation (for example the follow-up reading after a lost acknowledgement), with `observed_state` equal to `observation.state`; `observations` then holds that observation and equals `execution_result.observation` (lifecycle contract decisions 14 and 17). `unknown` never carries a validated `applied` or `partial` observation: those report `reconciled`/`partial`.
 - `observations` never includes a rejected Control Plane observation.
   `rejected_observations` retains supplied rejected evidence, including a wrong
   effect identifier as attributed rejected content, not an accepted identity.

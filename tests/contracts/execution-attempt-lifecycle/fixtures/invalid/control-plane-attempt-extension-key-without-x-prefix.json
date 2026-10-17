@@ -1,0 +1,37 @@
+{
+  "fixture_id": "control-plane-attempt-extension-key-without-x-prefix",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "An extension member on a Control Plane attempt row lacks the x- prefix.",
+  "expected_refusal": "invalid_extension_key",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "attempted",
+        "acknowledgement": {},
+        "error": null,
+        "extensions": {
+          "trace": 1
+        }
+      },
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null
+      }
+    ]
+  }
+}

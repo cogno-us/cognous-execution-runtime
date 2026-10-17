@@ -239,6 +239,12 @@ def case_a_unknown_ack_unobserved(tmp_path):
     return to_document(result, dest)
 
 
+def _case_timeout(tmp_path, state):
+    _, dest, result = run_a(tmp_path, dest=_timeout_dest(tmp_path, state))
+    assert (result.status, result.observed_state) == ("unknown", state)
+    return to_document(result, dest)
+
+
 # --------------------------------------------------------------------------- route B (AtomicLocalControlPlaneExecutor)
 
 class _SyntheticAtomicDestination(AtomicAuthorityEffectDestination):
@@ -381,6 +387,8 @@ CONFORMANT = {
     "route-a-lost-ack-observed-applied-reports-reconciled": case_a_unknown_n1_lost_ack,
     "route-a-malformed-ack-after-commit-openshell-style-reports-reconciled": case_a_unknown_n1_malformed_ack,
     "route-a-ack-unobserved-unknown-null-observation": case_a_unknown_ack_unobserved,
+    "route-a-timeout-validated-absent-carried": lambda p: _case_timeout(p, "absent"),
+    "route-a-timeout-validated-unknown-carried": lambda p: _case_timeout(p, "unknown"),
     "route-b-executed": case_b_executed,
     "route-b-partial": case_b_partial,
     "route-b-denied": case_b_denied,
@@ -429,30 +437,68 @@ def test_partial_observed_after_lost_ack_reports_partial(tmp_path):
     assert codes(to_document(result, dest)) == []
 
 
+class _TimeoutThenReads(DurableRefundDestination):
+    """Commit times out before any effect; the pre-commit read is real, the follow-up read returns `state`."""
+    state = "absent"
+
+    def commit(self, snapshot, **kwargs):
+        raise TimeoutError("synthetic timeout before any effect")
+
+    def observe_bound(self, snapshot):
+        if getattr(self, "armed", False):
+            return {"effect_id": snapshot.effect_id, "state": self.state, "destination_state": {}}
+        self.armed = True
+        return super().observe_bound(snapshot)
+
+
+def _timeout_dest(tmp_path, state):
+    dest = _TimeoutThenReads(tmp_path / "state")
+    dest.state = state
+    return dest
+
+
 @pytest.mark.parametrize("state", ["absent", "unknown"])
-def test_non_establishing_observation_after_timeout_stays_unknown_without_observation(tmp_path, state):
-    """An 'absent'/'unknown' observation right after an ambiguous dispatch never becomes failed or reconciled,
-    and is not attached to the 'unknown' result."""
-    class _Timeout(DurableRefundDestination):
-        def commit(self, snapshot, **kwargs):
-            raise TimeoutError("synthetic timeout before any effect")
-
-        def observe_bound(self, snapshot):
-            if getattr(self, "armed", False):
-                return {"effect_id": snapshot.effect_id, "state": state, "destination_state": {}}
-            self.armed = True
-            return super().observe_bound(snapshot)
-
-    _, dest, result = run_a(tmp_path, dest=_Timeout(tmp_path / "state"))
-    assert (result.status, result.observed_state, result.observation) == ("unknown", "unknown", None)
+def test_non_establishing_observation_after_timeout_stays_unknown_and_carries_the_observation(tmp_path, state):
+    """Decision 14: an 'absent'/'unknown' observation right after an ambiguous dispatch never becomes failed or
+    reconciled; the 'unknown' result carries that validated observation and observed_state equals its state."""
+    _, dest, result = run_a(tmp_path, dest=_timeout_dest(tmp_path, state))
+    assert (result.status, result.observed_state) == ("unknown", state)
+    assert result.observation == {"effect_id": result.effect_id, "state": state, "destination_state": {}}
     assert dest.attempt_history(result.attempt_id)[-1]["status"] == "unknown"
     assert codes(to_document(result, dest)) == []
 
 
-def test_failed_and_denied_results_carry_null_observation(tmp_path):
-    assert case_a_failed(tmp_path / "a")["execution_result"]["observation"] is None
-    assert case_a_denied(tmp_path / "b")["execution_result"]["observation"] is None
-    assert case_b_denied(tmp_path / "c")["execution_result"]["observation"] is None
+@pytest.mark.parametrize("state", ["absent", "unknown"])
+def test_export_after_timeout_carries_validated_observation_in_observations(tmp_path, state):
+    env, dest, result = run_a(tmp_path, dest=_timeout_dest(tmp_path, state))
+    exported = export_execution_artifacts(env, result, dest, repository_revision="test")
+    assert exported["observations"] == [exported["execution_result"]["observation"]]
+    assert exported["observations"][0]["state"] == state == exported["execution_result"]["observed_state"]
+    assert "recovery_observations" not in exported
+    assert codes(export_to_document(exported)) == []
+
+
+def test_pre_commit_existing_unknown_observation_is_carried(tmp_path):
+    class _ExistingUnknown(DurableRefundDestination):
+        def observe_bound(self, snapshot):
+            return {"effect_id": snapshot.effect_id, "state": "unknown", "destination_state": {}}
+
+    _, dest, result = run_a(tmp_path, dest=_ExistingUnknown(tmp_path / "state"))
+    assert (result.status, result.observed_state, result.observation["state"]) == ("unknown", "unknown", "unknown")
+    assert codes(to_document(result, dest)) == []
+
+
+def test_follow_up_observation_failure_after_timeout_is_unknown_null(tmp_path):
+    _AckLostObservationDown.broken = False
+    _, dest, result = run_a(tmp_path, dest=_AckLostObservationDown(tmp_path / "state"))
+    assert (result.status, result.observed_state, result.observation) == ("unknown", "unknown", None)
+
+
+def test_failed_and_denied_results_carry_null_observation_and_unknown_state(tmp_path):
+    """Decision 15: whenever observation is null, observed_state is 'unknown' for every status; and `{}` is never emitted."""
+    for doc in (case_a_failed(tmp_path / "a"), case_a_denied(tmp_path / "b"), case_b_denied(tmp_path / "c")):
+        result = doc["execution_result"]
+        assert result["observation"] is None and result["observed_state"] == "unknown"
 
 
 def test_export_puts_recovery_report_only_in_recovery_observations(tmp_path):

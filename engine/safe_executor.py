@@ -869,8 +869,8 @@ class LocalDestinationExecutor:
             )
         if existing["state"] == "unknown":
             # A validated observation of state 'unknown' establishes nothing, so the result
-            # is unresolved and carries no observation (lifecycle contract: 'unknown' never
-            # carries a validated observation).
+            # is unresolved; per the lifecycle contract (decision 14) it carries that validated
+            # observation, with observed_state equal to observation.state.
             self.destination.transition_attempt(attempt_id, "unknown")
             return ExecutionResult(
                 "unknown",
@@ -879,9 +879,9 @@ class LocalDestinationExecutor:
                 attempt_id,
                 True,
                 False,
-                "unknown",
+                existing["state"],
                 False,
-                observation=None,
+                observation=existing,
             )
 
         try:
@@ -908,10 +908,12 @@ class LocalDestinationExecutor:
         except TimeoutError as exc:
             # The acknowledgement was lost or malformed. Report only what a validated
             # follow-up observation establishes: applied -> reconciled, partial -> partial.
-            # Anything else (observation failed, absent, unknown) stays 'unknown' with
-            # observation None: 'absent' right after an ambiguous dispatch does not prove the
-            # effect will not appear, so it is never reported as failed or retryable, and a
-            # fabricated or non-establishing observation is never attached to 'unknown'.
+            # Anything else stays 'unknown'. 'absent' right after an ambiguous dispatch does not
+            # prove the effect will not appear, so it is never reported as failed or retryable.
+            # A validated absent/unknown follow-up is carried on the 'unknown' result with
+            # observed_state == observation.state (lifecycle contract decision 14); if the
+            # follow-up itself fails, the result carries observation None and observed_state
+            # 'unknown'. Null observation always means observed_state 'unknown' (decision 15).
             try:
                 observation = self.destination.observe_bound(snapshot)
             except Exception:
@@ -940,9 +942,9 @@ class LocalDestinationExecutor:
                 attempt_id,
                 True,
                 False,
-                "unknown",
+                state if state in {"absent", "unknown"} else "unknown",
                 False,
-                observation=None,
+                observation=observation if state in {"absent", "unknown"} else None,
                 error=str(exc),
             )
         except Exception as exc:

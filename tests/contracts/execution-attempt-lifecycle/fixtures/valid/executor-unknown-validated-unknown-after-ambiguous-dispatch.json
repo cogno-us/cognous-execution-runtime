@@ -1,0 +1,48 @@
+{
+  "fixture_id": "executor-unknown-validated-unknown-after-ambiguous-dispatch",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Ambiguous dispatch (timeout or lost acknowledgement): the executor's terminal event is 'executed' and the result is 'unknown'. The follow-up Control Plane reading was validated and found state 'unknown', so it is carried in the observation and observed_state equals it ('unknown'). Result 'unknown' may carry a validated observation only when its state is 'absent' or 'unknown' (owner decision 2026-10-17, narrow relaxation; also covers route C). Not evidence of effect.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1001.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "unknown",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "unknown",
+        "observed_at": "2026-01-01T00:00:05Z",
+        "destination_state": {}
+      },
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false
+    }
+  }
+}
