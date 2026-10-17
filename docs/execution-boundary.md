@@ -128,3 +128,25 @@ profile is independent of the existing atomic claim and refund-intent profiles;
 unsupported combinations refuse. Historical selected pins and release permissions
 are unchanged. Source provenance: supplied Moltbook 101526_A K3, 15 October 2026;
 tests and code are original synthetic implementations under existing licenses.
+
+### Known composition limits of the effective-grant destination
+
+Recorded from V1 validation (issue #99). Neither is a change to supported behaviour.
+
+- **Refund-intent profile.** `PinnedControlPlaneExecutor.execute(refund_intent=...)`
+  wraps the destination in `IntentRefundDestination`, which does not carry the
+  effective-grant capability or commit precondition. Against an
+  `EffectiveGrantDestination` the request is refused with no effect
+  (`atomic_authority_capability_unavailable`), so the opt-in intent profile
+  cannot be combined with route A on this destination. This fails closed and is
+  deliberately left as is: intent ownership is consumed before the grant check
+  runs, so a supported combination needs its own design (what a grant refusal
+  after dispatch ownership means) and requalification.
+- **Generation fence.** The lineage generation fence wrapper lives in the
+  governed-exchange component, not here. `EffectiveGrantDestination.commit`
+  already accepts `expected_effective_grant_digest` and
+  `effective_grant_derivation_version`; a fence wrapper has to forward those
+  keywords to the destination it wraps. The wrapper's current `commit(snapshot,
+  *, simulate=None)` signature does not, so `run_exchange(generation_fence=...)`
+  on the effective-grant destination fails before any refusal is persisted.
+  The change belongs in that component.
