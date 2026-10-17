@@ -2,7 +2,7 @@
   "fixture_id": "executor-normal-observations-member",
   "synthetic": true,
   "expected_outcome": "accept",
-  "reason": "Normal executed result: observations lists the validated observation the result carries; recovery_observations is empty.",
+  "reason": "Normal executed result: observations lists the validated observation the result carries; recovery_observations is empty. Result status is 'executed' (P3 draft change, 2026-10-17).",
   "document": {
     "contract": "execution-attempt-lifecycle",
     "contract_version": "0.1.0-draft",
@@ -31,7 +31,7 @@
       }
     ],
     "execution_result": {
-      "status": "observed",
+      "status": "executed",
       "attempt_id": "syn-attempt-1",
       "observed_state": "applied",
       "observation": {

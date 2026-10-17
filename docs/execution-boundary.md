@@ -72,7 +72,7 @@ Effect IDs are bound to a canonical digest of the frozen operation. Reusing the 
 
 Historical observation checks the expected operation digest. It may report what is already present but does not renew or create permission to execute.
 
-Lost acknowledgement after durable commit remains an `unknown` attempt outcome until observation establishes destination state. Partial delivery remains partial and is not blindly retried.
+Lost acknowledgement after durable commit remains an `unknown` attempt outcome until observation establishes destination state. When the follow-up validated observation establishes the state, the result is `reconciled` (applied) or `partial` and the attempt's terminal event says the same; the result is not newly executed and not acknowledged. When the observation fails, or reports `absent` or `unknown`, the result stays `unknown` with observation null (never `failed`, never retry permission). Partial delivery remains partial and is not blindly retried.
 
 ## Consistency boundary
 

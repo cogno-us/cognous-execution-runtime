@@ -151,8 +151,13 @@ class ControlPlaneRefundDestinationAdapter:
                 from agent_control_plane.bounded import DefinitiveDestinationRejection
                 raise DefinitiveDestinationRejection(result.error)
             raise RuntimeError(result.error or "local destination failed")
-        if result.status == "unknown":
-            # Preserve Control Plane lost-ack semantics.
+        lost_ack_observed = (result.status in {"reconciled", "partial"}
+                             and not result.acknowledged and result.error is not None)
+        if result.status == "unknown" or lost_ack_observed:
+            # Preserve Control Plane lost-ack semantics. A lost acknowledgement stays a
+            # TimeoutError for the Control Plane even when the local executor already
+            # observed the effect (reconciled/partial after a timeout): the local
+            # observation is not the Control Plane's validated observation.
             raise TimeoutError(result.error or "acknowledgement unavailable")
         return {
             "moltbot_safe_status": result.status,
@@ -344,6 +349,13 @@ class PinnedControlPlaneExecutor:
                    "partial" if state == "partial" else "unknown"))
         if cp_observation is None:
             status = "unknown"
+        elif status == "unknown" and state in {"applied", "partial"}:
+            # Lifecycle contract: 'unknown' never carries a validated observation.
+            status = "reconciled" if state == "applied" else "partial"
+        # Keep the attempt's terminal event in agreement with the reported status.
+        if (local is not None and local.attempt_id is not None and status != local.status
+                and status in {"unknown", "reconciled", "partial"}):
+            self.destination.transition_attempt(local.attempt_id, status, local.error)
         observation = None
         if cp_observation is not None:
             observation = cp_observation.model_dump(mode="json", exclude_none=False)

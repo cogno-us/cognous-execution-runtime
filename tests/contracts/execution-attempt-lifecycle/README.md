@@ -45,6 +45,13 @@ Fixture ids keep the `route-b` wording for stability; read them as the atomic lo
 
 ## Closed enumerations (decided 2026-10-17, ODES item 6)
 
+Draft changes of 2026-10-17 (P3, still `0.1.0-draft`, not frozen):
+- `denied` joins the attempt-event statuses: route A writes it when policy denies an attempt before execution (valid fixture `executor-denied-attempt-event`). Reversible while the contract is a draft.
+- `started_at` of a control-plane attempt is fixed at start and identical on every row of that `attempt_id` (`attempt_started_at_changed`).
+- Result `observed` is the effect-free observation. With any observation kind it carries `attempt_id` null and `attempted`, `acknowledged`, `newly_executed` false (`observed_result_claims_attempt`). A normal execution reports `executed`.
+- Result `executed` carries the observation that established it; null is refused (`executed_without_observation`).
+- Members stay optional in the contract. Replay stops requiring members the contract leaves optional (decision item 11, Replay-side half).
+
 Result status, observation state, recovery status, attempt event status and the other enumerations in `schema.json` are closed. A value outside them is refused with `unknown_enum_value` and is never coerced. Adding a value is a major bump. Where the unknown value sits inside a union (for example the observation), the refusal may surface as `schema_violation`.
 
 ## Known producer non-conformance (found by the P0 inventory, finding N-1)

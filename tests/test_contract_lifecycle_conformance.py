@@ -4,11 +4,12 @@ Contract: execution-attempt-lifecycle 0.1.0-draft (a draft, not frozen), vendore
 tests/contracts/execution-attempt-lifecycle/. Role: producer. Level: P (structure, rules and a real producer run).
 See docs/contract-conformance-execution-attempt-lifecycle.md.
 
-Test-only. Every case drives the runtime's own executors with synthetic ids and data against synthetic SQLite
+Every case drives the runtime's own executors with synthetic ids and data against synthetic SQLite
 destinations, maps the real outcome faithfully into a contract document (producer "runtime-executor") and validates it
 with the vendored validator. Nothing is reshaped to fit: where the runtime's output fails the contract, the case is a
 strict xfail with a finding id (and a second, non-xfail test pins the exact violation codes as evidence), so a runtime
-fix flips the xfail visibly.
+fix flips the xfail visibly. After the P3 runtime change only F-P2-RT-3 was left; the contract now admits attempt event
+'denied' (ODES e33d541a) and that case is a plain conformance assertion too.
 
 Route B note: the real AtomicAuthorityEffectDestination.execute_claim_atomic needs the Control Plane package, which is
 not a dependency of this repository. The route B cases therefore use a synthetic subclass of the real destination class
@@ -44,7 +45,6 @@ from test_producer_contract import operation, policy
 CONTRACT_DIR = Path(__file__).parent / "contracts" / "execution-attempt-lifecycle"
 CONTRACT_NAME = "execution-attempt-lifecycle"
 CONTRACT_VERSION = "0.1.0-draft"
-FINDING_N1 = "finding N-1: owner decided the runtime changes to report reconciled/partial (P3)"
 
 
 # --------------------------------------------------------------------------- 1. drift check (no ODES dependency)
@@ -142,6 +142,8 @@ def export_to_document(exported: dict) -> dict:
         "attempt_events": exported["attempt_events"],
         "execution_result": exported["execution_result"],
         "observations": exported["observations"],
+        **({"recovery_observations": exported["recovery_observations"]}
+           if "recovery_observations" in exported else {}),
     }
 
 
@@ -220,13 +222,13 @@ def case_a_denied(tmp_path):
 
 def case_a_unknown_n1_lost_ack(tmp_path):
     _, dest, result = run_a(tmp_path, simulate="lost_ack")
-    assert result.status == "unknown"
+    assert result.status == "reconciled"
     return to_document(result, dest)
 
 
 def case_a_unknown_n1_malformed_ack(tmp_path):
     _, dest, result = run_a(tmp_path, dest=_MalformedAckAfterCommit(tmp_path / "state"))
-    assert result.status == "unknown" and result.observation["state"] == "applied"
+    assert result.status == "reconciled" and result.observation["state"] == "applied"
     return to_document(result, dest)
 
 
@@ -374,13 +376,21 @@ def case_export_b_effect_free_reconcile(tmp_path):
 CONFORMANT = {
     "route-a-executed": case_a_executed,
     "route-a-partial": case_a_partial,
+    "route-a-failed": case_a_failed,
+    "route-a-denied-attempt-event": case_a_denied,
+    "route-a-lost-ack-observed-applied-reports-reconciled": case_a_unknown_n1_lost_ack,
+    "route-a-malformed-ack-after-commit-openshell-style-reports-reconciled": case_a_unknown_n1_malformed_ack,
+    "route-a-ack-unobserved-unknown-null-observation": case_a_unknown_ack_unobserved,
     "route-b-executed": case_b_executed,
     "route-b-partial": case_b_partial,
+    "route-b-denied": case_b_denied,
     "route-b-post-commit-observation-failure-recovery-applied": case_b_post_commit_recovery_applied,
     "route-b-lost-ack-reconciliation-down-unknown-placeholder": case_b_lost_ack_reconcile_down,
     "route-b-effect-free-reconcile-observed": case_b_effect_free_reconcile,
     "export-route-a-normal": case_export_a_normal,
     "export-route-b-normal": case_export_b_normal,
+    "export-route-b-post-commit-recovery": case_export_b_post_commit_recovery,
+    "export-route-b-effect-free-reconcile": case_export_b_effect_free_reconcile,
 }
 
 
@@ -389,72 +399,76 @@ def test_runtime_output_conforms(tmp_path, builder):
     assert codes(builder(tmp_path)) == []
 
 
-# --------------------------------------------------------------------------- 4/5. findings (strict xfail + pinned evidence)
-# id -> (builder, reason, exact violation codes the vendored validator reports today)
-
-FINDINGS = {
-    "N-1-route-a-lost-ack-observed-applied": (
-        case_a_unknown_n1_lost_ack, FINDING_N1, ["unknown_with_validated_observation"]),
-    "N-1-route-a-malformed-ack-after-commit-openshell-style": (
-        case_a_unknown_n1_malformed_ack, FINDING_N1, ["unknown_with_validated_observation"]),
-    "F-P2-RT-1-route-a-ack-unobserved-fabricates-validated-unknown": (
-        case_a_unknown_ack_unobserved,
-        "finding F-P2-RT-1: safe_executor timeout handler emits a validated observation with state 'unknown' instead "
-        "of null when observation fails (safe_executor.py:893-896); not covered by the N-1 reconciled/partial change",
-        ["unknown_with_validated_observation"]),
-    "F-P2-RT-2-route-a-failed-observation-empty-dict": (
-        case_a_failed,
-        "finding F-P2-RT-2: ExecutionResult.observation defaults to {} (safe_executor.py:399), so failed/denied "
-        "results carry {} where the contract allows null, a validated or a recovery observation",
-        ["schema_violation"]),
-    "F-P2-RT-2-route-b-denied-observation-empty-dict": (
-        case_b_denied,
-        "finding F-P2-RT-2: route B _denied builds ExecutionResult without observation, so it is {} "
-        "(atomic_local_control_plane_executor.py:104-137, safe_executor.py:399)",
-        ["schema_violation"]),
-    "F-P2-RT-3-route-a-denied-attempt-event-not-in-enum": (
-        case_a_denied,
-        "finding F-P2-RT-3: route A records attempt event 'denied' (safe_executor.py:827 and 843), which is "
-        "not in the contract's closed attempt-event enum, and the result observation is {} (F-P2-RT-2)",
-        ["unknown_enum_value", "schema_violation"]),
-    "F-P2-RT-4-export-route-b-recovery-report-in-legacy-observations": (
-        case_export_b_post_commit_recovery,
-        "finding F-P2-RT-4: export_execution_artifacts puts the recovery report in `observations` and emits no "
-        "`recovery_observations` (producer_contract.py:247-249 and 286); the contract refuses the legacy layout (runtime P3)",
-        ["schema_violation"]),
-    "F-P2-RT-4-export-route-b-effect-free-reconcile-legacy-observations": (
-        case_export_b_effect_free_reconcile,
-        "finding F-P2-RT-4: same legacy layout for the effect-free reconcile export (producer_contract.py:247-249 and 286)",
-        ["schema_violation"]),
-}
+def test_unknown_with_null_observation_is_emitted_when_ack_unobserved(tmp_path):
+    """Genuine 'unknown' (no validated observation) carries observation null, never a fabricated one (F-P2-RT-1)."""
+    doc = case_a_unknown_ack_unobserved(tmp_path)
+    result = doc["execution_result"]
+    assert (result["status"], result["observed_state"], result["observation"]) == ("unknown", "unknown", None)
+    assert doc["attempt_events"][-1]["status"] == "unknown"
 
 
-def _finding_params(with_xfail: bool):
-    return [
-        pytest.param(fid, marks=pytest.mark.xfail(strict=True, reason=reason)) if with_xfail else pytest.param(fid)
-        for fid, (_, reason, _) in FINDINGS.items()
-    ]
+# --------------------------------------------------------------------------- behaviour added by the P3 change
+
+def test_lost_ack_with_validated_observation_reports_reconciled_and_terminal_event_agrees(tmp_path):
+    _, dest, result = run_a(tmp_path, simulate="lost_ack")
+    assert (result.status, result.observed_state, result.acknowledged, result.newly_executed) == (
+        "reconciled", "applied", False, False)
+    assert result.observation["state"] == "applied" and result.error
+    assert [e["status"] for e in dest.attempt_history(result.attempt_id)] == ["attempted", "reconciled"]
 
 
-@pytest.mark.parametrize("finding_id", _finding_params(True))
-def test_runtime_output_conforms_known_non_conformance(tmp_path, finding_id):
-    """Strict xfail: becomes a visible failure (XPASS) the moment the runtime starts conforming."""
-    builder, _, _ = FINDINGS[finding_id]
-    assert codes(builder(tmp_path)) == []
+def test_partial_observed_after_lost_ack_reports_partial(tmp_path):
+    class _PartialThenLost(DurableRefundDestination):
+        def commit(self, snapshot, **kwargs):
+            super().commit(snapshot, simulate="partial")
+            raise TimeoutError("synthetic lost acknowledgement")
+
+    _, dest, result = run_a(tmp_path, dest=_PartialThenLost(tmp_path / "state"))
+    assert (result.status, result.observed_state) == ("partial", "partial")
+    assert [e["status"] for e in dest.attempt_history(result.attempt_id)][-1] == "partial"
+    assert codes(to_document(result, dest)) == []
 
 
-@pytest.mark.parametrize("finding_id", _finding_params(False))
-def test_finding_evidence_pins_current_violation_codes(tmp_path, finding_id):
-    """Evidence, not a green light: what the vendored validator reports for each finding today."""
-    builder, _, expected = FINDINGS[finding_id]
-    assert codes(builder(tmp_path)) == expected
+@pytest.mark.parametrize("state", ["absent", "unknown"])
+def test_non_establishing_observation_after_timeout_stays_unknown_without_observation(tmp_path, state):
+    """An 'absent'/'unknown' observation right after an ambiguous dispatch never becomes failed or reconciled,
+    and is not attached to the 'unknown' result."""
+    class _Timeout(DurableRefundDestination):
+        def commit(self, snapshot, **kwargs):
+            raise TimeoutError("synthetic timeout before any effect")
+
+        def observe_bound(self, snapshot):
+            if getattr(self, "armed", False):
+                return {"effect_id": snapshot.effect_id, "state": state, "destination_state": {}}
+            self.armed = True
+            return super().observe_bound(snapshot)
+
+    _, dest, result = run_a(tmp_path, dest=_Timeout(tmp_path / "state"))
+    assert (result.status, result.observed_state, result.observation) == ("unknown", "unknown", None)
+    assert dest.attempt_history(result.attempt_id)[-1]["status"] == "unknown"
+    assert codes(to_document(result, dest)) == []
 
 
-def test_null_observation_unknown_is_not_emitted_by_runtime(tmp_path):
-    """Contract case 'unknown with null observation (ack unobserved)' cannot be produced by the runtime today.
+def test_failed_and_denied_results_carry_null_observation(tmp_path):
+    assert case_a_failed(tmp_path / "a")["execution_result"]["observation"] is None
+    assert case_a_denied(tmp_path / "b")["execution_result"]["observation"] is None
+    assert case_b_denied(tmp_path / "c")["execution_result"]["observation"] is None
 
-    Route A returns a validated observation (state 'unknown', F-P2-RT-1) and route B returns a recovery record; no
-    executor path emits result 'unknown' with observation None.
-    """
-    for builder in (case_a_unknown_ack_unobserved, case_b_lost_ack_reconcile_down, case_b_post_commit_recovery_applied):
-        assert builder(tmp_path / builder.__name__)["execution_result"]["observation"] is not None
+
+def test_export_puts_recovery_report_only_in_recovery_observations(tmp_path):
+    env, dest, _, result = run_b(tmp_path / "a", mode="post_commit_fail")
+    exported = export_execution_artifacts(env, result, dest, repository_revision="test")
+    assert exported["observations"] == []
+    assert exported["recovery_observations"] == [exported["execution_result"]["observation"]]
+    assert exported["producer_profile"]["profile_version"] == "2.0.0"
+    env, dest, _, result = run_b(tmp_path / "b")
+    exported = export_execution_artifacts(env, result, dest, repository_revision="test")
+    assert exported["observations"] == [exported["execution_result"]["observation"]]
+    assert "recovery_observations" not in exported
+
+
+def test_export_with_null_observation_has_no_observations(tmp_path):
+    env, dest, result = run_a(tmp_path, dest=_AckLostObservationDown(tmp_path / "state"))
+    exported = export_execution_artifacts(env, result, dest, repository_revision="test")
+    assert exported["execution_result"]["observation"] is None
+    assert exported["observations"] == [] and "recovery_observations" not in exported

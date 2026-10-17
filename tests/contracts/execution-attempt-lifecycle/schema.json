@@ -50,7 +50,7 @@
       "properties": {
         "event_id": {"type": "integer"},
         "attempt_id": {"type": "string", "minLength": 1},
-        "status": {"enum": ["attempted", "executed", "partial", "failed", "reconciled", "unknown"]},
+        "status": {"enum": ["attempted", "executed", "partial", "failed", "reconciled", "unknown", "denied"]},
         "error": {"type": ["string", "null"]},
         "created_at": {"type": "number"},
         "extensions": {"$ref": "#/$defs/extensions"}

@@ -25,7 +25,7 @@
         "attempt_id": "syn-attempt-1",
         "effect_id": "syn-effect-1",
         "decision_id": "syn-decision-1",
-        "started_at": "2026-01-01T00:00:01Z",
+        "started_at": "2026-01-01T00:00:00Z",
         "time_source": "test_override",
         "status": "acknowledged",
         "acknowledgement": {},
