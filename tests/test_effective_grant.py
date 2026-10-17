@@ -73,3 +73,54 @@ def test_legacy_worker_does_not_require_optional_profile_module(tmp_path,monkeyp
     monkeypatch.setattr(builtins,'__import__',guarded)
     result=LocalDestinationExecutor(dest,policy(op)).execute_snapshot(snap)
     assert result.status=='executed' and dest.effect_count(op.grant_id)==1
+
+
+# Issue #97 / F-09: the stored row's own permission set must cover the request.
+def _commit_with_stored_digest(dest, snap):
+    with dest._connect() as c:
+        stored = c.execute('SELECT digest FROM effective_grants_v1 WHERE grant_id=?', (snap.operation.grant_id,)).fetchone()[0]
+    return dest.commit(snap, expected_effective_grant_digest=stored, effective_grant_derivation_version=DERIVATION)
+
+@pytest.mark.parametrize('permissions', [[], ['refund.other']])
+def test_narrowed_row_refuses_direct_commit_carrying_its_own_digest(tmp_path, permissions):
+    op,snap,dest,_=fixture(tmp_path)
+    dest.set_effective_grant(principal=op.principal,grant_id=op.grant_id,revision=op.grant_revision,permissions=permissions)
+    with pytest.raises(PermissionError,match='effective_grant_permissions_insufficient'):_commit_with_stored_digest(dest,snap)
+    assert dest.effect_count(op.grant_id)==0
+
+def test_narrowed_row_refuses_execute_snapshot_with_stored_digest_and_names_reason(tmp_path):
+    op,snap,dest,_=fixture(tmp_path)
+    dest.set_effective_grant(principal=op.principal,grant_id=op.grant_id,revision=op.grant_revision,permissions=[])
+    with dest._connect() as c:stored=c.execute('SELECT digest FROM effective_grants_v1').fetchone()[0]
+    result=LocalDestinationExecutor(dest,policy(op)).execute_snapshot(snap,expected_effective_grant_digest=stored,effective_grant_derivation_version=DERIVATION)
+    assert result.status=='failed' and result.error=='effective_grant_permissions_insufficient'
+    assert dest.effect_count(op.grant_id)==0
+
+def test_row_covering_the_request_still_commits(tmp_path):
+    op,snap,dest,_=fixture(tmp_path)
+    dest.set_effective_grant(principal=op.principal,grant_id=op.grant_id,revision=op.grant_revision,permissions=[*op.requested_permissions,'refund.extra'])
+    assert not _commit_with_stored_digest(dest,snap)['duplicate'] and dest.effect_count(op.grant_id)==1
+
+def test_legacy_row_without_permission_set_fails_closed_and_is_repaired_by_trusted_writer(tmp_path):
+    op,snap,dest,digest=fixture(tmp_path)
+    with dest._connect() as c:c.execute('UPDATE effective_grants_v1 SET permissions_json=NULL')
+    with pytest.raises(PermissionError,match='effective_grant_permissions_unavailable'):
+        dest.commit(snap,expected_effective_grant_digest=digest,effective_grant_derivation_version=DERIVATION)
+    assert dest.effect_count(op.grant_id)==0
+    dest.set_effective_grant(principal=op.principal,grant_id=op.grant_id,revision=op.grant_revision,permissions=list(op.requested_permissions))
+    dest.commit(snap,expected_effective_grant_digest=digest,effective_grant_derivation_version=DERIVATION)
+    assert dest.effect_count(op.grant_id)==1
+
+def test_table_created_before_permission_set_is_migrated_on_open_and_fails_closed(tmp_path):
+    op,snap,dest,digest=fixture(tmp_path)
+    with dest._connect() as c:
+        c.execute('ALTER TABLE effective_grants_v1 DROP COLUMN permissions_json')
+    base=DurableRefundDestination(dest.root)  # no migration through the base class
+    with pytest.raises(PermissionError,match='effective_grant_permissions_unavailable'):
+        base.commit(snap,expected_effective_grant_digest=digest,effective_grant_derivation_version=DERIVATION)
+    migrated=EffectiveGrantDestination(dest.root)
+    with migrated._connect() as c:
+        assert 'permissions_json' in {r[1] for r in c.execute('PRAGMA table_info(effective_grants_v1)')}
+    with pytest.raises(PermissionError,match='effective_grant_permissions_unavailable'):
+        migrated.commit(snap,expected_effective_grant_digest=digest,effective_grant_derivation_version=DERIVATION)
+    assert migrated.effect_count(op.grant_id)==0

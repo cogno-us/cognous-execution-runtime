@@ -120,6 +120,15 @@ runtime-authority/0.1 profile supplies an approval-bound expected digest and
 principal, missing state and unknown derivation refuse before inserting an effect.
 Reopening the database through the base destination does not bypass the table.
 
+The stored row also retains its sorted permission set (`permissions_json`). Under
+the same transaction the request's `requested_permissions` must be a subset of
+it, so a caller that presents the stored row's own digest cannot commit beyond a
+narrowed grant (`effective_grant_permissions_insufficient`). A row written
+before this check existed has no retained set and refuses with
+`effective_grant_permissions_unavailable` until a trusted writer calls
+`set_effective_grant` for that grant again; the column itself is added to
+existing databases on open.
+
 This is same-database synthetic enforcement. It does not make remote authority,
 purpose or policy stores atomic. Host/database access must separate authority
 writers from untrusted agents; possession of the SQLite file can bypass that

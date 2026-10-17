@@ -66,6 +66,7 @@ class ControlPlaneRefundDestinationAdapter:
         self.trusted_institution_id = trusted_institution_id
         self.trusted_authority_domain = trusted_authority_domain
         self.outcome = _AdapterOutcome()
+        self.local_refusal: str | None = None
 
     @property
     def runtime_authority_capability(self):
@@ -84,7 +85,12 @@ class ControlPlaneRefundDestinationAdapter:
         if effect_id != self.snapshot.effect_id:
             raise PermissionError("effect identifier mismatch")
         self._check_trusted_context()
-        self.executor.policy.check(self.snapshot.operation)
+        try:
+            self.executor.policy.check(self.snapshot.operation)
+        except PermissionError as exc:
+            # The Control Plane reports any observe() failure with one generic reason; keep the cause.
+            self.local_refusal = str(exc)
+            raise
         observed = self.destination.observe_bound(self.snapshot)
 
         # Construct the pinned Control Plane EffectObservation lazily so this
@@ -140,7 +146,8 @@ class ControlPlaneRefundDestinationAdapter:
         if result.status == "denied":
             raise PermissionError(result.error or "local destination denied")
         if result.status == "failed":
-            if result.error in {"effective_grant_changed_at_commit", "effective_grant_precondition_required", "atomic_authority_capability_unavailable"}:
+            if result.error in {"effective_grant_changed_at_commit", "effective_grant_precondition_required", "atomic_authority_capability_unavailable",
+                                "effective_grant_permissions_insufficient", "effective_grant_permissions_unavailable"}:
                 from agent_control_plane.bounded import DefinitiveDestinationRejection
                 raise DefinitiveDestinationRejection(result.error)
             raise RuntimeError(result.error or "local destination failed")
@@ -310,7 +317,10 @@ class PinnedControlPlaneExecutor:
         try:
             cp_attempt, cp_observation = workflow.execute(**kwargs)
         except PermissionError as exc:
-            result = self._denied(snapshot, str(exc))
+            reason = str(exc)
+            if adapter.local_refusal and adapter.local_refusal not in reason:
+                reason = f"{adapter.local_refusal}: {reason}"
+            result = self._denied(snapshot, reason)
             if records.reconciliations:
                 result.control_plane_evidence = {"reconciliation":
                     records.reconciliations[-1].model_dump(mode="json", exclude_none=False)}
