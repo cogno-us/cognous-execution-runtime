@@ -1,0 +1,34 @@
+{
+  "fixture_id": "attempt-started-at-changed",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "The acknowledged row of an attempt carries a different started_at from its start row. started_at is fixed when the attempt starts.",
+  "expected_refusal": "attempt_started_at_changed",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "attempted",
+        "acknowledgement": {},
+        "error": null
+      },
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:09Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null
+      }
+    ]
+  }
+}

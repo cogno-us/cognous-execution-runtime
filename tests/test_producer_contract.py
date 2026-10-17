@@ -232,7 +232,7 @@ def test_export_valid_success_preserves_bound_snapshot(tmp_path):
 
 
 @pytest.mark.parametrize("simulate,expected_status,expected_state", [
-    ("lost_ack", "unknown", "applied"),
+    ("lost_ack", "reconciled", "applied"),
     ("partial", "partial", "partial"),
 ])
 def test_export_preserves_lost_ack_and_partial_evidence(
@@ -279,7 +279,7 @@ def test_export_preserves_restart_historical_observation_without_fabricating_att
         snapshot_envelope(envelope),
         simulate="crash_after_commit",
     )
-    assert first.status == "unknown"
+    assert first.status == "reconciled"
 
     restarted = DurableRefundDestination(state)
     historical_envelope = ExecutionEnvelope(

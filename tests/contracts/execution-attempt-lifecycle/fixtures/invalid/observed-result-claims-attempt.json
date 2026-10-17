@@ -1,0 +1,48 @@
+{
+  "fixture_id": "observed-result-claims-attempt",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Result 'observed' with attempted and acknowledged true and an attempt id. 'observed' is the effect-free observation status and cannot also claim an attempt. (This is the shape the earlier normal-executed fixture wrongly used.)",
+  "expected_refusal": "observed_result_claims_attempt",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1001.0
+      }
+    ],
+    "execution_result": {
+      "status": "observed",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "applied",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "applied",
+        "observed_at": "2026-01-01T00:00:05Z"
+      },
+      "attempted": true,
+      "acknowledged": true,
+      "newly_executed": true
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "fixture_id": "executor-normal-attempted-executed-observed",
   "synthetic": true,
   "expected_outcome": "accept",
-  "reason": "Normal lifecycle: executor events attempted then executed, result 'observed' with an applied observation.",
+  "reason": "Normal lifecycle: executor events attempted then executed, result 'observed' with an applied observation. Corrected 2026-10-17 (P3 draft change): the runtime returns result status 'executed' for a normal execution; the earlier fixture said 'observed', which is the effect-free observation status and cannot carry an attempt.",
   "document": {
     "contract": "execution-attempt-lifecycle",
     "contract_version": "0.1.0-draft",
@@ -31,7 +31,7 @@
       }
     ],
     "execution_result": {
-      "status": "observed",
+      "status": "executed",
       "attempt_id": "syn-attempt-1",
       "observed_state": "applied",
       "observation": {

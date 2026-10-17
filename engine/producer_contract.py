@@ -244,9 +244,17 @@ def export_execution_artifacts(
         events=events,
     )
 
+    # Layout (lifecycle contract, export layout 2026-10-17): `observations` carries validated
+    # Control Plane observations only (they carry `state`). A typed recovery report (`status`,
+    # no `state`) goes in the optional `recovery_observations`, emitted only when one exists;
+    # `execution_result.observation` still carries the report as before.
     observations: list[dict[str, Any]] = []
+    recovery_observations: list[dict[str, Any]] = []
     if isinstance(result.observation, dict) and result.observation:
-        observations.append(copy.deepcopy(result.observation))
+        if "state" in result.observation:
+            observations.append(copy.deepcopy(result.observation))
+        else:
+            recovery_observations.append(copy.deepcopy(result.observation))
 
     revision = repository_revision if repository_revision is not None else "unavailable"
     if not isinstance(revision, str) or not revision:
@@ -257,7 +265,7 @@ def export_execution_artifacts(
     source.setdefault("producer_profile_id", EXECUTOR_PRODUCER_PROFILE_ID)
     source.setdefault("producer_profile_version", EXECUTOR_PRODUCER_PROFILE_VERSION)
 
-    return {
+    exported = {
         "producer_profile": {
             "profile_id": EXECUTOR_PRODUCER_PROFILE_ID,
             "profile_version": EXECUTOR_PRODUCER_PROFILE_VERSION,
@@ -289,6 +297,9 @@ def export_execution_artifacts(
             if (rec := result.control_plane_evidence.get("reconciliation", {}))
             and not rec.get("observation_accepted") and rec.get("observation") else [],
     }
+    if recovery_observations:
+        exported["recovery_observations"] = recovery_observations
+    return exported
 
 
 __all__ = [

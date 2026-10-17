@@ -34,8 +34,12 @@
     "execution_result": {
       "status": "executed",
       "attempt_id": "syn-attempt-1",
-      "observed_state": "unknown",
-      "observation": null
+      "observed_state": "applied",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "applied",
+        "observed_at": "2026-01-01T00:00:05Z"
+      }
     }
   }
 }

@@ -239,6 +239,15 @@ def _executor_rules(doc: dict[str, Any]) -> list[Violation]:
                              "a recovery observation is only carried by results 'unknown' (post-commit recovery) "
                              "or 'observed' (effect-free reconcile)"))
         return out
+    if result["status"] == "observed" and kind != "recovery" and (
+            any(result.get(k) for k in ("attempted", "acknowledged", "newly_executed"))
+            or result["attempt_id"] is not None):
+        return out + [Violation("observed_result_claims_attempt", "$.execution_result",
+                                "result 'observed' is an effect-free observation: attempt_id null and attempted, "
+                                "acknowledged and newly_executed false")]
+    if result["status"] == "executed" and obs is None:
+        return out + [Violation("executed_without_observation", "$.execution_result.observation",
+                                "result 'executed' carries the observation that established it; null is refused")]
     if kind == "recovery":
         recovery_violations = _recovery_rules(obs, result)
         if recovery_violations:
@@ -291,6 +300,9 @@ def _control_plane_rules(doc: dict[str, Any]) -> list[Violation]:
         elif seq[0]["status"] != "attempted" and not reconciled_only:
             out.append(Violation("missing_start_record", "$.control_plane_attempts",
                                  f"attempt {aid} lifecycle lacks its 'attempted' start record"))
+        if len({r["started_at"] for r in seq}) > 1:
+            out.append(Violation("attempt_started_at_changed", "$.control_plane_attempts",
+                                 f"attempt {aid}: started_at is fixed when the attempt starts and identical on every row"))
         if any(seq[i] == seq[j] for i in range(len(seq)) for j in range(i)):
             out.append(Violation("repeated_record", "$.control_plane_attempts",
                                  f"attempt {aid} lifecycle repeats a record"))

@@ -396,7 +396,7 @@ class ExecutionResult:
     acknowledged: bool
     observed_state: str
     newly_executed: bool
-    observation: dict | None = field(default_factory=dict)
+    observation: dict | None = None
     error: str | None = None
     control_plane_evidence: dict = field(default_factory=dict)
 
@@ -853,8 +853,8 @@ class LocalDestinationExecutor:
                 error=str(exc),
             )
 
-        if existing["state"] in {"applied", "partial", "unknown"}:
-            status = "reconciled" if existing["state"] == "applied" else existing["state"]
+        if existing["state"] in {"applied", "partial"}:
+            status = "reconciled" if existing["state"] == "applied" else "partial"
             self.destination.transition_attempt(attempt_id, status)
             return ExecutionResult(
                 status,
@@ -866,6 +866,22 @@ class LocalDestinationExecutor:
                 existing["state"],
                 False,
                 observation=existing,
+            )
+        if existing["state"] == "unknown":
+            # A validated observation of state 'unknown' establishes nothing, so the result
+            # is unresolved and carries no observation (lifecycle contract: 'unknown' never
+            # carries a validated observation).
+            self.destination.transition_attempt(attempt_id, "unknown")
+            return ExecutionResult(
+                "unknown",
+                snapshot.decision_id,
+                snapshot.effect_id,
+                attempt_id,
+                True,
+                False,
+                "unknown",
+                False,
+                observation=None,
             )
 
         try:
@@ -890,10 +906,32 @@ class LocalDestinationExecutor:
                 observation=observation,
             )
         except TimeoutError as exc:
+            # The acknowledgement was lost or malformed. Report only what a validated
+            # follow-up observation establishes: applied -> reconciled, partial -> partial.
+            # Anything else (observation failed, absent, unknown) stays 'unknown' with
+            # observation None: 'absent' right after an ambiguous dispatch does not prove the
+            # effect will not appear, so it is never reported as failed or retryable, and a
+            # fabricated or non-establishing observation is never attached to 'unknown'.
             try:
                 observation = self.destination.observe_bound(snapshot)
             except Exception:
-                observation = {"effect_id": snapshot.effect_id, "state": "unknown", "destination_state": {}}
+                observation = None
+            state = observation["state"] if observation is not None else None
+            if state in {"applied", "partial"}:
+                status = "reconciled" if state == "applied" else "partial"
+                self.destination.transition_attempt(attempt_id, status, str(exc))
+                return ExecutionResult(
+                    status,
+                    snapshot.decision_id,
+                    snapshot.effect_id,
+                    attempt_id,
+                    True,
+                    False,
+                    state,
+                    False,
+                    observation=observation,
+                    error=str(exc),
+                )
             self.destination.transition_attempt(attempt_id, "unknown", str(exc))
             return ExecutionResult(
                 "unknown",
@@ -902,9 +940,9 @@ class LocalDestinationExecutor:
                 attempt_id,
                 True,
                 False,
-                observation["state"],
+                "unknown",
                 False,
-                observation=observation,
+                observation=None,
                 error=str(exc),
             )
         except Exception as exc:

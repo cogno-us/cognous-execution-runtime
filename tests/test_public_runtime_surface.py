@@ -187,7 +187,7 @@ def test_existing_binding_and_recovery_semantics_remain_intact(tmp_path):
         snapshot_envelope(envelope),
         simulate="crash_after_commit",
     )
-    assert first.status == "unknown"
+    assert first.status == "reconciled"
     # Existing lost-ack contract: durable effect may exist while the caller
     # cannot claim a newly executed acknowledged result.
     assert first.newly_executed is False

@@ -36,6 +36,14 @@ accept 2.0.0 without an explicit compatibility change.
   reasons and rejected evidence). The upstream attempt no longer lives inside an
   accepted observation. `control_plane_attempts` now includes upstream attempts
   even when the primary `attempt_identity` belongs to the executor namespace.
+- `observations` carries validated Control Plane observations only (members with
+  `state`). A typed route B recovery report goes in the optional
+  `recovery_observations` list (emitted only when a report exists) and is still
+  carried by `execution_result.observation`. Profile version stays 2.0.0: the
+  profile id and version do not distinguish this layout from the earlier one in
+  which the report sat in `observations`, so a consumer must accept or refuse
+  `recovery_observations` explicitly.
+- Failed and denied results carry `observation` null (previously `{}`).
 - `observations` never includes a rejected Control Plane observation.
   `rejected_observations` retains supplied rejected evidence, including a wrong
   effect identifier as attributed rejected content, not an accepted identity.
