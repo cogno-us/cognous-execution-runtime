@@ -10,6 +10,7 @@ Status: beta.
 - Safety: retain the current call's durable effect-time refusal in executor/producer evidence; qualify storage failure and concurrent attribution (#86). Thanks @titanicprime.
 - Safety: retain same-transaction local authority receipts and qualify both revocation/effect orders (#85; issue #84). Thanks @titanicprime.
 - CI: build the A2UI scaffold before isolated dependency-guard and macOS test jobs; retain bundle failures instead of bypassing scaffold assertions. (#29) Thanks @titanicprime.
+- Safety: enforce the stored effective-grant permission set at commit (a narrowed row now refuses a direct commit carrying its own digest) and keep the local-policy cause in route A denials. Behaviour change: effective-grant rows written before this change refuse (`effective_grant_permissions_unavailable`) until re-written by a trusted `set_effective_grant`. (issue #97)
 - Dependencies: narrow the music-metadata 11.16.0 lock update to its parser dependencies while preserving unrelated runtime resolutions. (#37) Thanks @dependabot.
 - Safety: preserve both executor profile guards and reject mixed refund-intent/authority-effect database activation. (#17) Thanks @titanicprime.
 - Safety: add an opt-in synthetic refund intent registry with durable original ownership, authorized dispatch binding and process-boundary tests; hub adoption remains pending. (#14) Thanks @titanicprime.
