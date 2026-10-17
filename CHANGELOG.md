@@ -6,6 +6,7 @@ Docs: https://docs.molt.bot
 Status: beta.
 
 ### Changes
+- Safety: refuse route A requests whose envelope tenant differs from the proposal tenant (substituted, removed or added); previously such a request executed. (issue #95)
 - Security: require credentials for privileged HTTP and browser relay access, enforce execution denial and sandbox attachment boundaries, bound network and subprocess input/output, and disable untrusted Canvas native bridges (#90). Thanks @titanicprime.
 - Safety: retain the current call's durable effect-time refusal in executor/producer evidence; qualify storage failure and concurrent attribution (#86). Thanks @titanicprime.
 - Safety: retain same-transaction local authority receipts and qualify both revocation/effect orders (#85; issue #84). Thanks @titanicprime.
