@@ -1,0 +1,51 @@
+{
+  "fixture_id": "effect-free-reconcile-state-mismatch",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Result 'observed' whose observed_state 'unknown' contradicts an 'applied' recovery report. observed_state must equal the recovery status when it is applied or partial.",
+  "expected_refusal": "recovery_state_mismatch",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "observed",
+      "attempt_id": null,
+      "attempted": false,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": null,
+      "observed_state": "unknown",
+      "observation": {
+        "status": "applied",
+        "claim_state": "consumed",
+        "retry_eligible": false,
+        "effect_id": "syn-effect-1",
+        "operation_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  }
+}

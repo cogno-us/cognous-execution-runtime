@@ -1,0 +1,49 @@
+{
+  "fixture_id": "executor-unknown-recovery-state-contradiction",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Route B shape whose recovery record reports status 'unknown' (reconciliation unavailable) while observed_state claims 'applied'. observed_state may be 'applied' or 'partial' on an 'unknown' result only when the recovery record itself reports that status; otherwise it is 'unknown'. Guards against promoting an unresolved outcome.",
+  "expected_refusal": "unknown_state_mismatch",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": "synthetic acknowledgement unavailable after atomic commit",
+      "observed_state": "applied",
+      "observation": {
+        "status": "unknown",
+        "retry_eligible": false,
+        "reason": "reconciliation_unavailable"
+      }
+    }
+  }
+}

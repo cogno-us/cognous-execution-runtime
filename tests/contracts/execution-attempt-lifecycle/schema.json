@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cogno-us/open-decision-evidence-standard/contracts/execution-attempt-lifecycle/schema.json",
+  "title": "Execution-attempt lifecycle contract 0.1.0-draft",
+  "description": "Structural half of the contract. Cross-record rules are defined in README.md and implemented by validate.py. Every declared object closes its member set (additionalProperties false) except through the reserved `extensions` member, whose keys must be `x-` prefixed (DECIDED by the owner, 2026-10-17).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "contract_version"],
+  "anyOf": [
+    {"required": ["attempts"]},
+    {"required": ["control_plane_attempts"]},
+    {"required": ["resolution_journal"]}
+  ],
+  "properties": {
+    "contract": {"const": "execution-attempt-lifecycle"},
+    "contract_version": {"const": "0.1.0-draft"},
+    "producer": {"enum": ["runtime-executor", "control-plane"]},
+    "execution_result": {"$ref": "#/$defs/execution_result"},
+    "attempts": {"type": "array", "items": {"$ref": "#/$defs/executor_attempt"}},
+    "attempt_events": {"type": "array", "items": {"$ref": "#/$defs/attempt_event"}},
+    "control_plane_attempts": {"type": "array", "items": {"$ref": "#/$defs/control_plane_attempt"}},
+    "resolution_journal": {"type": "array", "items": {"$ref": "#/$defs/journal_event"}},
+    "resolution_checks": {"type": "array", "items": {"$ref": "#/$defs/resolution_check"}},
+    "observations": {"type": "array", "description": "Validated Control Plane observations only. Recovery reports never appear here (they use recovery_observations). Decided 2026-10-17, ODES item 7.", "items": {"$ref": "#/$defs/validated_observation"}},
+    "recovery_observations": {"type": "array", "description": "Typed recovery reports (runtime reconcile_claim records or the reconciliation_unavailable placeholder). Optional; when present it equals the recovery report carried by execution_result.observation, or is empty. Decided 2026-10-17, ODES item 7.", "items": {"$ref": "#/$defs/recovery_observation"}},
+    "extensions": {"$ref": "#/$defs/extensions"}
+  },
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "propertyNames": {"pattern": "^x-[a-z0-9][a-z0-9._-]*$"}
+    },
+    "executor_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_id", "effect_id", "decision_id"],
+      "properties": {
+        "attempt_id": {"type": "string", "minLength": 1},
+        "effect_id": {"type": "string", "minLength": 1},
+        "decision_id": {"type": "string", "minLength": 1},
+        "operation_digest": {"type": "string"},
+        "created_at": {"type": "number"},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "attempt_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "attempt_id", "status", "created_at"],
+      "properties": {
+        "event_id": {"type": "integer"},
+        "attempt_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["attempted", "executed", "partial", "failed", "reconciled", "unknown"]},
+        "error": {"type": ["string", "null"]},
+        "created_at": {"type": "number"},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "execution_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "attempt_id", "observed_state", "observation"],
+      "properties": {
+        "status": {"enum": ["denied", "failed", "partial", "unknown", "executed", "observed", "reconciled"]},
+        "attempt_id": {"type": ["string", "null"]},
+        "observed_state": {"type": "string"},
+        "observation": {
+          "description": "Null, a validated Control Plane observation (has `state`), or a recovery observation (has `status`, no `state`). The two kinds are different evidence: a recovery observation is never validated evidence of effect.",
+          "anyOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/validated_observation"},
+            {"$ref": "#/$defs/recovery_observation"}
+          ]
+        },
+        "decision_id": {"type": "string"},
+        "effect_id": {"type": "string"},
+        "attempted": {"type": "boolean"},
+        "acknowledged": {"type": "boolean"},
+        "newly_executed": {"type": "boolean"},
+        "error": {"type": ["string", "null"]},
+        "control_plane_evidence": {"type": "object"},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "validated_observation": {
+      "type": "object",
+      "description": "Control Plane EffectObservation as validated by the bounded workflow. Other members stay owned by the bounded-workflow observation contract.",
+      "required": ["effect_id", "state"],
+      "properties": {
+        "effect_id": {"type": "string", "minLength": 1},
+        "state": {"enum": ["absent", "applied", "partial", "unknown"]},
+        "observed_at": {"type": ["string", "null"]},
+        "destination_state": {"type": "object"}
+      }
+    },
+    "recovery_observation": {
+      "type": "object",
+      "description": "Destination-side recovery report (runtime reconcile_claim result, or the unavailable placeholder). Not validated by the Control Plane. Never evidence of effect on its own.",
+      "additionalProperties": false,
+      "required": ["status", "retry_eligible"],
+      "properties": {
+        "status": {"enum": ["applied", "partial", "hold", "unknown"]},
+        "retry_eligible": {"type": "boolean"},
+        "claim_state": {"type": "string"},
+        "effect_id": {"type": "string", "minLength": 1},
+        "operation_digest": {"type": "string"},
+        "reason": {"type": "string"},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "control_plane_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_id", "effect_id", "decision_id", "started_at", "status", "acknowledgement"],
+      "properties": {
+        "attempt_id": {"type": "string", "minLength": 1},
+        "effect_id": {"type": "string", "minLength": 1},
+        "decision_id": {"type": "string", "minLength": 1},
+        "started_at": {"type": "string"},
+        "time_source": {"enum": ["unrecorded", "control_plane", "test_override"]},
+        "status": {"enum": ["attempted", "acknowledged", "unknown", "failed", "partial"]},
+        "acknowledgement": {"type": "object"},
+        "error": {"type": ["string", "null"]},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "resolution_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_type", "input_id", "expected", "observed", "record_commitment", "missing", "previous_observed_at"],
+      "properties": {
+        "input_type": {"enum": ["manifest", "authority_context", "grant", "policy", "approval", "evidence", "role_mapping", "identity", "mandate", "conflict", "purpose"]},
+        "input_id": {"type": "string", "minLength": 1},
+        "expected": {"type": "object", "additionalProperties": {"type": "string"}},
+        "observed": {"type": "object", "additionalProperties": {"type": "string"}},
+        "record_commitment": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "missing": {"type": "boolean"},
+        "previous_observed_at": {"type": ["string", "null"]},
+        "read_state": {"enum": ["unreadable", "cached_positive", null]},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "journal_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "phase", "stage", "recorded_at", "owner", "proposal_commitment", "decision_id", "effect_id", "action_class", "input", "reasons", "reason_vocabulary_version"],
+      "properties": {
+        "check_id": {"type": "string", "minLength": 1},
+        "phase": {"enum": ["opened", "input", "completed", "interrupted"]},
+        "stage": {"enum": ["decision", "effect", "claim"]},
+        "recorded_at": {"type": "string"},
+        "owner": {"type": "object", "additionalProperties": {"type": "string"}},
+        "proposal_commitment": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "decision_id": {"type": ["string", "null"]},
+        "effect_id": {"type": ["string", "null"]},
+        "action_class": {"type": "object"},
+        "input": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/resolution_input"}]},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "reason_vocabulary_version": {"type": "string"},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    },
+    "resolution_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "stage", "evaluated_at", "time_source", "inputs", "reasons"],
+      "properties": {
+        "check_id": {"type": "string", "minLength": 1},
+        "stage": {"enum": ["decision", "effect", "claim"]},
+        "evaluated_at": {"type": "string"},
+        "time_source": {"enum": ["control_plane", "test_override"]},
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/resolution_input"}},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "extensions": {"$ref": "#/$defs/extensions"}
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "fixture_id": "control-plane-start-row-reconciled-existing-false",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "An 'attempted' start row carrying acknowledgement {reconciled_existing: false}. The marker, when present, must be true and only on a single acknowledged/partial row.",
+  "expected_refusal": "invalid_reconciled_marker",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "attempted",
+        "acknowledgement": {
+          "reconciled_existing": false
+        },
+        "error": null
+      },
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:01Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null
+      }
+    ]
+  }
+}

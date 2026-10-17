@@ -1,0 +1,33 @@
+{
+  "fixture_id": "control-plane-normal-attempted-acknowledged",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Normal Control Plane lifecycle: 'attempted' start row followed by an 'acknowledged' row for the same attempt, no reconciled marker.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "attempted",
+        "acknowledgement": {},
+        "error": null
+      },
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:01Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null
+      }
+    ]
+  }
+}

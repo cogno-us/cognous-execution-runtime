@@ -1,0 +1,51 @@
+{
+  "fixture_id": "recovery-retry-eligible-true",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "A recovery report that sets retry_eligible true. Recovery output never authorises a retry; the runtime always reports false and replay refuses true.",
+  "expected_refusal": "recovery_retry_eligible",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": "post-commit observation unavailable after atomic commit: ConnectionError",
+      "observed_state": "unknown",
+      "observation": {
+        "status": "hold",
+        "claim_state": "consumed",
+        "retry_eligible": true,
+        "effect_id": "syn-effect-1",
+        "reason": "no_durable_effect_for_claim"
+      }
+    }
+  }
+}

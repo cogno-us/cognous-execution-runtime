@@ -1,0 +1,24 @@
+{
+  "fixture_id": "control-plane-dropped-start-record",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Control Plane attempt lifecycle without its 'attempted' start row and without the reconciled_existing marker: the start record was dropped.",
+  "expected_refusal": "missing_start_record",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:01Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null
+      }
+    ]
+  }
+}

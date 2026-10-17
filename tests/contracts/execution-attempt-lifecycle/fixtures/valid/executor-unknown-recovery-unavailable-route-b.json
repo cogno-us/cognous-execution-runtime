@@ -1,0 +1,48 @@
+{
+  "fixture_id": "executor-unknown-recovery-unavailable-route-b",
+  "synthetic": true,
+  "expected_outcome": "accept",
+  "reason": "Real runtime route B shape when reconciliation itself is unavailable (lost acknowledgement, reconcile read fails): result 'unknown', observed_state 'unknown', observation = the reconciliation_unavailable placeholder {status unknown, retry_eligible false, reason}. The placeholder is a typed recovery record, not null.",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1000.0
+      }
+    ],
+    "execution_result": {
+      "status": "unknown",
+      "attempt_id": "syn-attempt-1",
+      "attempted": true,
+      "acknowledged": false,
+      "newly_executed": false,
+      "error": "synthetic acknowledgement unavailable after atomic commit",
+      "observed_state": "unknown",
+      "observation": {
+        "status": "unknown",
+        "retry_eligible": false,
+        "reason": "reconciliation_unavailable"
+      }
+    }
+  }
+}
