@@ -234,6 +234,9 @@ class PinnedControlPlaneExecutor:
             "effects": proposal.effects == snapshot.operation.effects,
             "authority_context_id": proposal.authority_context_ref == snapshot.operation.authority_context_id,
             "requirement_id": proposal.requirement_id == snapshot.operation.requirement_id,
+            # Tenant scope is part of the operation digest. Absent on both sides is a match;
+            # substituted, removed or added tenant claims are refused (issue #95 / F-04).
+            "tenant_id": getattr(proposal, "tenant_id", None) == snapshot.operation.tenant_id,
         }
         mismatches = [name for name, ok in checks.items() if not ok]
         if mismatches:
