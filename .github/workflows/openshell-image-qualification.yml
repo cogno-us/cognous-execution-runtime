@@ -16,9 +16,9 @@ permissions:
   contents: read
 jobs:
   cross-component:
-    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openshell-image-qualification.yml@fba734edb12bfc7e73a313a1d156876146eebe0a
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openshell-image-qualification.yml@665cfb68e263ccb060b4ac378b6969eb77bd84d5
     with:
       source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
-      qualification_revision: fba734edb12bfc7e73a313a1d156876146eebe0a
+      qualification_revision: 665cfb68e263ccb060b4ac378b6969eb77bd84d5
     permissions:
       contents: read
