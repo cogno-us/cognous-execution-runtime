@@ -841,6 +841,18 @@ class DurableRefundDestination:
             raise PermissionError("intent-profile destination requires bound dispatch")
 
 
+def destination_error_text(exc: BaseException) -> str:
+    """Text the runtime persists or returns for an exception raised by a destination call.
+
+    A ``PermissionError`` is the runtime's typed refusal channel and keeps its stable reason text (callers map
+    reason codes such as ``operation_already_committed``). Any other exception is recorded by its class name only,
+    as the control plane records destination exceptions, so provider-supplied message text is never retained.
+    """
+    if isinstance(exc, PermissionError):
+        return str(exc)
+    return type(exc).__name__
+
+
 class LocalDestinationExecutor:
     """Low-level destination executor.
 
@@ -897,7 +909,8 @@ class LocalDestinationExecutor:
         try:
             existing = self.destination.observe_bound(snapshot)
         except Exception as exc:
-            self.destination.transition_attempt(attempt_id, "denied", str(exc))
+            error = destination_error_text(exc)
+            self.destination.transition_attempt(attempt_id, "denied", error)
             return ExecutionResult(
                 "denied",
                 snapshot.decision_id,
@@ -907,7 +920,7 @@ class LocalDestinationExecutor:
                 False,
                 "unknown",
                 False,
-                error=str(exc),
+                error=error,
             )
 
         if existing["state"] in {"applied", "partial"}:
@@ -1006,7 +1019,8 @@ class LocalDestinationExecutor:
                 error=str(exc),
             )
         except Exception as exc:
-            self.destination.transition_attempt(attempt_id, "failed", str(exc))
+            error = destination_error_text(exc)
+            self.destination.transition_attempt(attempt_id, "failed", error)
             return ExecutionResult(
                 "failed",
                 snapshot.decision_id,
@@ -1016,7 +1030,7 @@ class LocalDestinationExecutor:
                 False,
                 "unknown",
                 False,
-                error=str(exc),
+                error=error,
             )
 
     def observe_historical(self, envelope: ExecutionEnvelope) -> ExecutionResult:
