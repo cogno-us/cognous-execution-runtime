@@ -711,6 +711,7 @@ class DurableRefundDestination:
         self, snapshot: FrozenEnvelope, *, simulate: str | None = None,
         expected_effective_grant_digest: str | None = None,
         effective_grant_derivation_version: str | None = None,
+        operation_id: str | None = None,
     ) -> dict:
         op = snapshot.operation
         digest = op.digest
@@ -750,6 +751,10 @@ class DurableRefundDestination:
                     "observation": self.observe_bound(snapshot),
                 }
 
+            if operation_id is not None:
+                # operation-identity/0.1 only: never reached when no operation id is supplied.
+                self._operation_guard(conn, snapshot, operation_id)
+
             used = conn.execute(
                 "SELECT COUNT(*) AS n FROM effects WHERE grant_id = ?", (op.grant_id,)
             ).fetchone()["n"]
@@ -771,11 +776,24 @@ class DurableRefundDestination:
                     state,
                 ),
             )
+            if operation_id is not None:
+                self._operation_record(conn, snapshot, operation_id)
             conn.execute("COMMIT")
 
         if simulate in {"lost_ack", "crash_after_commit"}:
             raise TimeoutError("synthetic acknowledgement unavailable after durable commit")
         return {"duplicate": False, "observation": self.observe_bound(snapshot)}
+
+    def _operation_guard(self, conn, snapshot: FrozenEnvelope, operation_id: str) -> None:
+        """Fail closed: a destination that cannot store the operation id must not take it.
+
+        Opt in with ``engine.operation_identity_destination.OperationIdentityDestination``.
+        """
+        conn.execute("ROLLBACK")
+        raise PermissionError("operation_identity_capability_unavailable")
+
+    def _operation_record(self, conn, snapshot: FrozenEnvelope, operation_id: str) -> None:
+        """Hook run inside the effect transaction after the effect row is written."""
 
     def _check_commit_profile(self, conn, snapshot: FrozenEnvelope) -> None:
         # Opting a database into intent ownership disables its legacy write path.
@@ -801,6 +819,7 @@ class LocalDestinationExecutor:
         self, snapshot: FrozenEnvelope, *, simulate: str | None = None,
         expected_effective_grant_digest: str | None = None,
         effective_grant_derivation_version: str | None = None,
+        operation_id: str | None = None,
     ) -> ExecutionResult:
         try:
             validate_snapshot(snapshot)
@@ -888,7 +907,8 @@ class LocalDestinationExecutor:
             ack = self.destination.commit(snapshot, simulate=simulate,
                 **({"expected_effective_grant_digest":expected_effective_grant_digest,
                     "effective_grant_derivation_version":effective_grant_derivation_version}
-                   if expected_effective_grant_digest is not None else {}))
+                   if expected_effective_grant_digest is not None else {}),
+                **({"operation_id": operation_id} if operation_id is not None else {}))
             observation = ack["observation"]
             status = "partial" if observation["state"] == "partial" else (
                 "reconciled" if ack["duplicate"] else "executed"
