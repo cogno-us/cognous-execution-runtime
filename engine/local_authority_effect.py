@@ -875,7 +875,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 self._operation_record(conn, snapshot, operation_id)
             self._transaction_stage("after_effect_insert_before_commit")
             conn.execute("COMMIT")
-            self._transaction_stage("after_commit")
+            try:
+                self._transaction_stage("after_commit")
+            except Exception as exc:
+                # The commit is durable; a failing hook must not read as a pre-dispatch refusal.
+                raise PostCommitObservationUnavailable(
+                    f"post-commit stage failed after atomic commit: {type(exc).__name__}"
+                ) from exc
 
         try:
             observation = self.observe_bound(snapshot)
