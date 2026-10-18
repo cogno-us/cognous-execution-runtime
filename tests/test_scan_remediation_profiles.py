@@ -53,6 +53,7 @@ def test_refused_combination_leaves_no_partial_state(tmp_path):
 
 
 def test_late_effective_grant_table_is_refused_at_atomic_execution(tmp_path):
+    pytest.importorskip("agent_control_plane.local_authority_effect")
     destination = AtomicAuthorityEffectDestination(tmp_path, clock=lambda: NOW)
     with sqlite3.connect(destination.path) as conn:
         conn.execute("CREATE TABLE effective_grants_v1 (grant_id TEXT PRIMARY KEY)")

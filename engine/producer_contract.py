@@ -81,8 +81,8 @@ def _validate_result_state(result: ExecutionResult) -> None:
         raise ValueError("an observed result cannot claim an attempt, acknowledgement or fresh execution")
     if result.acknowledged and not result.attempted:
         raise ValueError("an acknowledgement requires an attempted execution")
-    if result.newly_executed and not (result.acknowledged and status in {"executed", "partial"}):
-        raise ValueError("a fresh execution must be acknowledged and have status executed or partial")
+    if result.newly_executed and not (result.acknowledged and status in {"executed", "partial", "unknown"}):
+        raise ValueError("a fresh execution must be acknowledged and have status executed, partial or unknown")
     if status in {"denied", "failed"} and (result.acknowledged or result.newly_executed
                                            or result.observed_state != "unknown"):
         raise ValueError("a denied or failed result cannot carry an acknowledgement or an observed effect")
@@ -96,8 +96,6 @@ def _validate_result_state(result: ExecutionResult) -> None:
         raise ValueError("a partial result must be observed as partial")
     if status in {"executed", "reconciled", "partial", "observed"} and not isinstance(result.observation, dict):
         raise ValueError("this result status requires a retained observation")
-    if status == "unknown" and (result.acknowledged or result.newly_executed):
-        raise ValueError("an unknown result cannot be acknowledged or fresh")
     if isinstance(result.observation, dict) and result.observation.get("state") is not None \
             and result.observation.get("state") != result.observed_state:
         raise ValueError("execution observation state contradicts execution result")
