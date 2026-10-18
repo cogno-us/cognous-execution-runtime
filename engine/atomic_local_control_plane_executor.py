@@ -11,10 +11,52 @@ PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
 
 
 class AtomicLocalControlPlaneExecutor:
-    def __init__(self, *, workflow: Any, destination: Any, policy: LocalExecutionPolicy):
+    def __init__(self, *, workflow: Any, destination: Any, policy: LocalExecutionPolicy, operation_identity: bool = False):
+        """``operation_identity`` (opt-in, default off): enforce one commit per operation across renewals.
+
+        On, every ``execute`` derives the operation id from the persisted Control Plane decision (never from the caller) and
+        passes it to the destination, which must declare ``operation-identity/0.1`` (for example
+        ``OperationIdentityAtomicAuthorityEffectDestination``). Off, nothing here changes.
+        """
         self.workflow = workflow
         self.destination = destination
         self.policy = policy
+        self.operation_identity = operation_identity
+
+    def _derive_operation_id(self, snapshot: FrozenEnvelope) -> str:
+        """The operation id of the issuer-approved decision behind this envelope, validated against the operation ledger.
+
+        Same source as the adapter route (the validated binding's ``runtime_authority.operation_id``, set by the grant issuer
+        inside the approval commitment). Anything that cannot be derived and validated refuses; nothing is guessed.
+        """
+        from .operation_identity_destination import CAPABILITY
+        if getattr(self.destination, "operation_identity_capability", None) != CAPABILITY:
+            raise PermissionError("operation_identity_capability_unavailable")
+        profile = getattr(self.workflow, "runtime_authority_profile", None)
+        if profile is None or getattr(profile, "operation_identity", None) is None:
+            raise PermissionError("operation_identity_profile_unavailable")
+        from agent_control_plane.operation_identity import valid_operation_id
+        persisted = self.workflow.records.decision(snapshot.decision_id)
+        if (persisted is None or persisted.result != "authorized" or persisted.binding is None
+                or persisted.effect_id != snapshot.effect_id):
+            raise PermissionError("operation_identity_decision_unavailable")
+        binding = persisted.binding
+        extension = binding.runtime_authority or {}
+        operation_id, issuer = extension.get("operation_id"), extension.get("operation_issuer")
+        if not valid_operation_id(operation_id) or not isinstance(issuer, str) or not issuer:
+            raise PermissionError("operation_id_invalid")
+        op = snapshot.operation
+        domain = self.workflow._authority_domain(binding)
+        if (binding.principal, domain, binding.grant_id, binding.grant_revision) != (
+                op.principal, op.authority_domain, op.grant_id, op.grant_revision):
+            raise PermissionError("operation_identity_binding_mismatch")
+        status = self.workflow.records.operation_status(
+            operation_id=operation_id, principal_id=binding.principal, authority_domain=domain, issuer=issuer,
+            grant_id=binding.grant_id, grant_revision=binding.grant_revision)
+        if status != "ok":
+            raise PermissionError({"not_admitted": "operation_not_admitted", "collision": "operation_grant_mismatch",
+                                   "renewal_unrecorded": "operation_renewal_unrecorded"}[status])
+        return operation_id
 
     def provision_claim(self, *, proposal: Any, decision: Any, now: datetime, claim_id: str | None = None, budget_id: str | None = None, expires_at: str | None = None, decision_input_commitment: str | None = None, decision_input_profile_version: str | None = None):
         from agent_control_plane.local_authority_effect import provision_local_execution_claim
@@ -39,9 +81,20 @@ class AtomicLocalControlPlaneExecutor:
                 failure_class="evaluation_error",
                 reason_code="local_policy_evaluation_error",
             )
+        operation_kwargs: dict[str, str] = {}
+        if self.operation_identity:
+            try:
+                operation_kwargs["operation_id"] = self._derive_operation_id(snapshot)
+            except PermissionError as exc:
+                return self._denied(
+                    snapshot,
+                    str(exc),
+                    failure_class="authority_hold",
+                    reason_code="current_authority_rejected",
+                )
         attempt_id = attempt_id or str(uuid.uuid4())
         try:
-            value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate)
+            value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, **operation_kwargs)
         except TimeoutError as exc:
             from engine.local_authority_effect import PostCommitObservationUnavailable
             try:
