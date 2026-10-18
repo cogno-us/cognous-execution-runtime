@@ -19,7 +19,7 @@ def _adapter(snapshot, dest):
     policy = LocalExecutionPolicy(
         allowed_institutions=frozenset({op.institution_id}), allowed_authority_domains=frozenset({op.authority_domain}),
         allowed_adapters=frozenset({op.adapter_id}), allowed_actions=frozenset({op.action_id}),
-        allowed_target_prefixes=(op.target[:10],), allowed_units=frozenset({op.unit}), max_amount=10_000, max_effects=5)
+        allowed_target_prefixes=(op.target,), allowed_units=frozenset({op.unit}), max_amount=10_000, max_effects=5)
     return ControlPlaneRefundDestinationAdapter(
         snapshot=snapshot, destination=dest, policy=policy, trusted_institution_id=op.institution_id,
         trusted_authority_domain=op.authority_domain, observation_clock=lambda: None)
