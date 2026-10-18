@@ -29,6 +29,14 @@ class EffectiveGrantDestination(DurableRefundDestination):
     def __init__(self, root, database_name='refunds.sqlite3'):
         super().__init__(root,database_name)
         with self._connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='authority_effect_profile_v1'").fetchone():
+                # The atomic authority/effect route does not evaluate the effective-grant precondition, so the
+                # two profiles are never combined on one database (the atomic profile refuses the reverse order).
+                conn.execute('ROLLBACK')
+                raise PermissionError('effective-grant profile cannot share an authority-effect database')
+            conn.execute('COMMIT')
+        with self._connect() as conn:
             conn.execute('CREATE TABLE IF NOT EXISTS effective_grants_v1 ('
                          'grant_id TEXT PRIMARY KEY,principal TEXT NOT NULL,digest TEXT NOT NULL,'
                          'derivation TEXT NOT NULL,status TEXT NOT NULL,permissions_json TEXT)')
@@ -50,6 +58,12 @@ class EffectiveGrantDestination(DurableRefundDestination):
                                       permissions=permissions,status=status)
         with self._connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            existing=conn.execute('SELECT principal FROM effective_grants_v1 WHERE grant_id=?',(grant_id,)).fetchone()
+            if existing is not None and existing['principal']!=principal:
+                # The row is keyed by grant id alone, so a grant id is bound to one principal for the life of the
+                # database; reusing it for another principal would silently reassign the authority row.
+                conn.execute('ROLLBACK')
+                raise PermissionError('effective grant id is already bound to another principal')
             conn.execute('INSERT INTO effective_grants_v1(grant_id,principal,digest,derivation,status,permissions_json) '
                          'VALUES(?,?,?,?,?,?) '
                          'ON CONFLICT(grant_id) DO UPDATE SET principal=excluded.principal,'

@@ -146,7 +146,7 @@ purpose or policy stores atomic. Host/database access must separate authority
 writers from untrusted agents; possession of the SQLite file can bypass that
 separation. No new OS isolation or production key custody is claimed. This
 profile is independent of the existing atomic claim and refund-intent profiles;
-unsupported combinations refuse. Historical selected pins and release permissions
+unsupported combinations refuse (see the composition limits below). Historical selected pins and release permissions
 are unchanged. Source provenance: supplied Moltbook 101526_A K3, 15 October 2026;
 tests and code are original synthetic implementations under existing licenses.
 
@@ -163,11 +163,28 @@ Recorded from V1 validation (issue #99). Neither is a change to supported behavi
   deliberately left as is: intent ownership is consumed before the grant check
   runs, so a supported combination needs its own design (what a grant refusal
   after dispatch ownership means) and requalification.
-- **Generation fence.** The lineage generation fence wrapper lives in the
-  governed-exchange component, not here. `EffectiveGrantDestination.commit`
-  already accepts `expected_effective_grant_digest` and
-  `effective_grant_derivation_version`; a fence wrapper has to forward those
-  keywords to the destination it wraps. The wrapper's current `commit(snapshot,
-  *, simulate=None)` signature does not, so `run_exchange(generation_fence=...)`
-  on the effective-grant destination fails before any refusal is persisted.
-  The change belongs in that component.
+- **Atomic claim route.** The atomic authority/effect profile and the effective-grant
+  profile are mutually exclusive on one database. The atomic route does not read
+  effective grants, so combining them would let a revoked effective grant execute.
+  Opening either profile on a database that already carries the other is refused
+  (`PermissionError`), at activation in both orders, and again inside the claim
+  transaction if the other table appears later. Use separate databases.
+- **Generation fence (closed).** The governed-exchange component now forwards
+  `expected_effective_grant_digest` and `effective_grant_derivation_version` through
+  its fence wrapper (exchange 06f58c3), so `run_exchange(generation_fence=...)` works
+  on the effective-grant destination. No limit remains here.
+- **Tenant scope.** Effective grants and refund intent are keyed without a tenant.
+  A grant id must be globally unique within one database and belong to one scope and
+  one principal: `set_effective_grant` refuses to bind an existing grant id to a
+  different principal, and the refund-intent profile refuses tenant-scoped operations
+  (`op.tenant_id` set). Tenant-scoped keys are deferred to the first contract freeze.
+- **Amounts.** Amounts are exact: integers must be plain `int` with absolute value at
+  most 2**53, floats must be finite and non-negative, and comparisons between claim
+  and operation amounts are exact, not binary64 conversions.
+- **Producer export.** `export_execution_artifacts` refuses results whose status,
+  `attempted`, `acknowledged`, `newly_executed` and `observed_state` contradict each
+  other (for example `executed` with `attempted=false`). The export stays
+  source-asserted; it does not independently establish what the destination did.
+- **Legacy audit.** `AuditLog.agent_id` is caller-asserted, not authenticated. An
+  entry that cannot be serialised is written as a minimal record instead of being
+  skipped.

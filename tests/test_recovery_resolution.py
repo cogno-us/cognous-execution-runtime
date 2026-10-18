@@ -203,6 +203,10 @@ def test_disabled_writer_and_append_only_controls(pair):
 
 def test_ambiguous_and_missing_attempts_are_separate_work(pair):
     old, new = pair
+    # A legacy database may already hold a duplicated attempt id (new writes refuse it);
+    # model that state by removing the uniqueness index before the second insert.
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("DROP INDEX IF EXISTS runtime_items_v1_attempt_id_unique")
     original(old, effect="second", attempt="attempt")
     original(old, effect="missing", attempt=None)
     with pytest.raises(ValueError, match="ambiguous"):
@@ -264,6 +268,9 @@ def test_current_revalidates_original_identity_instead_of_returning_stale_resolu
     append(new, complete())
     retained = new.history("attempt")
     if change == "ambiguous":
+        # legacy database: duplicate attempt ids exist (new writes refuse them)
+        with sqlite3.connect(old.path) as conn:
+            conn.execute("DROP INDEX IF EXISTS runtime_items_v1_attempt_id_unique")
         original(old, effect="second", attempt="attempt")
     else:
         with sqlite3.connect(old.path) as conn:
@@ -380,6 +387,8 @@ def test_export_rejects_misbound_legacy_and_ambiguous_original(pair):
         conn.execute("UPDATE original_attempt_closeouts_v1 SET effect_id='other'")
     with pytest.raises(ValueError, match="legacy closeout binding"):
         new.export_attempt(effect_id="effect", attempt_id="attempt")
+    with sqlite3.connect(old.path) as conn:
+        conn.execute("DROP INDEX IF EXISTS runtime_items_v1_attempt_id_unique")
     original(old, effect="second", attempt="attempt")
     with pytest.raises(ValueError, match="ambiguous"):
         new.export_attempt(effect_id="effect", attempt_id="attempt")

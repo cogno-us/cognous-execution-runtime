@@ -260,13 +260,28 @@ def _strict_positive_int(value: object, *, name: str, exactly_one: bool = False)
     return value
 
 
+# Largest integer magnitude that survives conversion to binary64 unchanged. Amounts are compared and stored as
+# binary64, so a larger integer would be silently rounded before the policy comparison and persistence.
+MAX_EXACT_INTEGER_AMOUNT = 2 ** 53
+
+
 def _strict_finite_number(value: object, *, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    # Exact builtin types only: a subclass can override comparison or conversion.
+    if type(value) not in (int, float):
         raise ValueError(f"{name} must be a finite number")
+    if type(value) is int and abs(value) > MAX_EXACT_INTEGER_AMOUNT:
+        raise ValueError(f"{name} integer magnitude exceeds the exactly representable range")
     numeric = float(value)
     if not math.isfinite(numeric) or numeric < 0:
         raise ValueError(f"{name} must be a finite non-negative number")
     return numeric
+
+
+def exact_amount_equal(left: object, right: object) -> bool:
+    """Exact numeric equality of two amounts (no conversion to binary64 before comparing)."""
+    if type(left) not in (int, float) or type(right) not in (int, float):
+        return False
+    return bool(left == right)
 
 
 def validate_snapshot(envelope: FrozenEnvelope) -> None:

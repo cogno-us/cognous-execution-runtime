@@ -142,6 +142,16 @@ class RevocationCloseoutStore:
                 );
                 """
             )
+            # An attempt id names one retained item. Databases that already hold duplicates (written before this
+            # constraint existed) keep working in read paths but fail closed on ambiguous lookups, so the index is
+            # created only when it can be and its absence never silently picks one of several rows.
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS runtime_items_v1_attempt_id_unique "
+                    "ON runtime_items_v1(attempt_id) WHERE attempt_id IS NOT NULL"
+                )
+            except sqlite3.IntegrityError:
+                pass
 
     def record_item(
         self,
@@ -168,6 +178,17 @@ class RevocationCloseoutStore:
         if state != "completed" and completion is not None:
             raise ValueError("completion ordering is only valid for completed items")
         with self._connect() as conn:
+            try:
+                self._insert_item(conn, effect_id, attempt_id, decision_id, grant_id, grant_revision,
+                                  state, ordering, completion)
+            except sqlite3.IntegrityError as exc:
+                if "attempt_id" in str(exc):
+                    raise ValueError("attempt_id is already retained for another item") from exc
+                raise
+
+    def _insert_item(self, conn, effect_id, attempt_id, decision_id, grant_id, grant_revision,
+                     state, ordering, completion) -> None:
+        if True:
             conn.execute(
                 """INSERT INTO runtime_items_v1(
                     effect_id,attempt_id,decision_id,grant_id,grant_revision,state,
@@ -327,12 +348,15 @@ class RevocationCloseoutStore:
         if not observation_ref.strip():
             raise ValueError("observation_ref must be non-empty")
         with self._connect() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 "SELECT effect_id FROM runtime_items_v1 WHERE attempt_id=?",
                 (attempt_id,),
-            ).fetchone()
-            if row is None:
+            ).fetchall()
+            if not rows:
                 raise LookupError("original attempt is not retained")
+            if len(rows) != 1:
+                raise PermissionError("original attempt identity is ambiguous")
+            row = rows[0]
             if observation_state in {"applied", "partial"}:
                 closed = True
                 reason = "authoritative_observation_closes_original_attempt"

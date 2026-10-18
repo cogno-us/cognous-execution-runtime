@@ -62,3 +62,23 @@ def test_non_serializable_params_still_produce_audit_entry(tmp_path):
     entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert entry["allowed"] is False
     assert "object" in entry["action"]["params"]["v"]
+
+
+def test_cyclic_params_still_produce_audit_entry(tmp_path):
+    engine, log = make_engine(tmp_path)
+    params = {}
+    params["self"] = params
+    with pytest.raises(PermissionError):
+        engine.execute_action("agent1", {"type": "delete", "target": "x", "params": params})
+    entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["allowed"] is False
+    assert entry["unserialisable"] is True
+    assert entry["agent_id"] == "'agent1'"
+
+
+def test_unhashable_agent_identity_is_refused_and_logged(tmp_path):
+    engine, log = make_engine(tmp_path)
+    with pytest.raises(PermissionError):
+        engine.execute_action(["agent1"], {"type": "write", "target": "x", "params": {}})
+    entry = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["allowed"] is False
