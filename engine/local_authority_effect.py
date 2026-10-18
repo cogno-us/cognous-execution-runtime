@@ -651,6 +651,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         *,
         attempt_id: str,
         simulate: str | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
@@ -713,6 +714,10 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 conn.execute("ROLLBACK")
                 raise PermissionError("authoritative effect budget exhausted")
 
+            if operation_id is not None:
+                # Opt-in (operation-identity/0.1). The base destination refuses an operation id it cannot store.
+                self._operation_guard(conn, snapshot, operation_id)
+
             if conn.execute(
                 "SELECT 1 FROM attempts WHERE attempt_id=?", (attempt_id,)
             ).fetchone():
@@ -769,6 +774,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 (attempt_id, snapshot.effect_id, claim_id,
                  json.dumps(receipt, sort_keys=True, separators=(",", ":"))),
             )
+            if operation_id is not None:
+                self._operation_record(conn, snapshot, operation_id)
             self._transaction_stage("after_effect_insert_before_commit")
             conn.execute("COMMIT")
             self._transaction_stage("after_commit")
