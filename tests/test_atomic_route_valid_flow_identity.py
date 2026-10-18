@@ -1,6 +1,6 @@
 """Atomic route (AtomicLocalControlPlaneExecutor + AtomicAuthorityEffectDestination) with real Control Plane claim models.
 
-Skipped when the Control Plane package with the local-authority-effect contract is not importable (the native job); run
+Skipped (and so not run by the native CI job or the pinned cross-component job, which lack the contract) when the Control Plane package with the local-authority-effect contract is not importable (the native job); run
 it with the control plane on PYTHONPATH. Covers:
 - byte identity: the valid flow (default destination, and the opt-in operation key) produces the same retained rows,
   receipt and result as on main eeb4583a (digest recorded there by running this file);

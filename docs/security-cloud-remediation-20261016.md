@@ -1,5 +1,7 @@
 # Security Cloud runtime remediation proposal — 2026-10-16
 
+Superseded in part by the quarantine of 2026-10-16 (see quarantine-upstream-moltbot-20261016.md): the TypeScript and native items below describe a proposal for code that is not on `main`; only the `engine/` admission items apply to this repository.
+
 Scan: https://chatgpt.com/codex/cloud/security/runs/wfr_f7488f2ada916df23f35315d28b004ba541f6b01e2d0bb9afc4cfd1d79c8a8e3
 Scanned/base revision: `da89cb59c6f2848c88c522fd76bcccb2c744e4f2`.
 

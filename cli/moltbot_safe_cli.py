@@ -1,3 +1,5 @@
+# Legacy script, not supported: it imports `Permissions` from `engine.permissions` (the module defines `PermissionSystem`),
+# so importing it raises ImportError, and it calls `AgentEngine(perms)` and `engine.execute`, which do not exist.
 import argparse
 import json
 import sys

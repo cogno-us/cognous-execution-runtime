@@ -14,7 +14,7 @@ Source baseline: `da9f52900ee2596dab087ec6c249ba84915d2b13` (`worker/o6-p1a-oper
 
 A planner cannot create an executable attempt merely by inventing an operation ID. An operation must first be admitted by trusted host/domain code with a fixed operation commitment. Re-admitting the same discriminator with different content is a collision and fails closed.
 
-Attempts are subordinate to the admitted operation and use their own `attempt_id`. Attempt IDs are never operation IDs. Reuse under a different operation is rejected.
+Attempts are subordinate to the admitted operation and use their own `attempt_id`. Attempt IDs live in a separate namespace from operation IDs (the types keep them apart; the code does not check that an attempt ID differs from an operation ID). Reuse under a different operation is rejected.
 
 ## Replan and supersession
 

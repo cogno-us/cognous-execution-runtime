@@ -1,6 +1,6 @@
 # Threat Model
 
-Scope: the supported Python `SafeExecutor` synthetic refund path only. This document does not claim to cover the upstream TypeScript Moltbot application (quarantined at tag `upstream-moltbot-quarantine-20261016`, not on `main`) or host operating system.
+Scope: the supported Python `PinnedControlPlaneExecutor` synthetic refund path only. This document does not claim to cover the upstream TypeScript Moltbot application (quarantined at tag `upstream-moltbot-quarantine-20261016`, not on `main`) or host operating system.
 
 ## Assets
 
@@ -24,7 +24,7 @@ Scope: the supported Python `SafeExecutor` synthetic refund path only. This docu
 
 ## Implemented mitigations
 
-- canonical decision lookup by `decision_id` through a trusted in-process boundary;
+- current Control Plane revalidation through `BoundedAuthorizationWorkflow.execute()` before the destination adapter is invoked;
 - exact comparison against available Control Plane `AuthorizationBinding` fields;
 - payload commitment verification;
 - additional local allow/restriction policy;

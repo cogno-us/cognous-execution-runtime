@@ -4,7 +4,7 @@ This repository does not modify the Agent Control Plane. This is a Governor-revi
 
 ## Current integration
 
-Moltbot Safe now executes only through `BoundedAuthorizationWorkflow.execute()`, so the pinned Control Plane performs its current authorization revalidation immediately before the destination adapter is invoked.
+On the supported default path (route A) Moltbot Safe executes only through `BoundedAuthorizationWorkflow.execute()`, so the pinned Control Plane performs its current authorization revalidation immediately before the destination adapter is invoked. The opt-in atomic route (`AtomicLocalControlPlaneExecutor`) consumes a provisioned claim without `execute()`, and `LocalDestinationExecutor` is public and can be called directly; both are separate from this statement. The Control Plane revision currently pinned for the runtime is named in execution-boundary.md; the commit named above is the one this proposal was written against.
 
 For institution/domain, the executor currently derives both values from the trusted Authority Context resolver used by that same workflow and compares them against the frozen Moltbot Safe request.
 
