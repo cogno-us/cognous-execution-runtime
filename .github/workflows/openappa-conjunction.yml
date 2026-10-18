@@ -12,9 +12,9 @@ permissions:
   contents: read
 jobs:
   cross-component:
-    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-conjunction.yml@e5a7989bbc58007fdb448f0b1ac780955cde6475
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-conjunction.yml@1c1755ff4ea719cfa12f72bcd8c81dd51cff7fb2
     with:
       source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
-      qualification_revision: e5a7989bbc58007fdb448f0b1ac780955cde6475
+      qualification_revision: 1c1755ff4ea719cfa12f72bcd8c81dd51cff7fb2
     permissions:
       contents: read
