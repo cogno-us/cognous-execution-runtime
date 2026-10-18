@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from engine.safe_executor import ExecutionEnvelope, ExecutionResult, FrozenEnvelope, LocalExecutionPolicy, snapshot_envelope
+from engine.safe_executor import ExecutionEnvelope, ExecutionResult, FrozenEnvelope, LocalExecutionPolicy, destination_error_text, snapshot_envelope
 
 PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
 
@@ -140,7 +140,7 @@ class AtomicLocalControlPlaneExecutor:
         except Exception as exc:
             return self._denied(
                 snapshot,
-                str(exc),
+                destination_error_text(exc),
                 failure_class="dispatch_error",
                 reason_code="dispatch_exception",
             )

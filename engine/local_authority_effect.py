@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -37,9 +38,23 @@ class PostCommitObservationUnavailable(TimeoutError):
     as an unresolved (``unknown``) outcome keeps doing so; it is never a pre-dispatch refusal.
     """
 MARKER_TABLE = "authority_effect_profile_v1"
+# Retained (grant_id, revision) pairs that were revoked on this destination; created on first revocation.
+REVOCATION_TABLE = "authority_grant_revocations_v1"
+
+
+# ODES time semantics section 1 (open-decision-evidence-standard docs/engineering/ODES-TIME-SEMANTICS.md): an RFC 3339
+# instant with an explicit offset, ASCII digits, one to six fraction digits (a seventh is refused, never truncated),
+# no leap second, offset hour 00-23 and minute 00-59. Calendar validity is left to datetime.fromisoformat.
+_INSTANT = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?"
+    r"(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])",
+    re.ASCII,
+)
 
 
 def _parse_time(value: str) -> datetime:
+    if not isinstance(value, str) or _INSTANT.fullmatch(value) is None:
+        raise ValueError("timestamp is not an RFC 3339 instant with an explicit offset")
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("timestamp must be timezone-aware")
@@ -261,6 +276,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             grant = conn.execute(
                 "SELECT * FROM authority_grants_v1 WHERE grant_id=?", (model.grant_id,)
             ).fetchone()
+            if self._revision_revoked(conn, model.grant_id, model.grant_revision):
+                conn.execute("ROLLBACK")
+                raise PermissionError("existing authoritative grant state rejects claim provisioning")
             if grant is None:
                 conn.execute(
                     """INSERT INTO authority_grants_v1
@@ -415,20 +433,61 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             )
             conn.execute("COMMIT")
 
+    @staticmethod
+    def _revision_revoked(conn: sqlite3.Connection, grant_id: str, revision: str) -> bool:
+        """True when (grant_id, revision) was revoked on this destination; revoked is terminal per revision."""
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (REVOCATION_TABLE,)
+        ).fetchone() is None:
+            return False
+        return conn.execute(
+            f"SELECT 1 FROM {REVOCATION_TABLE} WHERE grant_id=? AND revision=?", (grant_id, revision)
+        ).fetchone() is not None
+
+    @staticmethod
+    def _record_revoked_revision(conn: sqlite3.Connection, grant_id: str, revision: str) -> None:
+        # Created on the first revocation only, so a database that never revokes keeps its schema.
+        conn.execute(f"""CREATE TABLE IF NOT EXISTS {REVOCATION_TABLE} (
+            grant_id TEXT NOT NULL,
+            revision TEXT NOT NULL,
+            PRIMARY KEY(grant_id, revision)
+        )""")
+        conn.execute(
+            f"INSERT OR IGNORE INTO {REVOCATION_TABLE}(grant_id,revision) VALUES(?,?)", (grant_id, revision)
+        )
+
     def set_grant_status(self, grant_id: str, *, status: str, revision: str | None = None) -> None:
+        """Trusted authority writer for the grant row.
+
+        ``revoked`` is terminal for a (grant_id, revision) on this destination: once written, no later update
+        may set that revision to any other status (a successor revision is the way forward). ``suspended`` and
+        ``unknown`` stay reversible. The grant object here carries no status version, so none is compared.
+        """
         if status not in {"active", "suspended", "revoked", "unknown"}:
             raise ValueError("unsupported grant status")
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT revision FROM authority_grants_v1 WHERE grant_id=?", (grant_id,)
+                "SELECT revision,status FROM authority_grants_v1 WHERE grant_id=?", (grant_id,)
             ).fetchone()
             if row is None:
                 conn.execute("ROLLBACK")
                 raise KeyError(grant_id)
+            new_revision = revision or row["revision"]
+            if status != "revoked" and (
+                (row["status"] == "revoked" and new_revision == row["revision"])
+                or self._revision_revoked(conn, grant_id, new_revision)
+            ):
+                conn.execute("ROLLBACK")
+                raise PermissionError("grant revision is revoked; a successor revision is required")
+            if row["status"] == "revoked":
+                # Also covers a row revoked before revocations were retained.
+                self._record_revoked_revision(conn, grant_id, row["revision"])
+            if status == "revoked":
+                self._record_revoked_revision(conn, grant_id, new_revision)
             conn.execute(
                 "UPDATE authority_grants_v1 SET status=?,revision=? WHERE grant_id=?",
-                (status, revision or row["revision"], grant_id),
+                (status, new_revision, grant_id),
             )
             conn.execute("COMMIT")
 
@@ -542,6 +601,25 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             value["tenant_id"] = op.tenant_id
         return commitment(value)
 
+    @staticmethod
+    def _proposal_bound(claim: Any, snapshot: FrozenEnvelope) -> bool:
+        """The envelope's proposal_commitment is the one the claim was issued for.
+
+        Every approval projection in the claim carries the binding's proposal commitment. A claim with no approval
+        projection is bound through the control plane's effect id derivation,
+        effect_id = commitment({proposal, grant_id, grant_revision}), which the claim's effect_id already commits to.
+        """
+        op = snapshot.operation
+        if claim.approval_state:
+            return all(item.proposal_commitment == op.proposal_commitment for item in claim.approval_state)
+        from agent_control_plane.bounded import commitment
+
+        return claim.effect_id == commitment({
+            "proposal": op.proposal_commitment,
+            "grant_id": op.grant_id,
+            "grant_revision": op.grant_revision,
+        })
+
     def _validate_claim_state(self, conn: sqlite3.Connection, claim: Any, snapshot: FrozenEnvelope, now: datetime) -> None:
         op = snapshot.operation
         exact = {
@@ -566,6 +644,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "unit": claim.unit == op.unit,
             "effects": int(claim.effects) == int(op.effects),
             "operation_commitment": claim.operation_commitment == self._operation_commitment(snapshot),
+            # Envelope members outside operation_commitment, bound to what the claim already commits to.
+            "proposal_commitment": self._proposal_bound(claim, snapshot),
+            "effective_max_effects": int(claim.max_effects) == int(op.effective_max_effects),
         }
         mismatches = [name for name, ok in exact.items() if not ok]
         if mismatches:
@@ -585,6 +666,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             or grant["institution_id"] != claim.institution_id
             or grant["authority_domain"] != claim.authority_domain
             or grant["tenant_id"] != getattr(claim, "tenant_id", None)
+            or self._revision_revoked(conn, claim.grant_id, claim.grant_revision)
         ):
             raise PermissionError("authoritative grant state invalid")
         if not (_parse_time(grant["not_before"]) <= now < _parse_time(grant["expires_at"])):
