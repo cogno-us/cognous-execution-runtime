@@ -12,9 +12,9 @@ permissions:
   contents: read
 jobs:
   cross-component:
-    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-wire-fixtures.yml@0298bd86a562e065e8b0ddcab01185a209ef91c0
+    uses: cogno-us/cognous-stack-qualification/.github/workflows/cognous-execution-runtime--openappa-wire-fixtures.yml@e5a7989bbc58007fdb448f0b1ac780955cde6475
     with:
       source_revision: ${{ github.event.pull_request.head.sha || github.sha }}
-      qualification_revision: 0298bd86a562e065e8b0ddcab01185a209ef91c0
+      qualification_revision: e5a7989bbc58007fdb448f0b1ac780955cde6475
     permissions:
       contents: read
