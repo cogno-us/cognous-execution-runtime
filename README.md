@@ -132,7 +132,7 @@ Implemented for the default host-local path:
 - no production credentials;
 - dedicated operator-selected SQLite state root;
 - path traversal and existing symlink-component rejection before path resolution;
-- local restrictions on institution, authority domain, adapter, action, target, unit, amount and effect count. Targets are matched by prefix by default (`LocalExecutionPolicy.target_match="prefix"`, the historical behaviour); the opt-in `"segment"` mode requires a segment boundary and `"exact"` requires the target to equal a listed entry. In every mode a target containing NUL, control or Unicode format characters, or a `.`/`..` segment, is refused.
+- local restrictions on institution, authority domain, adapter, action, target, unit, amount and effect count. Targets match at a segment boundary by default (`LocalExecutionPolicy.target_match="segment"`: the target equals a listed entry or extends it at a `/` or `:` boundary; an entry ending in `/` or `:` is already a boundary); `"exact"` requires the target to equal a listed entry; `"legacy-prefix"` keeps the earlier plain prefix comparison as an explicit opt-in. In every mode a target containing NUL, control or Unicode format characters, or a `.`/`..` segment, is refused.
 
 These are application-level restrictions, **not OS confinement**. Filesystem checks still have residual check/use races without an OS-level dirfd/openat-style confinement strategy. A separate host process with sufficient permissions can bypass this Python package. No container, VM, seccomp/AppArmor, network namespace or whole-upstream bypass-resistance claim is made.
 

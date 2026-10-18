@@ -143,3 +143,9 @@ def test_exact_mode_keeps_the_operation_key_path(tmp_path):
     executor = LocalDestinationExecutor(dest, pol)
     assert executor.execute_snapshot(_snap(op, "effect-a"), operation_id="op-1/refund-1").status == "executed"
     assert dest.effect_count(op.grant_id) == 1
+
+
+def test_default_full_target_entry_matches_its_own_target(tmp_path):
+    op = operation()
+    pol = dataclasses.replace(policy(op), allowed_target_prefixes=(op.target,))
+    assert _run(tmp_path, pol, op.target).status == "executed"
