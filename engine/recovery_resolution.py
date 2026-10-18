@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -30,6 +31,20 @@ def _utc(value):
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timezone required")
     return value.astimezone(timezone.utc)
+
+# Stored deadlines are read with the strict instant grammar (ODES time semantics section 1): an RFC 3339 instant with an
+# explicit offset, ASCII digits, one to six fraction digits, no leap second. Kept local so this module stays standalone.
+_INSTANT = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?"
+    r"(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])",
+    re.ASCII,
+)
+
+
+def _parse_instant(value) -> datetime:
+    if not isinstance(value, str) or _INSTANT.fullmatch(value) is None:
+        raise ValueError("timestamp is not an RFC 3339 instant with an explicit offset")
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 @dataclass(frozen=True)
@@ -334,7 +349,7 @@ class SyntheticRecoveryLedger:
                     continue
                 report["current_unresolved"] += 1
                 try:
-                    deadline = _utc(datetime.fromisoformat(row["deadline"]))
+                    deadline = _utc(_parse_instant(row["deadline"]))
                 except (TypeError, ValueError):
                     report["invalid_or_missing_deadlines"] += 1
                     continue

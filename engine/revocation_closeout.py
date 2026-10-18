@@ -6,6 +6,7 @@ commit atomicity.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -25,6 +26,20 @@ def _utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamp must be timezone-aware")
     return value.astimezone(timezone.utc)
+
+# Stored deadlines are read with the strict instant grammar (ODES time semantics section 1): an RFC 3339 instant with an
+# explicit offset, ASCII digits, one to six fraction digits, no leap second. Kept local so this module stays standalone.
+_INSTANT = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,6})?"
+    r"(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])",
+    re.ASCII,
+)
+
+
+def _parse_instant(value) -> datetime:
+    if not isinstance(value, str) or _INSTANT.fullmatch(value) is None:
+        raise ValueError("timestamp is not an RFC 3339 instant with an explicit offset")
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 @dataclass(frozen=True)
@@ -418,7 +433,7 @@ class RevocationCloseoutStore:
             ).fetchall()
         overdue = []
         for row in rows:
-            deadline = _utc(datetime.fromisoformat(row["deadline"]))
+            deadline = _utc(_parse_instant(row["deadline"]))
             if deadline < current:
                 overdue.append((current - deadline).total_seconds())
         return {
