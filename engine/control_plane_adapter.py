@@ -76,6 +76,15 @@ class ControlPlaneRefundDestinationAdapter:
     def operation_identity_capability(self):
         return getattr(self.destination, "operation_identity_capability", None)
 
+    # dedupe-ttl/0.1 (opt-in): declared by the destination, forwarded as is; the control plane never infers it.
+    @property
+    def dedupe_capability(self):
+        return getattr(self.destination, "dedupe_capability", None)
+
+    @property
+    def dedupe_ttl_seconds(self):
+        return getattr(self.destination, "dedupe_ttl_seconds", None)
+
     def _check_trusted_context(self) -> None:
         op = self.snapshot.operation
         if op.institution_id != self.trusted_institution_id:
@@ -160,6 +169,14 @@ class ControlPlaneRefundDestinationAdapter:
             raise RuntimeError(result.error or "local destination failed")
         lost_ack_observed = (result.status in {"reconciled", "partial"}
                              and not result.acknowledged and result.error is not None)
+        if result.status == "unknown" and result.error == "destination_in_progress":
+            # dedupe-ttl/0.1: the destination holds our key and is still processing it. Not a failure, not an acknowledgement.
+            try:
+                from agent_control_plane.dedupe import DestinationInProgress
+            except ImportError:  # a control plane without the profile sees an ordinary lost acknowledgement
+                DestinationInProgress = None
+            if DestinationInProgress is not None:
+                raise DestinationInProgress()
         if result.status == "unknown" or lost_ack_observed:
             # Preserve Control Plane lost-ack semantics. A lost acknowledgement stays a
             # TimeoutError for the Control Plane even when the local executor already
