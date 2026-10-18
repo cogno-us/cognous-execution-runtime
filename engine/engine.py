@@ -8,7 +8,7 @@ class AgentEngine:
     """Legacy compatibility shell.
 
     This API is not the supported execution path. It performs no side effect and
-    can never report successful execution. Use engine.safe_executor.SafeExecutor.
+    can never report successful execution. Use engine.control_plane_adapter.PinnedControlPlaneExecutor.
 
     The ``agent_id`` is caller-asserted: it is checked against a local permissions file and recorded in the
     audit log, never authenticated.

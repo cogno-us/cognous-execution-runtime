@@ -2,7 +2,7 @@
 
 ## Decision
 
-Support the Python `SafeExecutor` as the sole Moltbot Safe execution boundary for the current Cognous synthetic pilot.
+Support the Python `PinnedControlPlaneExecutor` (earlier name: `SafeExecutor`) as the sole Moltbot Safe execution boundary for the current Cognous synthetic pilot.
 
 Retain the TypeScript Moltbot application as upstream history/code, but do not claim it is governed by this boundary.
 

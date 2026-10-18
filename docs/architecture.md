@@ -8,13 +8,17 @@ Moltbot Safe provides one supported constrained execution boundary for the curre
 Control Plane canonical issued decision
         |
         v
-ExecutionEnvelope 0.1.0
+ExecutionEnvelope 0.2.0
         |
         v
-SafeExecutor
+PinnedControlPlaneExecutor (route A)
+  |-- pinned Control Plane revalidation of current authority
   |-- exact decision/binding validation
   |-- stricter local execution policy
   |-- frozen operation
+        |
+        v
+ControlPlaneRefundDestinationAdapter -> LocalDestinationExecutor
         |
         v
 DurableRefundDestination (SQLite)
@@ -26,11 +30,11 @@ DurableRefundDestination (SQLite)
 reconciliation / hold / observed applied
 ```
 
-The execution caller does not provide an authoritative decision body. `InProcessDecisionSource` retrieves the canonical issued decision by ID from a configured trusted callable.
+The execution caller does not provide an authoritative decision body. The pinned Control Plane workflow (`BoundedAuthorizationWorkflow.execute()`) revalidates the current decision and authority before the destination adapter is invoked.
 
 ## Runtime boundary
 
-The supported safety layer is the Python `engine/` package, specifically `SafeExecutor`.
+The supported safety layer is the Python `engine/` package, specifically `PinnedControlPlaneExecutor` (route A) and, opt-in, `AtomicLocalControlPlaneExecutor` (route B); see the route table in execution-boundary.md.
 
 The upstream TypeScript Moltbot application is not inside this reviewed execution boundary; it is quarantined at tag `upstream-moltbot-quarantine-20261016` and is not on `main`. The legacy Python `AgentEngine` is compatibility-only and performs no side effect.
 

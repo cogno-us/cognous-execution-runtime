@@ -63,7 +63,7 @@ At API entry Moltbot Safe deep-snapshots the complete operation, including neste
 For the single-refund adapter:
 
 - `effects` must be the integer `1` exactly; booleans, zero, negatives, fractions and other counts are rejected;
-- amount must be a finite non-negative `int` or `float`, excluding booleans;
+- amount must be a finite non-negative exact `int` (absolute value at most 2**53) or `float`, excluding booleans and int subclasses;
 - the payload commitment must match the frozen payload;
 - effect identity is bound to a digest of the exact frozen operation.
 
@@ -83,7 +83,7 @@ Each destination submission gets a durable attempt identity. Attempt rows are im
 
 SQLite `BEGIN IMMEDIATE` serializes effect deduplication, content binding and cumulative local effect-count checks for processes sharing one database file. The test suite exercises **separate processes**, not only threads.
 
-A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state. Partial delivery remains partial/held rather than being blindly re-applied.
+A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state when it surfaces as a `TimeoutError` or on the atomic route; on route A any other exception after the commit is currently reported `failed` although the effect may exist (see docs/execution-boundary.md). Partial delivery remains partial/held rather than being blindly re-applied.
 
 Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 

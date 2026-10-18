@@ -20,7 +20,7 @@ The tag preserves the exact tree, which includes the upstream application. The p
 
 ### Creating the tag
 
-The tag could not be pushed from the session that prepared this change; the repository owner creates it. Save the message below to a file (for example `tagmsg.txt`), then run:
+The annotated tag was later pushed by the repository owner (it peels to `fd6b76fa`). It was not pushed from the session that prepared this change. To recreate it, save the message below to a file (for example `tagmsg.txt`), then run:
 
 ```bash
 git tag -a upstream-moltbot-quarantine-20261016 fd6b76fa0e85feb5b67324114bf790d3a12fdaf1 -F tagmsg.txt

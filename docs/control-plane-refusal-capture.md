@@ -25,7 +25,7 @@ The fixture service clock is explicitly set to the dated synthetic fixture.
 `python-safety.yml` retains its old CP pin and explicitly excludes this separate
 new-interface suite; it does not claim to qualify the new CP interface.
 
-Local Python qualification: seven new cases passed; historical Python suite
+Historical record of that change's revision (the Node application has since been removed from `main`): seven new cases passed; historical Python suite
 359 passed, 57 existing skips and nine separate subtests passed. The full Node
 lint command was attempted but dependency bootstrap failed under the installed
 pnpm supply-chain policy (`ERR_PNPM_EXOTIC_SUBDEP` for upstream libsignal); no

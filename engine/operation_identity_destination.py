@@ -9,8 +9,8 @@ destination refuses a second effect for the same operation under a different
 by another principal or domain is a different operation.
 
 A destination that does not subclass this one refuses an operation id outright
-(``operation_identity_capability_unavailable``): where the destination cannot store our id,
-the attempt stays unresolved rather than silently losing the dedupe.
+(``operation_identity_capability_unavailable``) before any effect: where the destination cannot store our id,
+the refusal is a ``PermissionError`` under rollback, reported as a definitive refusal, rather than silently losing the dedupe.
 """
 from __future__ import annotations
 

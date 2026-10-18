@@ -1,28 +1,23 @@
 # Internal Module Guide
 
-This document explains the responsibilities, invariants, and safety constraints of the core modules in moltbot-safe.
+This document explains the responsibilities and invariants of the legacy compatibility modules. The supported execution path is described in [execution-boundary.md](execution-boundary.md).
 
 ## engine/engine.py
-- Orchestrates action validation, permission checks, sandboxed execution, and audit logging.
-- Invariants: No action is executed without passing validation and permission checks. All results are logged.
-- Safety: Never bypasses the sandbox. No dynamic code execution.
+- Legacy shell: validates the action, checks the caller-asserted agent identity against the permissions file and logs the request. It performs no side effect and has no sandbox.
+- Invariant: it never reports successful execution (`status: unsupported`).
 
 ## engine/permissions.py
-- Loads and enforces least-privilege permissions from permissions.json.
-- Invariants: Denies any action not explicitly allowed. No wildcards or implicit grants.
-- Safety: All permission logic is explicit and auditable.
+- Loads permissions from permissions.json.
+- Invariant: denies an action type not listed for the agent. No wildcards or implicit grants.
 
 ## engine/action_schema.py
-- Validates actions against a strict schema.
-- Invariants: Rejects malformed, ambiguous, or extra fields. Only known action types allowed.
-- Safety: No implicit or default behaviors. All validation is explicit.
+- Validates actions against a schema.
+- Invariants: rejects malformed or extra fields. Accepts any non-empty `type` string; the permission check decides which types are allowed.
 
 ## engine/audit.py
-- Appends every attempted action (allowed or denied) to audit.log with timestamp and metadata.
-- Invariants: No action occurs without a log entry. Log is append-only.
-- Safety: No log truncation or overwriting. Log format is human-readable and machine-parseable.
+- Appends requests that reach the audit step to the audit log with timestamp and metadata.
+- The log is append-by-convention (the file is opened in append mode); it is not tamper-evident, and coverage is not a guarantee that every request on every path is logged (see SECURITY.md).
 
 ## Extending Safely
 - Add new action types by updating the schema and permission logic.
-- Never add implicit permissions or bypass sandboxing.
-- All extensions must maintain minimalism, explicitness, isolation, least privilege, transparency, predictability, and auditability.
+- Never add implicit permissions.

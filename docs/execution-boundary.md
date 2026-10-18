@@ -47,7 +47,7 @@ The request carries:
 
 The complete request is deep-copied and serialized at API entry. Later mutation of the caller's nested payload cannot alter what is validated or committed.
 
-For the single-refund adapter, `effects` must be exactly integer `1`. Boolean, zero, negative, fractional and larger values are rejected. Amount must be a finite non-negative integer or float and cannot be boolean.
+For the single-refund adapter, `effects` must be exactly integer `1`. Boolean, zero, negative, fractional and larger values are rejected. Amount must be a finite non-negative exact integer (absolute value at most 2**53) or float; booleans and int subclasses are refused.
 
 ## Institution/domain binding
 
@@ -72,7 +72,7 @@ Effect IDs are bound to a canonical digest of the frozen operation. Reusing the 
 
 Historical observation checks the expected operation digest. It may report what is already present but does not renew or create permission to execute.
 
-Lost acknowledgement after durable commit remains an `unknown` attempt outcome until observation establishes destination state. When the follow-up validated observation establishes the state, the result is `reconciled` (applied) or `partial` and the attempt's terminal event says the same; the result is not newly executed and not acknowledged. When the observation fails, the result stays `unknown` with observation null and `observed_state` `unknown`. When it is a validated `absent` or `unknown` observation, the result stays `unknown` and carries that observation, with `observed_state` equal to the observation's state (never `failed`, never retry permission; `absent` right after an ambiguous dispatch does not prove the effect will not appear). The same holds for a validated `unknown` observation found before dispatch and for the Control Plane adapter. Whenever `observation` is null, `observed_state` is `unknown`, for every status (denied and failed included); `observation` is never `{}`. Partial delivery remains partial and is not blindly retried.
+Lost acknowledgement after durable commit that surfaces as a `TimeoutError` (on the atomic route also a failing after-commit step or observation, and any other error after the commit that reconciliation cannot show to be pre-commit) remains an `unknown` attempt outcome until observation establishes destination state. On route A (`LocalDestinationExecutor`), any other exception raised after the durable commit is currently reported `failed` with `observed_state` `unknown` although the effect row may exist; `failed` there is not proof that no effect occurred (known limit; the atomic route reports such errors `unknown`). When the follow-up validated observation establishes the state, the result is `reconciled` (applied) or `partial` and the attempt's terminal event says the same; the result is not newly executed and not acknowledged. When the observation fails, the result stays `unknown` with observation null and `observed_state` `unknown`. When it is a validated `absent` or `unknown` observation, the result stays `unknown` and carries that observation, with `observed_state` equal to the observation's state (for the cases above never `failed`, never retry permission; `absent` right after an ambiguous dispatch does not prove the effect will not appear). The same holds for a validated `unknown` observation found before dispatch and for the Control Plane adapter. Whenever `observation` is null, `observed_state` is `unknown`, for every status (denied and failed included); `observation` is never `{}`. Partial delivery remains partial and is not blindly retried.
 
 ## Route names (A, B, C)
 
@@ -168,7 +168,7 @@ Recorded from V1 validation (issue #99). Neither is a change to supported behavi
   effective grants, so combining them would let a revoked effective grant execute.
   Opening either profile on a database that already carries the other is refused
   (`PermissionError`), at activation in both orders, and again inside the claim
-  transaction if the other table appears later. Use separate databases.
+  transaction if the other table appears later (the test for the late-table case needs the Control Plane on the path and is currently skipped in CI). Use separate databases.
 - **Generation fence (closed).** The governed-exchange component now forwards
   `expected_effective_grant_digest` and `effective_grant_derivation_version` through
   its fence wrapper (exchange 06f58c3), so `run_exchange(generation_fence=...)` works
@@ -192,6 +192,17 @@ Recorded from V1 validation (issue #99). Neither is a change to supported behavi
 - **Amounts.** Amounts are exact: integers must be plain `int` with absolute value at
   most 2**53, floats must be finite and non-negative, and comparisons between claim
   and operation amounts are exact, not binary64 conversions.
+- **Known limits (pinned by tests named `*_known_limit`; each is a contract-freeze item).**
+  Budgets are counted per `budget_id` with no parent ceiling: two claims of one grant that
+  carry different budget ids each reach their own cap. The claim's issue time is not
+  consulted at execution; only `not_before` and `expires_at` gate it, so a claim issued
+  days earlier with open validity executes. A second delivery under one (principal, domain,
+  operation id) gets `operation_already_committed` whether it repeats the same content or
+  carries other content or another amount; the refusal does not distinguish them. Amount
+  commitments are over canonical JSON, so the integer form of an amount issued as a float
+  (`50` for `50.0`) does not match the claim and is refused; it fails closed, and
+  canonicalising amounts would change existing commitments and digests. Route A reports a
+  non-timeout error after the commit as `failed` (see the lost-acknowledgement text above).
 - **Producer export.** `export_execution_artifacts` refuses results whose status,
   `attempted`, `acknowledged`, `newly_executed` and `observed_state` contradict each
   other (for example `executed` with `attempted=false`). The export stays
