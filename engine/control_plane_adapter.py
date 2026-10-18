@@ -174,6 +174,21 @@ class ControlPlaneRefundDestinationAdapter:
         }
 
 
+def workflow_view_profile_kwargs(workflow: Any) -> dict:
+    """Opt-in profile settings the per-call workflow view must carry. Empty (default path unchanged) when none is configured.
+
+    The rule-revision profile is forwarded whenever the host set one, not only with freshness/0.1: it pins policy digests
+    (`policy_status_unknown`) at effect time, so a view built without it would execute an unadopted policy digest.
+    """
+    out: dict = {}
+    if getattr(workflow, "runtime_authority_profile", None):
+        out["runtime_authority_profile"] = workflow.runtime_authority_profile
+        out["allow_test_time"] = workflow.allow_test_time
+    if getattr(workflow, "rule_revision_profile", None) is not None:
+        out["rule_revision_profile"] = workflow.rule_revision_profile
+    return out
+
+
 class PinnedControlPlaneExecutor:
     """Supported integration: current Control Plane revalidation then local effect."""
 
@@ -311,14 +326,7 @@ class PinnedControlPlaneExecutor:
             mandate_max_age_seconds=self.workflow.mandate_max_age_seconds,
             approval_max_age_seconds=self.workflow.approval_max_age_seconds,
             clock_tolerance_seconds=self.workflow.clock_tolerance_seconds,
-            **({"runtime_authority_profile":self.workflow.runtime_authority_profile,
-                "allow_test_time":self.workflow.allow_test_time}
-               if getattr(self.workflow, "runtime_authority_profile", None) else {}),
-            # freshness/0.1 only: age extensions are authorised by the rule-revision signer set, so the per-call workflow view
-            # must see the host's configured set. Forwarded only when the freshness profile is on (nothing else changes).
-            **({"rule_revision_profile": self.workflow.rule_revision_profile}
-               if getattr(getattr(self.workflow, "runtime_authority_profile", None), "freshness", None) is not None
-               and getattr(self.workflow, "rule_revision_profile", None) is not None else {}),
+            **workflow_view_profile_kwargs(self.workflow),
         )
         kwargs = {
             "proposal": proposal,
