@@ -5,8 +5,10 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -324,6 +326,21 @@ def validate_snapshot(envelope: FrozenEnvelope) -> None:
         raise ValueError("execution operation contains empty required fields")
 
 
+_TARGET_MATCH_MODES = ("prefix", "segment", "exact")
+_TARGET_SEPARATORS = "/:"
+
+
+def _target_is_well_formed(target: str) -> bool:
+    # Refuse NUL, control characters, Unicode format characters (category Cf,
+    # e.g. zero-width) and dot-segments, whatever the match mode.
+    if not target:
+        return False
+    for ch in target:
+        if unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Zl", "Zp"):
+            return False
+    return not any(seg in (".", "..") for seg in re.split(r"[/\\:]", target))
+
+
 @dataclass(frozen=True)
 class LocalExecutionPolicy:
     allowed_institutions: frozenset[str]
@@ -334,6 +351,10 @@ class LocalExecutionPolicy:
     allowed_units: frozenset[str]
     max_amount: float
     max_effects: int
+    # "prefix" keeps the historical str.startswith semantics (default, pinned by
+    # existing callers); "segment" requires the match to end at a segment
+    # boundary; "exact" requires the target to equal one of the entries.
+    target_match: str = "prefix"
 
     def __post_init__(self) -> None:
         # Fail closed at construction: an empty prefix matches every target via
@@ -354,6 +375,22 @@ class LocalExecutionPolicy:
             type(prefix) is not str or not prefix for prefix in prefixes
         ):
             raise ValueError("allowed_target_prefixes must be a non-empty tuple of non-empty strings")
+        if type(self.target_match) is not str or self.target_match not in _TARGET_MATCH_MODES:
+            raise ValueError("target_match must be one of: " + ", ".join(_TARGET_MATCH_MODES))
+
+    def _target_allowed(self, target: object) -> bool:
+        if type(target) is not str or not _target_is_well_formed(target):
+            return False
+        mode = self.target_match
+        for entry in self.allowed_target_prefixes:
+            if mode == "exact":
+                if target == entry:
+                    return True
+            elif target.startswith(entry):
+                if mode == "prefix" or len(target) == len(entry) or entry[-1] in _TARGET_SEPARATORS \
+                        or target[len(entry)] in _TARGET_SEPARATORS:
+                    return True
+        return False
 
     def check(self, op: FrozenOperation) -> None:
         max_amount = _strict_finite_number(self.max_amount, name="local max_amount")
@@ -366,7 +403,7 @@ class LocalExecutionPolicy:
             raise PermissionError("local adapter restriction")
         if op.action_id not in self.allowed_actions:
             raise PermissionError("local action restriction")
-        if not any(op.target.startswith(prefix) for prefix in self.allowed_target_prefixes):
+        if not self._target_allowed(op.target):
             raise PermissionError("local target restriction")
         if op.unit not in self.allowed_units:
             raise PermissionError("local unit restriction")
