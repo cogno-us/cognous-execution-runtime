@@ -326,7 +326,7 @@ def validate_snapshot(envelope: FrozenEnvelope) -> None:
         raise ValueError("execution operation contains empty required fields")
 
 
-_TARGET_MATCH_MODES = ("prefix", "segment", "exact")
+_TARGET_MATCH_MODES = ("segment", "exact", "legacy-prefix")
 _TARGET_SEPARATORS = "/:"
 
 
@@ -351,10 +351,11 @@ class LocalExecutionPolicy:
     allowed_units: frozenset[str]
     max_amount: float
     max_effects: int
-    # "prefix" keeps the historical str.startswith semantics (default, pinned by
-    # existing callers); "segment" requires the match to end at a segment
-    # boundary; "exact" requires the target to equal one of the entries.
-    target_match: str = "prefix"
+    # "segment" (default): the target equals an entry, or extends it at a segment
+    # boundary (an entry ending in / or : already is one). "exact": the target
+    # equals an entry. "legacy-prefix": the historical plain str.startswith
+    # semantics, kept only as an explicit opt-in.
+    target_match: str = "segment"
 
     def __post_init__(self) -> None:
         # Fail closed at construction: an empty prefix matches every target via
@@ -387,7 +388,7 @@ class LocalExecutionPolicy:
                 if target == entry:
                     return True
             elif target.startswith(entry):
-                if mode == "prefix" or len(target) == len(entry) or entry[-1] in _TARGET_SEPARATORS \
+                if mode == "legacy-prefix" or len(target) == len(entry) or entry[-1] in _TARGET_SEPARATORS \
                         or target[len(entry)] in _TARGET_SEPARATORS:
                     return True
         return False

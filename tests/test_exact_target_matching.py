@@ -1,7 +1,7 @@
 """Exact target matching for the local execution policy (component-local, synthetic; no network, no real provider).
 
-Provenance: every test named test_default_* was RUN on main 7170da59 before this change (they pass there and here), so they
-pin the valid-input behaviour of the default path. Tests naming target_match, and the character/segment refusals, describe new
+Provenance: every test named test_default_* was RUN on main 7170da59 before this change (they pass there and here; test_default_* names cover valid trailing-separator prefixes and a full-target entry), so they
+pin the valid-input behaviour of the default path. Tests naming target_match or legacy-prefix, and the character/segment refusals, describe new
 behaviour and have no expected-today value.
 """
 import dataclasses
@@ -50,8 +50,8 @@ def test_default_policy_fields_and_default_mode_are_unchanged():
                          "allowed_target_prefixes", "allowed_units", "max_amount", "max_effects"]
 
 
-def test_default_mode_is_the_historical_prefix_mode():
-    assert policy(operation()).target_match == "prefix"
+def test_default_mode_is_segment():
+    assert policy(operation()).target_match == "segment"
 
 
 def test_default_unlisted_target_is_still_refused(tmp_path):
@@ -90,7 +90,7 @@ BAD = [
 ]
 
 
-@pytest.mark.parametrize("mode", ["prefix", "segment", "exact"])
+@pytest.mark.parametrize("mode", ["legacy-prefix", "segment", "exact"])
 @pytest.mark.parametrize("target", BAD)
 def test_malformed_targets_are_refused_in_every_mode(tmp_path, mode, target):
     pol = _with(policy(operation()), target_match=mode)
@@ -104,7 +104,7 @@ def test_malformed_targets_are_refused_in_every_mode(tmp_path, mode, target):
     (BASE + "customer-1", True), (BASE + "customer-1/sub", True), (BASE + "customer-1:sub", True),
     (BASE + "customer-10", False), (BASE + "customer-1x", False), (BASE + "customer-2", False)])
 def test_segment_mode_requires_a_boundary(tmp_path, target, ok):
-    pol = _with(policy(operation()), allowed_target_prefixes=(BASE + "customer-1",), target_match="segment")
+    pol = _with(policy(operation()), allowed_target_prefixes=(BASE + "customer-1",))
     assert (_run(tmp_path, pol, target).status == "executed") is ok
 
 
@@ -120,12 +120,17 @@ def test_exact_mode_matches_only_listed_targets(tmp_path, target, ok):
     assert (_run(tmp_path, pol, target).status == "executed") is ok
 
 
-def test_legacy_prefix_mode_still_matches_by_prefix(tmp_path):
+def test_default_mode_does_not_match_inside_a_segment(tmp_path):
     pol = _with(policy(operation()), allowed_target_prefixes=(BASE + "customer-1",))
+    assert _run(tmp_path, pol, BASE + "customer-10").status == "refused"
+
+
+def test_legacy_prefix_mode_is_explicit_opt_in_plain_prefix(tmp_path):
+    pol = _with(policy(operation()), allowed_target_prefixes=(BASE + "customer-1",), target_match="legacy-prefix")
     assert _run(tmp_path, pol, BASE + "customer-10").status == "executed"
 
 
-@pytest.mark.parametrize("value", ["", "Exact", None, ["exact"], "startswith"])
+@pytest.mark.parametrize("value", ["", "Exact", None, ["exact"], "startswith", "prefix"])
 def test_unknown_target_match_is_rejected_at_construction(value):
     with pytest.raises(ValueError, match="target_match"):
         _with(policy(operation()), target_match=value)
@@ -138,3 +143,9 @@ def test_exact_mode_keeps_the_operation_key_path(tmp_path):
     executor = LocalDestinationExecutor(dest, pol)
     assert executor.execute_snapshot(_snap(op, "effect-a"), operation_id="op-1/refund-1").status == "executed"
     assert dest.effect_count(op.grant_id) == 1
+
+
+def test_default_full_target_entry_matches_its_own_target(tmp_path):
+    op = operation()
+    pol = dataclasses.replace(policy(op), allowed_target_prefixes=(op.target,))
+    assert _run(tmp_path, pol, op.target).status == "executed"
