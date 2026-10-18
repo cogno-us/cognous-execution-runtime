@@ -48,6 +48,10 @@ class IntentClaim:
 def business_commitment(intent: RefundIntent, snapshot: FrozenEnvelope) -> str:
     op = snapshot.operation
     payload = op.payload()
+    if op.tenant_id is not None:
+        # The intent key scopes institution, domain and customer but not the tenant, so two tenants could collide on
+        # one request identity. Tenant-scoped operations are refused until the key carries the tenant (contract freeze).
+        raise PermissionError("intent profile does not support tenant-scoped operations")
     if (op.institution_id != intent.institution_id
             or op.authority_domain != intent.authority_domain
             or payload.get("customer_id") != intent.customer_id

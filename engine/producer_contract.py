@@ -16,6 +16,7 @@ from .safe_executor import (
     ExecutionOperation,
     LocalExecutionPolicy,
     commitment,
+    exact_amount_equal,
     snapshot_envelope,
 )
 
@@ -54,6 +55,52 @@ def _frozen_envelope_dict(frozen: Any) -> dict[str, Any]:
     }
 
 
+_OBSERVED_STATES = frozenset({"applied", "partial", "absent", "unknown"})
+# Exhaustive status matrix for a result handed to the producer export. Each row lists what a status may carry; the
+# export refuses a result outside it instead of serialising a contradictory record (a result labelled executed that
+# claims nothing was attempted, a duplicate-free claim on an unacknowledged attempt, and so on).
+_ATTEMPT_REQUIRED_STATUSES = frozenset({"failed", "partial", "unknown", "executed", "reconciled"})
+
+
+def _validate_result_state(result: ExecutionResult) -> None:
+    """Refuse an execution result whose status, flags and observation contradict one another."""
+    status = result.status
+    if status not in {"denied", "failed", "partial", "unknown", "executed", "observed", "reconciled"}:
+        raise ValueError("execution result status is not recognised")
+    for name in ("attempted", "acknowledged", "newly_executed"):
+        if type(getattr(result, name)) is not bool:
+            raise ValueError(f"execution result {name} must be a boolean")
+    if result.observed_state not in _OBSERVED_STATES:
+        raise ValueError("execution result observed_state is not recognised")
+    if result.observation is not None and not isinstance(result.observation, dict):
+        raise ValueError("execution result observation must be an object when present")
+    if status in _ATTEMPT_REQUIRED_STATUSES and not result.attempted:
+        raise ValueError("execution result status requires an attempted execution")
+    if status == "observed" and (result.attempted or result.acknowledged or result.newly_executed
+                                 or result.attempt_id is not None):
+        raise ValueError("an observed result cannot claim an attempt, acknowledgement or fresh execution")
+    if result.acknowledged and not result.attempted:
+        raise ValueError("an acknowledgement requires an attempted execution")
+    if result.newly_executed and not (result.acknowledged and status in {"executed", "partial", "unknown"}):
+        raise ValueError("a fresh execution must be acknowledged and have status executed, partial or unknown")
+    if status in {"denied", "failed"} and (result.acknowledged or result.newly_executed
+                                           or result.observed_state != "unknown"):
+        raise ValueError("a denied or failed result cannot carry an acknowledgement or an observed effect")
+    if status == "executed" and not (
+        result.acknowledged and result.newly_executed and result.observed_state == "applied"
+    ):
+        raise ValueError("an executed result must be acknowledged, fresh and observed as applied")
+    if status == "reconciled" and (result.newly_executed or result.observed_state != "applied"):
+        raise ValueError("a reconciled result is observed as applied and is not a fresh execution")
+    if status == "partial" and result.observed_state != "partial":
+        raise ValueError("a partial result must be observed as partial")
+    if status in {"executed", "reconciled", "partial", "observed"} and not isinstance(result.observation, dict):
+        raise ValueError("this result status requires a retained observation")
+    if isinstance(result.observation, dict) and result.observation.get("state") is not None \
+            and result.observation.get("state") != result.observed_state:
+        raise ValueError("execution observation state contradicts execution result")
+
+
 def _validate_retained_bindings(
     frozen: Any,
     result: ExecutionResult,
@@ -72,7 +119,7 @@ def _validate_retained_bindings(
             raise ValueError("destination effect grant binding contradicts supplied envelope")
         if row.get("target") != frozen.operation.target:
             raise ValueError("destination effect target contradicts supplied envelope")
-        if float(row.get("amount")) != float(frozen.operation.amount):
+        if not exact_amount_equal(row.get("amount"), frozen.operation.amount):
             raise ValueError("destination effect amount contradicts supplied envelope")
         if row.get("unit") != frozen.operation.unit:
             raise ValueError("destination effect unit contradicts supplied envelope")
@@ -178,7 +225,7 @@ def _validate_retained_bindings(
                     f"execution observation {field} contradicts supplied envelope"
                 )
         actual_amount = destination_state.get("amount")
-        if actual_amount is not None and float(actual_amount) != float(frozen.operation.amount):
+        if actual_amount is not None and not exact_amount_equal(actual_amount, frozen.operation.amount):
             raise ValueError("execution observation amount contradicts supplied envelope")
         actual_payload = destination_state.get("payload")
         if actual_payload is not None and actual_payload != frozen.operation.payload():
@@ -220,6 +267,7 @@ def export_execution_artifacts(
         raise ValueError("unsupported execution envelope version")
     if result.decision_id != frozen.decision_id or result.effect_id != frozen.effect_id:
         raise ValueError("execution result identity contradicts execution envelope")
+    _validate_result_state(result)
 
     effects = [
         row for row in _rows(Path(destination.path), "effects")

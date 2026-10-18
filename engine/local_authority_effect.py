@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 
 from .safe_executor import (
+    exact_amount_equal,
     DurableRefundDestination,
     ExecutionEnvelope,
     ExecutionResult,
@@ -93,7 +94,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 "SELECT 1 FROM sqlite_master WHERE type='table' "
                 "AND name IN ('refund_intent_registry_v1', 'refund_intent_claims_v1')"
             ).fetchone():
+                conn.execute("ROLLBACK")
                 raise PermissionError("authority-effect profile cannot share an intent-profile database")
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='effective_grants_v1'"
+            ).fetchone():
+                # The effective-grant precondition is not evaluated on the atomic route, so the two
+                # profiles are never combined on one database (refused in both directions).
+                conn.execute("ROLLBACK")
+                raise PermissionError("authority-effect profile cannot share an effective-grant database")
             exists = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
                 (MARKER_TABLE,),
@@ -640,7 +649,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             "target": claim.target == op.target,
             "payload_commitment": claim.payload_commitment == op.payload_commitment,
             "requested_permissions": tuple(claim.requested_permissions) == op.requested_permissions,
-            "amount": float(claim.amount) == float(op.amount),
+            "amount": exact_amount_equal(claim.amount, op.amount),
             "unit": claim.unit == op.unit,
             "effects": int(claim.effects) == int(op.effects),
             "operation_commitment": claim.operation_commitment == self._operation_commitment(snapshot),
@@ -745,6 +754,12 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             conn.execute("BEGIN IMMEDIATE")
             self._transaction_stage("after_begin")
             now = self._trusted_now()  # trusted time is evaluated after lock acquisition
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='effective_grants_v1'"
+            ).fetchone():
+                # Defence in depth: an effective-grant table created after activation is not honoured here.
+                conn.execute("ROLLBACK")
+                raise PermissionError("authority-effect profile cannot share an effective-grant database")
 
             row = conn.execute(
                 "SELECT * FROM execution_claims_v1 WHERE claim_id=?", (claim_id,)
