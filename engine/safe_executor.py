@@ -1035,6 +1035,29 @@ class LocalDestinationExecutor:
             )
         except Exception as exc:
             error = destination_error_text(exc)
+            # The error may have been raised after the durable commit. Only a validated observation of
+            # 'absent' shows that no effect row exists, which keeps the result 'failed'. Anything else
+            # (an effect row, an unknown observation, or no observation) is reported 'unknown', as on the
+            # atomic route: never failed, never retry permission.
+            try:
+                observation = self.destination.observe_bound(snapshot)
+            except Exception:
+                observation = None
+            state = observation["state"] if observation is not None else None
+            if state != "absent":
+                self.destination.transition_attempt(attempt_id, "unknown", error)
+                return ExecutionResult(
+                    "unknown",
+                    snapshot.decision_id,
+                    snapshot.effect_id,
+                    attempt_id,
+                    True,
+                    False,
+                    state if state in {"applied", "partial", "unknown"} else "unknown",
+                    False,
+                    observation=observation if state in {"applied", "partial", "unknown"} else None,
+                    error=error,
+                )
             self.destination.transition_attempt(attempt_id, "failed", error)
             return ExecutionResult(
                 "failed",
