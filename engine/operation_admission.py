@@ -46,10 +46,14 @@ class OperationAdmission:
     discriminator: OperationDiscriminator
     operation_commitment: str
     supersedes: OperationDiscriminator | None = None
+    # The grant issuer that may write renewals of this operation (operation-identity/0.1).
+    issuer: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation_commitment, str) or not self.operation_commitment.strip():
             raise ValueError("operation_commitment must be a non-empty string")
+        if self.issuer is not None and (not isinstance(self.issuer, str) or not self.issuer.strip()):
+            raise ValueError("issuer must be a non-empty string when declared")
         if self.supersedes is not None:
             if self.supersedes == self.discriminator:
                 raise ValueError("an operation cannot supersede itself")
@@ -68,6 +72,52 @@ class OperationAttempt:
     def __post_init__(self) -> None:
         if not isinstance(self.attempt_id, str) or not self.attempt_id.strip():
             raise ValueError("attempt_id must be a non-empty string")
+
+
+@dataclass(frozen=True)
+class OperationRenewal:
+    """A new grant revision that continues an admitted operation (never a new operation)."""
+
+    discriminator: OperationDiscriminator
+    to_revision: str
+    written_by: str
+
+
+@dataclass(frozen=True)
+class RenewalRefusal:
+    """Recorded when a renewal is refused, so a worker's self-extension leaves a row."""
+
+    discriminator: OperationDiscriminator
+    to_revision: str
+    written_by: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class AttemptJoin:
+    """One join record per attempt: operation, attempt and licensing journal check by id."""
+
+    discriminator: OperationDiscriminator
+    attempt_id: str
+    check_id: str
+    resolver_id: str
+    resolver_version: str
+    class_max_age: int
+    expected_effective_grant_digest: str | None = None
+    # Field only. Names the surviving operation (never an attempt id); merge logic is a later stream.
+    merged_into: OperationDiscriminator | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("attempt_id", "check_id", "resolver_id", "resolver_version"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if type(self.class_max_age) is not int or self.class_max_age < 0:
+            raise ValueError("class_max_age must be a non-negative integer")
+        if self.merged_into is not None and not isinstance(self.merged_into, OperationDiscriminator):
+            raise TypeError("merged_into must be an OperationDiscriminator, never an attempt id")
+        if self.merged_into is not None and self.merged_into == self.discriminator:
+            raise ValueError("an operation cannot be merged into itself")
 
 
 @dataclass(frozen=True)
@@ -132,6 +182,9 @@ class OperationAdmissionRegistry:
     admissions: dict[tuple[str, str, str], OperationAdmission] = field(default_factory=dict)
     attempts: dict[str, OperationAttempt] = field(default_factory=dict)
     superseded_by: dict[tuple[str, str, str], tuple[str, str, str]] = field(default_factory=dict)
+    renewals: list[OperationRenewal] = field(default_factory=list)
+    renewal_refusals: list[RenewalRefusal] = field(default_factory=list)
+    joins: dict[str, AttemptJoin] = field(default_factory=dict)
 
     def admit(self, admission: OperationAdmission) -> None:
         key = admission.discriminator.key
@@ -166,6 +219,34 @@ class OperationAdmissionRegistry:
                 raise PermissionError("attempt identity collision across operations")
             raise PermissionError("attempt identity reuse is not a new attempt")
         self.attempts[attempt.attempt_id] = attempt
+
+    def record_renewal(self, renewal: OperationRenewal) -> None:
+        """Accept a renewal only from the issuer recorded at admission; refuse and record otherwise."""
+        key = renewal.discriminator.key
+        admission = self.admissions.get(key)
+        reason = None
+        if admission is None:
+            reason = "operation_not_admitted"
+        elif key in self.superseded_by:
+            reason = "operation_superseded"
+        elif admission.issuer is None or renewal.written_by != admission.issuer:
+            reason = "renewal_not_written_by_grant_issuer"
+        if reason is not None:
+            self.renewal_refusals.append(RenewalRefusal(
+                renewal.discriminator, renewal.to_revision, renewal.written_by, reason))
+            raise PermissionError(reason)
+        self.renewals.append(renewal)
+
+    def join_attempt(self, join: AttemptJoin) -> None:
+        """Record the one join row for a registered attempt, by id."""
+        attempt = self.attempts.get(join.attempt_id)
+        if attempt is None or attempt.discriminator != join.discriminator:
+            raise PermissionError("join must reference an attempt registered under the same operation")
+        if join.attempt_id in self.joins:
+            raise PermissionError("attempt already joined")
+        if join.merged_into is not None and join.merged_into.key not in self.admissions:
+            raise PermissionError("merge must name an admitted operation id")
+        self.joins[join.attempt_id] = join
 
     def evaluate_retry(
         self,
@@ -204,10 +285,13 @@ def qualify_adapter(adapter: AdapterConformance) -> tuple[bool, tuple[str, ...]]
 __all__ = [
     "PROFILE_ID",
     "AdapterConformance",
+    "AttemptJoin",
     "OperationAdmission",
     "OperationAdmissionRegistry",
     "OperationAttempt",
     "OperationDiscriminator",
+    "OperationRenewal",
+    "RenewalRefusal",
     "RetryDecision",
     "qualify_adapter",
 ]

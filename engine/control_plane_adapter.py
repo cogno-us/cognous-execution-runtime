@@ -72,6 +72,10 @@ class ControlPlaneRefundDestinationAdapter:
     def runtime_authority_capability(self):
         return getattr(self.destination, "runtime_authority_capability", None)
 
+    @property
+    def operation_identity_capability(self):
+        return getattr(self.destination, "operation_identity_capability", None)
+
     def _check_trusted_context(self) -> None:
         op = self.snapshot.operation
         if op.institution_id != self.trusted_institution_id:
@@ -119,6 +123,7 @@ class ControlPlaneRefundDestinationAdapter:
         partial: bool = False,
         expected_effective_grant_digest: str | None = None,
         effective_grant_derivation_version: str | None = None,
+        operation_id: str | None = None,
     ) -> dict:
         self._check_trusted_context()
         op = self.snapshot.operation
@@ -141,13 +146,15 @@ class ControlPlaneRefundDestinationAdapter:
         result = self.executor.execute_snapshot(self.snapshot, simulate=simulate,
             **({"expected_effective_grant_digest":expected_effective_grant_digest,
                 "effective_grant_derivation_version":effective_grant_derivation_version}
-               if expected_effective_grant_digest is not None else {}))
+               if expected_effective_grant_digest is not None else {}),
+            **({"operation_id": operation_id} if operation_id is not None else {}))
         self.outcome.result = result
         if result.status == "denied":
             raise PermissionError(result.error or "local destination denied")
         if result.status == "failed":
             if result.error in {"effective_grant_changed_at_commit", "effective_grant_precondition_required", "atomic_authority_capability_unavailable",
-                                "effective_grant_permissions_insufficient", "effective_grant_permissions_unavailable"}:
+                                "effective_grant_permissions_insufficient", "effective_grant_permissions_unavailable",
+                                "operation_already_committed", "operation_identity_capability_unavailable"}:
                 from agent_control_plane.bounded import DefinitiveDestinationRejection
                 raise DefinitiveDestinationRejection(result.error)
             raise RuntimeError(result.error or "local destination failed")
