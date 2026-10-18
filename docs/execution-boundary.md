@@ -201,7 +201,7 @@ Recorded from V1 validation (issue #99). Neither is a change to supported behavi
   carries other content or another amount; the refusal does not distinguish them. Amount
   commitments are over canonical JSON, so the integer form of an amount issued as a float
   (`50` for `50.0`) does not match the claim and is refused; it fails closed, and
-  canonicalising amounts would change existing commitments and digests.
+  canonicalising amounts would change existing commitments and digests. Attempt events have no transition table in the runtime: `transition_attempt` inserts any status for a retained attempt in any order and the producer export checks only that an event belongs to a retained attempt; the executors emit only sequences inside the ODES executor table (`tests/test_attempt_transition_characterisation.py`).
 - **Producer export.** `export_execution_artifacts` refuses results whose status,
   `attempted`, `acknowledged`, `newly_executed` and `observed_state` contradict each
   other (for example `executed` with `attempted=false`). The export stays
