@@ -178,6 +178,17 @@ Recorded from V1 validation (issue #99). Neither is a change to supported behavi
   one principal: `set_effective_grant` refuses to bind an existing grant id to a
   different principal, and the refund-intent profile refuses tenant-scoped operations
   (`op.tenant_id` set). Tenant-scoped keys are deferred to the first contract freeze.
+- **Evidence rows are keyed by obligation id alone.** On the atomic authority/effect
+  destination, `authority_evidence_v1` has no tenant column and the obligation id is
+  supplied by the caller (a static string in the requirement). Two tenants that share
+  one engine database and one obligation id share one evidence row: an identical
+  evidence tuple from a second tenant is reused, a differing tuple is refused at
+  provisioning, and a refresh, stale mark or removal of the row applies to every tenant
+  that names the obligation id. The claim does not carry a tenant for evidence items.
+  Deployment rule: use one engine database per tenant, or tenant-unique obligation ids.
+  Keying evidence by tenant is deferred to the first contract freeze;
+  `tests/test_evidence_tenant_known_limit.py` pins the current behaviour so a change is
+  deliberate.
 - **Amounts.** Amounts are exact: integers must be plain `int` with absolute value at
   most 2**53, floats must be finite and non-negative, and comparisons between claim
   and operation amounts are exact, not binary64 conversions.
