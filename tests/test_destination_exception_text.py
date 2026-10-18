@@ -117,6 +117,10 @@ class AtomicRaises(DurableRefundDestination):
     def execute_claim_atomic(self, claim_id, snapshot, *, attempt_id, simulate=None):
         raise self.exc
 
+    def reconcile_claim(self, claim_id, snapshot):
+        # A pre-commit failure: reconciliation establishes no durable effect and an unconsumed claim.
+        return {"status": "hold", "claim_state": "issued", "retry_eligible": False, "reason": "no_durable_effect_for_claim"}
+
 
 def run_atomic(tmp_path, exc):
     op = operation()

@@ -61,9 +61,13 @@ def test_lost_ack_keeps_its_reason_code(tmp_path):
     assert dest.failure_history("effect-1")[0]["reason_code"] == "acknowledgement_unavailable"
 
 
+NO_DURABLE_EFFECT = {"status": "hold", "claim_state": "issued", "retry_eligible": False, "reason": "no_durable_effect_for_claim"}
+
+
 @pytest.mark.parametrize("exc,reason", [(PermissionError("execution claim is not usable"), "current_authority_rejected"),
                                         (RuntimeError("boom before commit"), "dispatch_exception")])
 def test_pre_commit_failures_remain_denied(tmp_path, exc, reason):
-    dest, result = _run(tmp_path, raises=exc)
+    # A non-Timeout error stays a refusal only when reconciliation establishes no durable effect and an unconsumed claim.
+    dest, result = _run(tmp_path, raises=exc, reconcile=NO_DURABLE_EFFECT)
     assert (result.status, result.attempted) == ("denied", False)
     assert dest.failure_history("effect-1")[0]["reason_code"] == reason

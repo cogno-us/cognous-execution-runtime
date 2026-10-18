@@ -97,38 +97,13 @@ class AtomicLocalControlPlaneExecutor:
             value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, **operation_kwargs)
         except TimeoutError as exc:
             from engine.local_authority_effect import PostCommitObservationUnavailable
-            try:
-                recovery = self.destination.reconcile_claim(claim_id, snapshot)
-            except Exception:
-                # Effect state stays unresolved; never downgrade a possible effect to a refusal.
-                recovery = {"status": "unknown", "retry_eligible": False, "reason": "reconciliation_unavailable"}
-            failure_id = self.destination.record_failure(
-                snapshot,
-                failure_class="dispatch_error",
+            return self._unresolved(
+                snapshot, claim_id, attempt_id, exc,
                 reason_code=(
                     "post_commit_observation_unavailable"
                     if isinstance(exc, PostCommitObservationUnavailable)
                     else "acknowledgement_unavailable"
                 ),
-                stage="post_dispatch",
-                attempt_id=attempt_id,
-                detail=str(exc),
-            )
-            return ExecutionResult(
-                status="unknown",
-                decision_id=snapshot.decision_id,
-                effect_id=snapshot.effect_id,
-                attempt_id=attempt_id,
-                attempted=True,
-                acknowledged=False,
-                observed_state=recovery["status"] if recovery["status"] in {"applied","partial"} else "unknown",
-                newly_executed=False,
-                observation=recovery,
-                error=str(exc),
-                control_plane_evidence={
-                    "failure_record_id": failure_id,
-                    "failure_class": "dispatch_error",
-                },
             )
         except PermissionError as exc:
             return self._denied(
@@ -138,14 +113,62 @@ class AtomicLocalControlPlaneExecutor:
                 reason_code="current_authority_rejected",
             )
         except Exception as exc:
-            return self._denied(
-                snapshot,
-                destination_error_text(exc),
-                failure_class="dispatch_error",
-                reason_code="dispatch_exception",
-            )
+            # An error here may come after the durable commit (the destination cannot always say). Only a
+            # reconciliation that establishes no durable effect and an unconsumed claim keeps it a pre-dispatch refusal.
+            try:
+                recovery = self.destination.reconcile_claim(claim_id, snapshot)
+            except Exception:
+                recovery = None
+            if (isinstance(recovery, dict) and recovery.get("status") == "hold"
+                    and recovery.get("reason") == "no_durable_effect_for_claim"
+                    and recovery.get("claim_state") == "issued"):
+                return self._denied(
+                    snapshot,
+                    destination_error_text(exc),
+                    failure_class="dispatch_error",
+                    reason_code="dispatch_exception",
+                )
+            return self._unresolved(snapshot, claim_id, attempt_id, exc, reason_code="dispatch_outcome_unresolved",
+                                    recovery=recovery if isinstance(recovery, dict) else None, detail=destination_error_text(exc))
         observation = value["observation"]
         return ExecutionResult(status="partial" if observation["state"] == "partial" else "executed", decision_id=snapshot.decision_id, effect_id=snapshot.effect_id, attempt_id=attempt_id, attempted=True, acknowledged=True, observed_state=observation["state"], newly_executed=True, observation=copy.deepcopy(observation), control_plane_evidence={"local_authority_effect_profile":PROFILE,"claim_id":claim_id,"linearized_at":value["linearized_at"],"authority_receipt":copy.deepcopy(value["authority_receipt"])})
+
+    def _unresolved(self, snapshot: FrozenEnvelope, claim_id: str, attempt_id: str, exc: Exception, *, reason_code: str,
+                    recovery: dict | None = None, detail: str | None = None) -> ExecutionResult:
+        """Report a possibly committed effect as ``unknown``; never as a refusal and never as retryable."""
+        if recovery is None:
+            try:
+                recovery = self.destination.reconcile_claim(claim_id, snapshot)
+            except Exception:
+                # Effect state stays unresolved; never downgrade a possible effect to a refusal.
+                recovery = {"status": "unknown", "retry_eligible": False, "reason": "reconciliation_unavailable"}
+        if recovery.get("retry_eligible"):
+            recovery = {**recovery, "retry_eligible": False}
+        evidence = {"failure_record_id": None, "failure_class": "dispatch_error"}
+        try:
+            evidence["failure_record_id"] = self.destination.record_failure(
+                snapshot,
+                failure_class="dispatch_error",
+                reason_code=reason_code,
+                stage="post_dispatch",
+                attempt_id=attempt_id,
+                detail=detail if detail is not None else str(exc),
+            )
+        except Exception:
+            evidence["failure_record_unavailable"] = True
+        return ExecutionResult(
+            status="unknown",
+            decision_id=snapshot.decision_id,
+            effect_id=snapshot.effect_id,
+            attempt_id=attempt_id,
+            attempted=True,
+            acknowledged=False,
+            observed_state=recovery["status"] if recovery["status"] in {"applied","partial"} else "unknown",
+            newly_executed=False,
+            observation=recovery,
+            error=str(exc) if detail is None else detail,
+            control_plane_evidence=evidence,
+        )
 
     def reconcile(self, *, claim_id: str, envelope: ExecutionEnvelope) -> ExecutionResult:
         from .safe_executor import snapshot_or_record_rejection
