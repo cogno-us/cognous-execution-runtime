@@ -83,7 +83,7 @@ Each destination submission gets a durable attempt identity. Attempt rows are im
 
 SQLite `BEGIN IMMEDIATE` serializes effect deduplication, content binding and cumulative local effect-count checks for processes sharing one database file. The test suite exercises **separate processes**, not only threads.
 
-A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state when it surfaces as a `TimeoutError` or on the atomic route; on route A any other exception after the commit is currently reported `failed` although the effect may exist (see docs/execution-boundary.md). Partial delivery remains partial/held rather than being blindly re-applied.
+A duplicate same-operation delivery is observed/reconciled and reports `newly_executed=false`. A conflicting operation under the same effect ID is rejected. Lost acknowledgement after durable commit remains `unknown` until observation establishes destination state when it surfaces as a `TimeoutError` or on the atomic route; on route A any other exception from the commit call reports `unknown` unless an observation shows no effect row (then `failed`) (see docs/execution-boundary.md). Partial delivery remains partial/held rather than being blindly re-applied.
 
 Historical observation is available without renewing authority, but observation alone cannot authorize a new execution.
 
