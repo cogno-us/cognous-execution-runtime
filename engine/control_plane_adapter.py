@@ -314,6 +314,11 @@ class PinnedControlPlaneExecutor:
             **({"runtime_authority_profile":self.workflow.runtime_authority_profile,
                 "allow_test_time":self.workflow.allow_test_time}
                if getattr(self.workflow, "runtime_authority_profile", None) else {}),
+            # freshness/0.1 only: age extensions are authorised by the rule-revision signer set, so the per-call workflow view
+            # must see the host's configured set. Forwarded only when the freshness profile is on (nothing else changes).
+            **({"rule_revision_profile": self.workflow.rule_revision_profile}
+               if getattr(getattr(self.workflow, "runtime_authority_profile", None), "freshness", None) is not None
+               and getattr(self.workflow, "rule_revision_profile", None) is not None else {}),
         )
         kwargs = {
             "proposal": proposal,
