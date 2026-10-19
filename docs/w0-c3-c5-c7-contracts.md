@@ -4,7 +4,7 @@ Status: W0 candidate contract. Contract definitions only; no downstream W2/W6 be
 
 ## Baseline
 Inspected runtime main: `489875c98a3592c0ebe0f939b6466cbd2447acd1`.
-The selected hub pin remains `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`; W0 does not advance it.
+At the time of this W0 page the selected hub pin was `c3c3ee7188b9367cf70b08074b9c40a5c70c94ac`; W0 does not advance it.
 
 ## C3 capability/profile identity
 A protected optional profile declares:

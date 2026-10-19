@@ -37,7 +37,7 @@ Cognous Execution Runtime provides the **single-agent constrained execution boun
 
 <!-- stack-map:start -->
 <!-- Canonical block: identical text in every component README. Source: docs/stack-map.md in the hub. Refresh at the pin round. -->
-The Open Control Stack groups its repositories by responsibility. The groups are a navigation map, not an execution sequence and not a requirement to install every component. The hub [component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) is the only source of selected revisions; [release status](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) states their evidence and limits. Last checked against `component-lock.json` at hub commit `dcc9bd7533ef`.
+The Open Control Stack groups its repositories by responsibility. The groups are a navigation map, not an execution sequence and not a requirement to install every component. The hub [component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) is the only source of selected revisions; [release status](https://github.com/cogno-us/cognous-open-control-stack/blob/main/docs/release-status.md) states their evidence and limits. The component revisions selected for the stack are listed in the hub's `component-lock.json`; this repository does not record which hub commit it was last checked against.
 
 | Group | Members |
 | --- | --- |
@@ -148,11 +148,11 @@ The [documentation index](docs/README.md) lists every page in this repository by
 
 ## Compatibility and selection
 
-Use the [current hub component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) to identify the selected revision; it pins this repository at `c3c3ee7188b9` (Execution Envelope 0.2.0; executor producer profile 2.0.0; OpenShell adapter 0.1.0), and `main` is ahead of it. <!-- pin-round: refresh the lock revision here -->  Optional profiles in this repository are not automatically selected or enabled by the hub. Source acceptance, selection and deployment approval remain separate decisions.
+Use the [current hub component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) to identify the selected revision; it records the selected revision of this repository (Execution Envelope 0.2.0; executor producer profile 2.0.0; OpenShell adapter 0.1.0). Optional profiles in this repository are not automatically selected or enabled by the hub. Source acceptance, selection and deployment approval remain separate decisions.
 
 The [current component lock](https://github.com/cogno-us/cognous-open-control-stack/blob/main/component-lock.json) defines the selected integration. The public `engine.producer_contract` exports executor producer profile **2.0.0** and Execution Envelope **0.2.0**, retaining results, effects, attempts, events and observations. Exports do not grant authority. See [the producer contract](docs/executor-producer-profile.md).
 
-This repository's Python CI pins a Control Plane revision (`2ea9528eeb87e14ff10f05de06473122b9df540f`, also named in the [execution boundary](docs/execution-boundary.md)) that is different from the one the lock selects. Neither pin should be silently substituted for the other. <!-- pin-round: refresh the Control Plane revision here -->
+This repository's Python CI pins a Control Plane revision (`2ea9528eeb87e14ff10f05de06473122b9df540f`, also named in the [execution boundary](docs/execution-boundary.md)) that is different from the one the lock selects. Neither pin should be silently substituted for the other.
 
 ### Execution Envelope 0.2.0
 
@@ -206,7 +206,7 @@ python -m pip install pytest==8.3.5 pydantic==2.11.9
 PYTHONPATH=. python -m pytest -q tests
 ```
 
-   Expected: `476 passed, 33 skipped`.
+   Expected: the suite passes.
 
 2. **With the pinned siblings** (the assembly the repository's cross-component CI job uses; about two minutes). `pinned/` is not part of the repository: these commands create it, git does not ignore it, and you can delete it when done:
 
@@ -222,11 +222,11 @@ MOLTBOT_SAFE_MANIFEST_FIXTURE="pinned/action-manifest/examples/refund_integratio
 python -m pytest -q tests
 ```
 
-   Expected: `476 passed, 33 skipped`. At this Control Plane revision the 33 skips remain, because it predates the local-authority-effect contract. <!-- pin-round: refresh the two pinned revisions and the counts here -->
+   Expected: the suite passes. Tests that need the local-authority-effect contract remain skipped at this Control Plane revision, because it predates that contract.
 
-3. **Atomic-route tests included**: use a Control Plane revision that contains the local-authority-effect contract, for example `6093aca7`, instead of the checkout line above for the Control Plane (`git -C pinned/control-plane checkout 6093aca7`) and run the same pytest command. Expected: `509 passed, 0 skipped` (65 deprecation warnings from a third-party model library are normal). The repository's CI does not currently run this variant, so these tests are covered locally only. <!-- pin-round: refresh this revision and count here -->
+3. **Atomic-route tests included**: use a Control Plane revision that contains the local-authority-effect contract (see the hub lock for a selected revision), instead of the checkout line above for the Control Plane (`git -C pinned/control-plane checkout <revision>`) and run the same pytest command. Expected: the suite passes with no skips from that contract (deprecation warnings from a third-party model library are normal). The repository's CI does not currently run this variant, so these tests are covered locally only.
 
-The counts above were measured on Linux with Python 3.13 at the time of writing; they change when tests are added. Under heavy machine load two mutation tests in `tests/test_recovery_resolution_mutations.py` have been seen to fail on a first run and pass when rerun alone.
+Test counts change when tests are added, so none are stated here. Under heavy machine load two mutation tests in `tests/test_recovery_resolution_mutations.py` have been seen to fail on a first run and pass when rerun alone.
 
 Syntax check of the optional OpenShell helpers: `python -m compileall -q engine examples/openshell`.
 
