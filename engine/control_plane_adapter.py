@@ -388,14 +388,20 @@ class PinnedControlPlaneExecutor:
         elif status == "unknown" and state in {"applied", "partial"}:
             # Lifecycle contract: 'unknown' never carries a validated applied/partial observation;
             # a validated absent/unknown observation is carried (decision 14), observed_state equal to its state.
+            # (Status failed and denied are the exception: see below.)
             status = "reconciled" if state == "applied" else "partial"
         # Keep the attempt's terminal event in agreement with the reported status.
         if (local is not None and local.attempt_id is not None and status != local.status
                 and status in {"unknown", "reconciled", "partial"}):
             self.destination.transition_attempt(local.attempt_id, status, local.error)
         observation = None
-        if cp_observation is not None:
+        if cp_observation is not None and status not in {"failed", "denied"}:
             observation = cp_observation.model_dump(mode="json", exclude_none=False)
+        if status in {"failed", "denied"}:
+            # Lifecycle contract: denied and failed carry no acknowledgement, no fresh execution and
+            # observed_state 'unknown', and no observed effect. The validated reconciliation record stays
+            # in control_plane_evidence (it is retained, not hidden); it is not attached as the result's observation.
+            state = "unknown"
         return ExecutionResult(
             status=status,
             decision_id=snapshot.decision_id,

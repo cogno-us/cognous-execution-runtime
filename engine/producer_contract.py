@@ -191,7 +191,7 @@ def _validate_retained_bindings(
         accepted = reconciliation.get("observation_accepted") is True
         if observation and (not accepted or reconciliation.get("observation") != observation):
             raise ValueError("rejected or substituted observation cannot enter accepted claims")
-        if not observation and accepted and result.status != "denied":
+        if not observation and accepted and result.status not in {"denied", "failed"}:
             raise ValueError("accepted Control Plane observation missing from result")
         if not accepted and result.observed_state != "unknown":
             raise ValueError("rejected observation cannot establish observed state")
