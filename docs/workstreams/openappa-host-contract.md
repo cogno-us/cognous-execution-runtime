@@ -6,6 +6,8 @@ This document specifies candidate implementation requirements. Merging it does
 not accept a deployment host, enable enforcement, or qualify production coverage.
 See the [current status](https://github.com/cogno-us/cognous-stack-qualification/blob/43fb81dc3ec0da17402bef274dcec1831cc5e160/suites/cognous-execution-runtime/tools/openappa/README.md) for executed evidence.
 
+Source-file links in this page point to the quarantine tag `upstream-moltbot-quarantine-20261016`: the upstream application they describe is not on `main` (see the [quarantine record](../quarantine-upstream-moltbot-20261016.md)).
+
 ## First bounded host profile
 
 Propose an opt-in Linux, single trusted host profile, building on
@@ -77,14 +79,14 @@ files inspected at the source revision above.
 
 | Surface and source | Observed behavior | Required candidate control |
 | --- | --- | --- |
-| [Native tool adapter](../../src/agents/pi-tool-definition-adapter.ts), `toToolDefinitions` | Calls `tool.execute`; converts many tool errors into result objects | Await admission before execution; carry explicit refusal separately from ordinary tool errors; result reporting cannot authorize another attempt |
+| [Native tool adapter](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/agents/pi-tool-definition-adapter.ts), `toToolDefinitions` | Calls `tool.execute`; converts many tool errors into result objects | Await admission before execution; carry explicit refusal separately from ordinary tool errors; result reporting cannot authorize another attempt |
 | Client tools in the same adapter, `toClientToolDefinitions` | Invokes `onClientToolCall` and returns a pending result for client execution | Treat delegation as an egress boundary; no claim of governing the remote effect without an accepted client contract; disable delegation in the first profile unless qualified |
-| [Reply dispatcher](../../src/auto-reply/reply/reply-dispatcher.ts) | Queues tool/block/final replies and later invokes `options.deliver`; errors reach `onError` | Check at actual delivery, bind dispatch kind and destination, and retain refusal distinct from queue acceptance or idle status |
-| [Outbound delivery](../../src/infra/outbound/deliver.ts) | Normalizes payloads, chunks text, sends channel payloads/media, and supports best-effort handling | Bind the concrete transport representation; cover text, media and channel-specific payloads; best-effort mode cannot convert admission refusal into permission |
-| [Telegram delivery](../../src/telegram/bot/delivery.ts) | Calls the channel API, including formatted-text and fallback sends | Cover direct channel paths and fallback content; a common outbound helper alone is not proof of coverage |
-| [Assistant streaming](../../src/agents/pi-embedded-subscribe.handlers.messages.ts) and [gateway chat](../../src/gateway/server-chat.ts) | Emits assistant events/partial callbacks; gateway sends chat deltas and final events | Gate before externally visible emission, including gateway clients; a final-message check cannot retract an earlier disclosure |
-| [Tool-result persistence wrapper](../../src/agents/session-tool-result-guard-wrapper.ts) | Applies `tool_result_persist` transforms when configured | Treat persistence and subsequent reads as separate policy surfaces; a persistence hook is not a pre-execution or network-egress gate |
-| [Plugin hook runner](../../src/plugins/hooks.ts) | Defines tool/message hooks; defaults to catching/logging hook errors | Do not use optional best-effort hook execution as the sole mandatory enforcement boundary |
+| [Reply dispatcher](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/auto-reply/reply/reply-dispatcher.ts) | Queues tool/block/final replies and later invokes `options.deliver`; errors reach `onError` | Check at actual delivery, bind dispatch kind and destination, and retain refusal distinct from queue acceptance or idle status |
+| [Outbound delivery](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/infra/outbound/deliver.ts) | Normalizes payloads, chunks text, sends channel payloads/media, and supports best-effort handling | Bind the concrete transport representation; cover text, media and channel-specific payloads; best-effort mode cannot convert admission refusal into permission |
+| [Telegram delivery](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/telegram/bot/delivery.ts) | Calls the channel API, including formatted-text and fallback sends | Cover direct channel paths and fallback content; a common outbound helper alone is not proof of coverage |
+| [Assistant streaming](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/agents/pi-embedded-subscribe.handlers.messages.ts) and [gateway chat](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/gateway/server-chat.ts) | Emits assistant events/partial callbacks; gateway sends chat deltas and final events | Gate before externally visible emission, including gateway clients; a final-message check cannot retract an earlier disclosure |
+| [Tool-result persistence wrapper](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/agents/session-tool-result-guard-wrapper.ts) | Applies `tool_result_persist` transforms when configured | Treat persistence and subsequent reads as separate policy surfaces; a persistence hook is not a pre-execution or network-egress gate |
+| [Plugin hook runner](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/plugins/hooks.ts) | Defines tool/message hooks; defaults to catching/logging hook errors | Do not use optional best-effort hook execution as the sole mandatory enforcement boundary |
 
 A symbol search of production `src` for `runBeforeToolCall`, `runAfterToolCall`,
 `runMessageSending` and `runMessageSent` found definitions/exports in the hook
@@ -139,7 +141,7 @@ optional same-host C1, no C2/C3, no real settlement and operational #30 HOLD.
 
 ## Bounded implementation follow-up
 
-The [optional final-text dispatcher gate](/workstreams/openappa-reply-admission) implements
+The [optional final-text dispatcher gate](openappa-reply-admission.md) implements
 one admission interface and tests the actual queue's delivery-callback boundary.
 The synthetic fixture now uses actual pinned OpenAPPA policy and explicit
 ToolResult feedback, with persisted-audit checks for lost receipts and duplicate
@@ -160,10 +162,10 @@ direction. This inspection does not select a deployed service, OS account,
 recipient, credential or production route. It identifies why connecting the
 existing dispatcher alone would not complete a gateway integration.
 
-The [gateway chat methods](../../src/gateway/server-methods/chat.ts) construct a
+The [gateway chat methods](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/gateway/server-methods/chat.ts) construct a
 reply dispatcher whose delivery callback collects final text. They pass
 `disableBlockStreaming: true` to the reply resolver. Separately, the
-[gateway event handler](../../src/gateway/server-chat.ts) publishes agent events,
+[gateway event handler](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/gateway/server-chat.ts) publishes agent events,
 chat deltas and lifecycle-driven final/error messages. The block-streaming flag
 therefore does not establish an all-output buffering boundary.
 
@@ -175,7 +177,7 @@ therefore does not establish an all-output buffering boundary.
 | History | The history method reads, strips envelopes and byte-caps transcript messages before returning them | Disable history in the initial profile or apply an accepted historical-disclosure policy; a prior live-send decision is not automatic permission to disclose history |
 | Injection and errors | Injection writes assistant transcript content; chat methods and event handling have error-response paths outside the final-text callback | Exclude injection until separately governed; use bounded, approved error content and cover direct responses as well as broadcasts |
 
-[Gateway method authorization](../../src/gateway/server-methods.ts) already
+[Gateway method authorization](https://github.com/cogno-us/cognous-execution-runtime/blob/upstream-moltbot-quarantine-20261016/src/gateway/server-methods.ts) already
 checks client roles and scopes. This inventory does not claim those checks are
 absent or bypassed. Their existence does not establish the proposed Linux
 kernel-UID enrollment, tenant/root binding or OpenAPPA output-admission contract.
