@@ -28,7 +28,7 @@
   "$defs": {
     "extensions": {
       "type": "object",
-      "propertyNames": {"pattern": "^x-[a-z0-9][a-z0-9._-]*$"}
+      "propertyNames": {"pattern": "^x-[a-z0-9][a-z0-9._-]*(?!\\n)$"}
     },
     "executor_attempt": {
       "type": "object",
@@ -133,7 +133,7 @@
         "input_id": {"type": "string", "minLength": 1},
         "expected": {"type": "object", "additionalProperties": {"type": "string"}},
         "observed": {"type": "object", "additionalProperties": {"type": "string"}},
-        "record_commitment": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "record_commitment": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}(?!\\n)$"},
         "missing": {"type": "boolean"},
         "previous_observed_at": {"type": ["string", "null"]},
         "read_state": {"enum": ["unreadable", "cached_positive", null]},
@@ -150,7 +150,7 @@
         "stage": {"enum": ["decision", "effect", "claim"]},
         "recorded_at": {"type": "string"},
         "owner": {"type": "object", "additionalProperties": {"type": "string"}},
-        "proposal_commitment": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "proposal_commitment": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}(?!\\n)$"},
         "decision_id": {"type": ["string", "null"]},
         "effect_id": {"type": ["string", "null"]},
         "action_class": {"type": "object"},

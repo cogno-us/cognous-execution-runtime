@@ -1,0 +1,48 @@
+{
+  "fixture_id": "executor-failed-after-executed",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "A 'failed' event follows 'executed': an executed attempt is closed except for 'reconciled'.",
+  "expected_refusal": "attempt_transition",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1001.0
+      },
+      {
+        "event_id": 3,
+        "attempt_id": "syn-attempt-1",
+        "status": "failed",
+        "error": "syn-error",
+        "created_at": 1002.0
+      }
+    ],
+    "execution_result": {
+      "status": "failed",
+      "attempt_id": "syn-attempt-1",
+      "observed_state": "unknown",
+      "observation": null
+    }
+  }
+}

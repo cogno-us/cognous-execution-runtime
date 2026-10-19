@@ -1,7 +1,7 @@
 # Contract conformance: execution-attempt lifecycle (producer)
 
 - Contract: `execution-attempt-lifecycle`, version `0.1.0-draft` (a draft, not frozen; any change may break).
-- Source: ODES `cogno-us/open-decision-evidence-standard` at commit `a9db024c6f346f741a9963552e559476fdfc4189` (PR #62 `7bd46197` plus a docs fix; owner decisions 13-17 of the decision log, section 12 of `ODES-INTERCOMPONENT-CONTRACTS.md`), vendored in `tests/contracts/execution-attempt-lifecycle/` (`CONTRACT.json` lists the SHA-256 of every file).
+- Source: ODES `cogno-us/open-decision-evidence-standard` at commit `e5fe3822a2d3c3f6885fd61acccb4bb6281041be` (refreshed from `a9db024c`, which carried owner decisions 13-17 of the decision log, section 12 of `ODES-INTERCOMPONENT-CONTRACTS.md`), vendored in `tests/contracts/execution-attempt-lifecycle/` (`CONTRACT.json` lists the SHA-256 of every file).
 - Role: producer (`runtime-executor`). Tracking: `cogno-us/cognous-control-plane#38`, steps P2 and P3.
 - Test: `tests/test_contract_lifecycle_conformance.py`. P3 changed `engine/` to conform (see Findings).
 
@@ -70,4 +70,4 @@ python contracts/tools/vendor_contract.py copy --contract execution-attempt-life
   --dest <runtime>/tests/contracts/execution-attempt-lifecycle --role producer --level P --odes-commit <full sha>
 ```
 
-Last refresh: ODES `a9db024c` (draft decisions 13-17: strict null-observation rule `null_observation_state_mismatch`, `unknown` may carry validated `absent`/`unknown`, no `{}` observation, mixed layout refused). Never edit vendored files by hand (the drift test fails). After a refresh, rerun `PYTHONPATH=.:src python -m pytest -q tests`, review any strict xfail that now passes (remove its xfail and update the table above), and update the version and commit in this document.
+Last refresh: ODES `e5fe3822` (24 files added: fixtures for attempt identity, result and observation naming, state matrix, digest and text edge cases, a journal refusal case; `validate.py`, `schema.json` and `README.md` updated; label stays `0.1.0-draft`; no runtime change needed, the full suite passes unchanged). Previous refresh: ODES `a9db024c` (draft decisions 13-17: strict null-observation rule `null_observation_state_mismatch`, `unknown` may carry validated `absent`/`unknown`, no `{}` observation, mixed layout refused). Never edit vendored files by hand (the drift test fails). After a refresh, rerun `PYTHONPATH=.:src python -m pytest -q tests`, review any strict xfail that now passes (remove its xfail and update the table above), and update the version and commit in this document.

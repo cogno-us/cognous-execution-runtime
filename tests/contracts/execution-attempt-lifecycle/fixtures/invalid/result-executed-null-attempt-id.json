@@ -1,0 +1,49 @@
+{
+  "fixture_id": "result-executed-null-attempt-id",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "A 'executed' result claims an attempt but carries a null attempt_id, so it names no attempt row.",
+  "expected_refusal": "result_attempt_unresolved",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1"
+      }
+    ],
+    "attempt_events": [
+      {
+        "event_id": 1,
+        "attempt_id": "syn-attempt-1",
+        "status": "attempted",
+        "error": null,
+        "created_at": 1000.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-attempt-1",
+        "status": "executed",
+        "error": null,
+        "created_at": 1001.0
+      }
+    ],
+    "execution_result": {
+      "status": "executed",
+      "attempt_id": null,
+      "observed_state": "applied",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "applied",
+        "observed_at": "2026-01-01T00:00:05Z"
+      },
+      "attempted": true,
+      "acknowledged": true,
+      "newly_executed": true,
+      "error": null
+    }
+  }
+}
