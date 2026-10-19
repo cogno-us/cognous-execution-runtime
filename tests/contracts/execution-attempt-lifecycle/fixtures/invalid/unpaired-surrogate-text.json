@@ -1,0 +1,44 @@
+{
+  "fixture_id": "unpaired-surrogate-text",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "A text member holding an unpaired surrogate code point is refused as a typed violation, never evaluated.",
+  "expected_refusal": "schema_violation",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "control-plane\ud800",
+    "control_plane_attempts": [
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "attempted",
+        "acknowledgement": {},
+        "error": null,
+        "extensions": {
+          "x-syn-vendor.trace": {
+            "span": "abc"
+          }
+        }
+      },
+      {
+        "attempt_id": "syn-attempt-1",
+        "effect_id": "syn-effect-1",
+        "decision_id": "syn-decision-1",
+        "started_at": "2026-01-01T00:00:00Z",
+        "time_source": "test_override",
+        "status": "acknowledged",
+        "acknowledgement": {},
+        "error": null,
+        "extensions": {
+          "x-syn-vendor.trace": {
+            "span": "abc"
+          }
+        }
+      }
+    ]
+  }
+}

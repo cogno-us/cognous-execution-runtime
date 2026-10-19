@@ -15,8 +15,11 @@ strings; a fixture states which code it expects.
 from __future__ import annotations
 
 import json
+import math
 import re
+import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +34,124 @@ class Violation:
     code: str
     path: str
     message: str
+
+
+# --------------------------------------------------------------------------- input hardening
+
+class InputRefused(ValueError):
+    """The input file is not a strict JSON document (duplicate member, non-finite number, bad encoding)."""
+
+
+_TIME_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])")
+
+
+def _pattern_ok(pattern: str, value: str) -> bool:
+    """A schema pattern matches the whole string: ``^`` and ``$`` are anchors, never "before a trailing newline"."""
+    body = pattern[1:] if pattern.startswith("^") else pattern
+    if body.endswith("$") and not body.endswith("\\$"):
+        body = body[:-1]
+    return re.fullmatch(body, value, re.ASCII) is not None
+
+
+def _printable(text: str) -> str:
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
+def _scan_input(value: Any, root: str = "$") -> list[Violation]:
+    """Refuse non-finite numbers and text that is not valid Unicode before any rule reads the document."""
+    out: list[Violation] = []
+    todo = [(value, root)]
+    while todo:
+        item, path = todo.pop()
+        if isinstance(item, float) and not math.isfinite(item):
+            out.append(Violation("schema_violation", path, "non-finite numbers (NaN, Infinity) are refused"))
+        elif isinstance(item, str):
+            try:
+                item.encode("utf-8")
+            except UnicodeEncodeError:
+                out.append(Violation("schema_violation", path, "text is not valid Unicode (unpaired surrogate)"))
+        elif isinstance(item, dict):
+            for key, member in reversed(list(item.items())):
+                if isinstance(key, str):
+                    try:
+                        key.encode("utf-8")
+                    except UnicodeEncodeError:
+                        out.append(Violation("schema_violation", f"{path}.{_printable(key)}",
+                                             "member name is not valid Unicode (unpaired surrogate)"))
+                todo.append((member, f"{path}.{_printable(str(key))}"))
+        elif isinstance(item, list):
+            for i in range(len(item) - 1, -1, -1):
+                todo.append((item[i], f"{path}[{i}]"))
+    return out
+
+
+def _guarded(fn):
+    """Wrap ``validate`` so a document can only be accepted or refused with typed violations, never raise."""
+    def validate(doc: Any, *args: Any, **kwargs: Any) -> list[Violation]:
+        found = _scan_input(doc)
+        for n, extra in enumerate(list(args) + list(kwargs.values()), 1):
+            if isinstance(extra, (dict, list)):
+                found.extend(_scan_input(extra, f"$input{n}"))
+        if found:
+            return found
+        try:
+            return fn(doc, *args, **kwargs)
+        except (UnicodeError, ArithmeticError, ValueError, RecursionError) as exc:
+            return [Violation("schema_violation", "$", f"the document could not be evaluated ({type(exc).__name__})")]
+    validate.__doc__ = fn.__doc__
+    validate.__name__ = "validate"
+    return validate
+
+
+def _refuse_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise InputRefused(f"duplicate member name {_printable(key)!r}")
+        seen[key] = value
+    return seen
+
+
+def _refuse_constant(name: str) -> Any:
+    raise InputRefused(f"non-finite number {name} is not JSON")
+
+
+def _parse_float(text: str) -> float:
+    number = float(text)
+    if not math.isfinite(number):
+        raise InputRefused("number outside the finite range")
+    return number
+
+
+def strict_loads(text: str) -> Any:
+    """Strict JSON: no duplicate members, no NaN or Infinity (also by overflow), UTF-8 text only."""
+    try:
+        return json.loads(text, object_pairs_hook=_refuse_duplicates, parse_constant=_refuse_constant,
+                          parse_float=_parse_float)
+    except RecursionError as exc:
+        raise InputRefused("nesting too deep") from exc
+
+
+def load_strict_json(path: Path) -> Any:
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise InputRefused("file is not UTF-8") from exc
+    try:
+        return strict_loads(text)
+    except InputRefused:
+        raise
+    except ValueError as exc:
+        raise InputRefused(f"file is not valid JSON ({type(exc).__name__})") from exc
+
+
+def _after(start: datetime, seconds: Any) -> datetime | None:
+    """``start`` plus ``seconds``; None when the sum is outside the representable range."""
+    try:
+        return start + timedelta(seconds=seconds)
+    except (OverflowError, ValueError):
+        return None
+
 
 
 def load_schema() -> dict[str, Any]:
@@ -71,7 +192,7 @@ def _resolve(schema: dict[str, Any], root: dict[str, Any]) -> dict[str, Any]:
 
 def _check(value: Any, schema: dict[str, Any], root: dict[str, Any], path: str, out: list[Violation]) -> None:
     schema = _resolve(schema, root)
-    if "const" in schema and value != schema["const"]:
+    if "const" in schema and not (type(value) is type(schema["const"]) and value == schema["const"]):
         out.append(Violation("schema_violation", path, f"expected constant {schema['const']!r}"))
         return
     if "enum" in schema and not any(value == option and type(value) is type(option) for option in schema["enum"]):
@@ -106,7 +227,7 @@ def _check(value: Any, schema: dict[str, Any], root: dict[str, Any], path: str, 
     if isinstance(value, str):
         if "minLength" in schema and len(value) < schema["minLength"]:
             out.append(Violation("schema_violation", path, "string shorter than minimum length"))
-        if "pattern" in schema and not re.search(schema["pattern"], value):
+        if "pattern" in schema and not _pattern_ok(schema["pattern"], value):
             out.append(Violation("schema_violation", path, f"string does not match {schema['pattern']}"))
     if isinstance(value, list) and "items" in schema:
         for i, item in enumerate(value):
@@ -219,6 +340,14 @@ def _executor_rules(doc: dict[str, Any]) -> list[Violation]:
         if any(e["status"] == "attempted" for e in seq[1:]):
             out.append(Violation("repeated_start_event", "$.attempt_events",
                                  f"attempt {aid} repeats its 'attempted' event"))
+        if seq[0]["status"] == "attempted":
+            for prev, nxt in zip(seq, seq[1:]):
+                if nxt["status"] == "attempted":
+                    continue
+                if nxt["status"] not in EXECUTOR_TRANSITIONS.get(prev["status"], frozenset()):
+                    out.append(Violation("attempt_transition", "$.attempt_events",
+                                         f"attempt {aid}: event {nxt['status']!r} may not follow {prev['status']!r}"))
+                    break
     result = doc.get("execution_result")
     if result is None:
         return out
@@ -277,6 +406,11 @@ def _executor_rules(doc: dict[str, Any]) -> list[Violation]:
                                  + ("" if kind == "validated" else
                                     "; 'applied'/'partial' is only what recovery reports, and 'unknown' otherwise")))
             return out
+    if result["status"] in ATTEMPT_REQUIRED_STATUSES and result["attempt_id"] not in ids:
+        # Rule ``result_attempt_unresolved``: a status that claims an attempt names a row of ``attempts`` (null names none).
+        return out + [Violation("result_attempt_unresolved", "$.execution_result.attempt_id",
+                                f"result status {result['status']!r} names an attempt row of the record "
+                                "(a null attempt_id or an id that matches no row is refused)")]
     seq = per_attempt.get(result["attempt_id"])
     if result["attempt_id"] in ids and seq and result["status"] != "observed":
         terminal = seq[-1]["status"]
@@ -313,10 +447,194 @@ def _control_plane_rules(doc: dict[str, Any]) -> list[Violation]:
         if len({r["started_at"] for r in seq}) > 1:
             out.append(Violation("attempt_started_at_changed", "$.control_plane_attempts",
                                  f"attempt {aid}: started_at is fixed when the attempt starts and identical on every row"))
+        if len({(r["effect_id"], r["decision_id"]) for r in seq}) > 1:
+            out.append(Violation("attempt_identity_changed", "$.control_plane_attempts",
+                                 f"attempt {aid}: effect_id and decision_id are fixed by the first row and identical on every row"))
+        if not reconciled_only:
+            for prev, nxt in zip(seq, seq[1:]):
+                if prev == nxt:
+                    continue
+                if nxt["status"] not in CONTROL_PLANE_TRANSITIONS.get(prev["status"], frozenset()):
+                    out.append(Violation("attempt_transition", "$.control_plane_attempts",
+                                         f"attempt {aid}: row status {nxt['status']!r} may not follow {prev['status']!r}"))
+                    break
         if any(seq[i] == seq[j] for i in range(len(seq)) for j in range(i)):
             out.append(Violation("repeated_record", "$.control_plane_attempts",
                                  f"attempt {aid} lifecycle repeats a record"))
     return out
+
+
+# Allowed successors of each status (decision 37; decision 39-P adds executed -> unknown and partial -> unknown: the Control Plane
+# adapter appends an unknown row after an executed or partial one when the follow-up observation is not accepted). Statuses with no successor are terminal and closed: a
+# closed attempt is never reopened and never receives a later, contradicting record.
+EXECUTOR_TRANSITIONS: dict[str, frozenset[str]] = {
+    "attempted": frozenset({"executed", "partial", "failed", "unknown", "denied", "reconciled"}),
+    "unknown": frozenset({"executed", "partial", "failed", "reconciled"}),
+    "executed": frozenset({"unknown", "reconciled"}),
+    "partial": frozenset({"unknown", "reconciled"}),
+    "failed": frozenset(),
+    "denied": frozenset(),
+    "reconciled": frozenset(),
+}
+CONTROL_PLANE_TRANSITIONS: dict[str, frozenset[str]] = {
+    "attempted": frozenset({"acknowledged", "unknown", "failed", "partial"}),
+    "unknown": frozenset({"acknowledged", "failed", "partial"}),
+    "acknowledged": frozenset(),
+    "partial": frozenset(),
+    "failed": frozenset(),
+}
+
+
+# Rule ``result_state_matrix`` (decision 39-K). The execution result's status, flags and observation must agree. This mirrors the
+# runtime producer's export check (``engine/producer_contract.py`` ``_validate_result_state`` at 62a5cc15), row for row, and is
+# the exhaustive status x flags x observation matrix:
+#   - a failed, partial, unknown, executed or reconciled result requires ``attempted``;
+#   - an acknowledgement requires ``attempted``; a fresh execution (``newly_executed``) is acknowledged and executed, partial or unknown;
+#   - denied and failed carry no acknowledgement, no fresh execution and ``observed_state`` unknown;
+#   - executed is acknowledged, fresh and observed ``applied``; reconciled is not fresh and observed ``applied``;
+#     partial is observed ``partial``;
+#   - executed, reconciled, partial and observed require a retained observation object;
+#   - a VALIDATED observation (it has ``state``) carries the result's ``observed_state``; a route-B recovery report (it has
+#     ``status``) is told apart and is held to the recovery rules instead (``_recovery_rules``), never to this row;
+#   - ``observed_state`` is one of applied, partial, absent, unknown.
+# The observed status (effect-free) and its attempt-free shape stay with their own rules (``observed_result_claims_attempt``).
+OBSERVED_STATES = frozenset({"applied", "partial", "absent", "unknown"})
+ATTEMPT_REQUIRED_STATUSES = frozenset({"failed", "partial", "unknown", "executed", "reconciled"})
+
+
+def result_matrix_problems(result: dict[str, Any]) -> list[str]:
+    """What the producer's status matrix refuses about ``result``; empty when it conforms."""
+    problems: list[str] = []
+    status = result["status"]
+    present = {name: result[name] for name in ("attempted", "acknowledged", "newly_executed") if name in result}
+    if any(type(value) is not bool for value in present.values()):
+        return ["attempted, acknowledged and newly_executed are carried as booleans"]
+    if len(present) != 3:  # the flags are optional members; absent flags are not claimed, so the flag rows have nothing to read
+        present = {}
+    attempted, acknowledged, fresh = (present.get(n) for n in ("attempted", "acknowledged", "newly_executed"))
+    observed_state, obs = result["observed_state"], result["observation"]
+    if observed_state not in OBSERVED_STATES:
+        problems.append("observed_state is one of applied, partial, absent, unknown")
+    if status in ATTEMPT_REQUIRED_STATUSES and attempted is False:
+        problems.append(f"status {status!r} requires an attempted execution")
+    if acknowledged and attempted is False:
+        problems.append("an acknowledgement requires an attempted execution")
+    if fresh and not (acknowledged is True and status in {"executed", "partial", "unknown"}):
+        problems.append("a fresh execution is acknowledged and has status executed, partial or unknown")
+    if status in {"denied", "failed"} and (acknowledged or fresh or observed_state != "unknown"):
+        problems.append("a denied or failed result carries no acknowledgement, no fresh execution and observed_state unknown")
+    if status == "executed" and (acknowledged is False or fresh is False or observed_state != "applied"):
+        problems.append("an executed result is acknowledged, fresh and observed as applied")
+    if status == "reconciled" and (fresh or observed_state != "applied"):
+        problems.append("a reconciled result is observed as applied and is not a fresh execution")
+    if status == "partial" and observed_state != "partial":
+        problems.append("a partial result is observed as partial")
+    if status in {"executed", "reconciled", "partial", "observed"} and not isinstance(obs, dict):
+        problems.append(f"status {status!r} requires a retained observation")
+    if observation_kind(obs) == "validated" and obs["state"] != observed_state:
+        problems.append("a validated observation's state is the result's observed_state")
+    return problems
+
+
+def _result_matrix_rules(doc: dict[str, Any]) -> list[Violation]:
+    result = doc.get("execution_result")
+    if result is None:
+        return []
+    problems = result_matrix_problems(result)
+    if not problems:
+        return []
+    return [Violation("result_state_matrix", "$.execution_result", "; ".join(problems))]
+
+
+def _result_binding_rules(doc: dict[str, Any]) -> list[Violation]:
+    """The execution result and its observation name the effect and decision of the attempt they report."""
+    result = doc.get("execution_result")
+    if result is None:
+        return []
+    out: list[Violation] = []
+    attempt_id = result.get("attempt_id")
+    identities: dict[str, tuple[str, str]] = {}
+    for row in doc.get("attempts") or []:
+        identities.setdefault(row["attempt_id"], (row["effect_id"], row["decision_id"]))
+    for row in doc.get("control_plane_attempts") or []:
+        identities.setdefault(row["attempt_id"], (row["effect_id"], row["decision_id"]))
+    expected = identities.get(attempt_id) if attempt_id is not None else None
+    obs = result.get("observation")
+    if expected is not None:
+        effect_id, decision_id = expected
+        if "effect_id" in result and result["effect_id"] != effect_id:
+            out.append(Violation("result_binding_mismatch", "$.execution_result.effect_id",
+                                 "the result names a different effect than the attempt it reports"))
+        if "decision_id" in result and result["decision_id"] != decision_id:
+            out.append(Violation("result_binding_mismatch", "$.execution_result.decision_id",
+                                 "the result names a different decision than the attempt it reports"))
+        if isinstance(obs, dict) and "effect_id" in obs and obs["effect_id"] != effect_id:
+            out.append(Violation("result_binding_mismatch", "$.execution_result.observation.effect_id",
+                                 "the observation names a different effect than the attempt it reports"))
+    elif isinstance(obs, dict) and "effect_id" in obs and "effect_id" in result and obs["effect_id"] != result["effect_id"]:
+        out.append(Violation("result_binding_mismatch", "$.execution_result.observation.effect_id",
+                             "the observation names a different effect than the result"))
+    return out
+
+
+# Reason codes the control plane appends to a check row AFTER the journal completion row is written (operation grant, renewal
+# and admission gates; merge and dedupe effect-time gates; the per-input time-floor comparison). A check row may carry its
+# journal completion's reasons plus codes of this closed set and nothing else (rule ``reasons_match``). Source: the Control
+# Plane at 6093aca7, ``bounded.py`` ``_admit_operation``, ``_operation_gate``, ``_effect_gate_n4`` and
+# ``record_resolution_check``, and ``merge.py`` ``merge_gate``. A consumer that vendors this set records its digest.
+POST_JOURNAL_GATE_CODES = frozenset({
+    "operation_grant_mismatch",
+    "operation_renewal_unrecorded",
+    "operation_not_admitted",
+    "operation_merged_effect_exists",
+    "operation_merged_effect_unresolved",
+    "dedupe_unresolved_attempt_blocks_new_key",
+    "dedupe_operation_effect_applied",
+    "input_observation_time_regressed",
+})
+
+
+# Rule ``reasons_minimum`` (decision 39-E). A completion's reasons include the minimum set its own recorded input events imply. The
+# table is what the Control Plane writer (``bounded.py`` ``_resolve_journal``, ``_read_grant``, ``_read_input``, ``capture`` and
+# ``runtime_authority.validate_extensions`` at 6093aca7) always writes for these recorded facts; it is a floor, never a full
+# derivation (the required-input list is not recorded, so ``required_input_not_read`` is not derived):
+#   an input whose read_state is "unreadable" and that no later read of the same input rescued as "cached_positive"
+#       -> status_unreadable
+#   an input with read_state "nonce_mismatch"                         -> status_nonce_mismatch
+#   an authority_context whose last read is missing, no read_state    -> authority_context_missing
+#   a purpose whose last read is missing, no read_state               -> purpose_unreadable
+#   any input whose last read is missing and not rescued              -> at least one reason
+IMPLIED_REASONS = {
+    "unreadable": "status_unreadable",
+    "nonce_mismatch": "status_nonce_mismatch",
+    "authority_context_missing": "authority_context_missing",
+    "purpose_missing": "purpose_unreadable",
+}
+
+
+def implied_reasons(inputs: list[dict[str, Any]]) -> tuple[set[str], bool]:
+    """The reasons a completed check must carry given its recorded input events, and whether it must carry at least one."""
+    last: dict[tuple[Any, Any], dict[str, Any]] = {}
+    states: dict[tuple[Any, Any], set[Any]] = {}
+    implied: set[str] = set()
+    for x in inputs:
+        key = (x.get("input_type"), x.get("input_id"))
+        last[key] = x
+        states.setdefault(key, set()).add(x.get("read_state"))
+        if x.get("read_state") == "nonce_mismatch":
+            implied.add(IMPLIED_REASONS["nonce_mismatch"])
+    some = False
+    for key, x in last.items():
+        rescued = "cached_positive" in states[key]
+        if "unreadable" in states[key] and not rescued:
+            implied.add(IMPLIED_REASONS["unreadable"])
+        if x.get("missing") is True and not rescued:
+            some = True
+            if x.get("read_state") is None and x.get("input_type") == "authority_context":
+                implied.add(IMPLIED_REASONS["authority_context_missing"])
+            if x.get("read_state") is None and x.get("input_type") == "purpose":
+                implied.add(IMPLIED_REASONS["purpose_missing"])
+    return implied, some
 
 
 def _norm(inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -363,10 +681,18 @@ def _journal_rules(doc: dict[str, Any]) -> list[Violation]:
             continue
         state[cid]["closed"] = True
         if ev["phase"] == "completed":
+            implied, some = implied_reasons(state[cid]["inputs"])
+            lacking = implied - set(ev["reasons"])
+            if lacking or (some and not ev["reasons"]):
+                out.append(Violation("reasons_minimum", f"$.resolution_journal[{seq}]",
+                                     "the completion's reasons lack what its own recorded inputs imply"
+                                     + (f": {', '.join(sorted(lacking))}" if lacking else ": a missing input requires at least one reason")))
+                continue
             # Journal ids and check ids are separate producer ids today; bind by content.
             candidates = [i for i, row in enumerate(checks_rows)
                           if row["stage"] == ev["stage"] and _norm(row["inputs"]) == _norm(state[cid]["inputs"])
-                          and set(ev["reasons"]) <= set(row["reasons"])]
+                          and set(ev["reasons"]) <= set(row["reasons"])
+                          and set(row["reasons"]) - set(ev["reasons"]) <= POST_JOURNAL_GATE_CODES]
             if not candidates:
                 out.append(Violation("journal_unbound_completion", f"$.resolution_journal[{seq}]",
                                      "completed journal check matches no resolution check"))
@@ -403,13 +729,15 @@ def _journal_rules(doc: dict[str, Any]) -> list[Violation]:
     return out
 
 
-def validate(doc: Any) -> list[Violation]:
+def _validate(doc: Any) -> list[Violation]:
     """Return all violations; an empty list means the document conforms to 0.1.0-draft."""
     out = validate_structure(doc)
     if out:
         return out
-    for rule in (_executor_rules, _control_plane_rules, _journal_rules):
+    for rule in (_executor_rules, _control_plane_rules, _result_binding_rules, _journal_rules):
         out.extend(rule(doc))
+    if not out:  # the matrix reads a result whose kind, binding and terminal event were already found consistent
+        out.extend(_result_matrix_rules(doc))
     return out
 
 
@@ -436,17 +764,25 @@ def preserve(doc: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(doc))
 
 
+validate = _guarded(_validate)
+
+
 def main(argv: list[str]) -> int:
-    import sys
     code = 0
     for name in argv:
-        violations = validate(json.loads(Path(name).read_text(encoding="utf-8")))
+        try:
+            data = load_strict_json(Path(name))
+        except (InputRefused, OSError) as exc:
+            print(f"{name}: input_refused $: {_printable(str(exc))}")
+            code |= 2
+            continue
+        wrapped = isinstance(data, dict) and "document" in data and "fixture_id" in data
+        violations = validate(data["document"] if wrapped else data)
         for v in violations:
-            print(f"{name}: {v.code} {v.path}: {v.message}")
+            print(f"{name}: {v.code} {v.path}: {_printable(v.message)}")
         code |= bool(violations)
     return code
 
 
 if __name__ == "__main__":
-    import sys
     raise SystemExit(main(sys.argv[1:]))
