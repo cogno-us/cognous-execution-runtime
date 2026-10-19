@@ -8,3 +8,4 @@ coverage
 .worktrees/
 .local/
 .vscode/
+engine/audit.log
