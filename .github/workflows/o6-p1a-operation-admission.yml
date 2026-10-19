@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install focused test dependency
-        run: python -m pip install pytest==8.3.5
+        run: python -m pip install --require-hashes -r .github/locks/pytest-b61d81.txt
       - name: Compile bounded profile
         run: python -m compileall -q engine/operation_admission.py
       - name: Verify repository source resolution
