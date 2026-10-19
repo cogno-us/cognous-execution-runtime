@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from engine.safe_executor import ExecutionEnvelope, ExecutionResult, FrozenEnvelope, LocalExecutionPolicy, destination_error_text, snapshot_envelope
+from engine.safe_executor import ExecutionEnvelope, ExecutionResult, FrozenEnvelope, LocalExecutionPolicy, destination_error_text
 
 PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
 
