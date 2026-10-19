@@ -8,12 +8,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-AUTHORITY_TABLES = (
-    ("execution_claims_v1", "claim_id"),
-    ("authority_grants_v1", "grant_id"),
-    ("authority_approvals_v1", "approval_ref"),
-    ("authority_policies_v1", "ref"),
-)
 STOP_KINDS = ("stop_requested", "stop_acknowledged", "dispatch_closed",
               "quiescence_observed", "destination_reconciled")
 
