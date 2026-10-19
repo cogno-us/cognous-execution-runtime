@@ -12,7 +12,6 @@ from .safe_executor import (
     FrozenEnvelope,
     LocalDestinationExecutor,
     LocalExecutionPolicy,
-    snapshot_envelope,
 )
 
 
