@@ -10,7 +10,7 @@ Repository: https://github.com/cogno-us/cognous-execution-runtime (Cognous Execu
 ## Layout
 - `engine/`: the Python safety layer (Apache-2.0; see `engine/LICENSE`).
 - `tests/`: component-local pytest suites.
-- `examples/`: legacy demos and the optional OpenShell worker image (`examples/openshell/`).
+- `examples/`: the optional OpenShell worker image and helpers (`examples/openshell/`).
 - `docs/`: Cognous boundary, profile and workstream records. Treat `docs/workstreams/` evidence files as historical records: add new text instead of rewriting them.
 - `.github/workflows/`: Python CI plus thin wrappers that call pinned reusable workflows in `cogno-us/cognous-stack-qualification`. Keep pinned SHAs unchanged unless a change explicitly requalifies them.
 

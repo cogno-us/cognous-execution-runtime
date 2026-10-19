@@ -82,7 +82,7 @@ The upstream TypeScript/native application is preserved at the tag `upstream-mol
 | --- | --- | --- |
 | [API reference](api.md) | legacy | `AgentEngine` interface. |
 | [Internal module guide](internals.md) | legacy | Responsibilities of the compatibility modules. |
-| [Sandbox directory note](../sandbox/README.md) | legacy | Placeholder directory used by the legacy examples. |
+| [Sandbox directory note](../sandbox/README.md) | legacy | Placeholder directory kept for the legacy shell. |
 | [Design philosophy](design-philosophy.md) | legacy | Early statement of design principles for the compatibility shell. |
 | [Roadmap](roadmap.md) | legacy, proposed | Early plan for the shell. It lists sandbox, network and subprocess extensions that are proposals only; none of them is implemented or promised. |
 
