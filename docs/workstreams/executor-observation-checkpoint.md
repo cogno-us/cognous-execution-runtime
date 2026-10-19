@@ -30,7 +30,7 @@ store and avoids selecting another invocation's last reconciliation.
 Null validated observation yields unknown observed state, preserving actual
 acknowledgement and newly-executed evidence. Rejected evidence is exportable only
 outside accepted observation claims. Producer profile advances incompatibly to
-2.0.0; envelope stays 0.2.0. See [producer migration](/executor-producer-profile).
+2.0.0; envelope stays 0.2.0. See [producer migration](../executor-producer-profile.md).
 
 Executable cases are in `tests/test_observation_compatibility.py`.
 `executor-observation-results.json` beside this checkpoint contains actual
