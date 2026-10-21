@@ -63,10 +63,31 @@ class LocalStopJournal:
             raise ValueError("unsupported stop event")
         if not all(isinstance(x,str) and x for x in (event_id,lifecycle_id,effect_id)):
             raise ValueError("stop event identity required")
-        with sqlite3.connect(self.path) as db:
-            db.execute("INSERT INTO c8_stop_events VALUES (?,?,?,?,?,?)",
-                       (event_id,sequence,lifecycle_id,effect_id,kind,
-                        json.dumps(observation,sort_keys=True,allow_nan=False)))
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError("stop event sequence must be an int >= 0")
+        db = sqlite3.connect(self.path, isolation_level=None)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                last = db.execute("SELECT MAX(sequence) FROM c8_stop_events").fetchone()[0]
+                if last is not None and sequence <= last:
+                    raise ValueError("stop event sequence must increase")
+                prior = db.execute(
+                    "SELECT effect_id, kind FROM c8_stop_events WHERE lifecycle_id=?",
+                    (lifecycle_id,)).fetchall()
+                if any(e != effect_id for e, _ in prior):
+                    raise ValueError("stop lifecycle is bound to one effect_id")
+                if kind != "stop_requested" and not any(k == "stop_requested" for _, k in prior):
+                    raise ValueError("stop event requires a prior stop_requested")
+                db.execute("INSERT INTO c8_stop_events VALUES (?,?,?,?,?,?)",
+                           (event_id,sequence,lifecycle_id,effect_id,kind,
+                            json.dumps(observation,sort_keys=True,allow_nan=False)))
+                db.execute("COMMIT")
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
+        finally:
+            db.close()
 
     def export(self, lifecycle_id: str) -> dict:
         with sqlite3.connect(f"file:{self.path.resolve()}?mode=ro",uri=True) as db:
