@@ -333,3 +333,20 @@ def test_export_preserves_legitimate_denied_result_without_fabricating_evidence(
     assert exported["attempts"] == []
     assert exported["attempt_events"] == []
     assert exported["observations"] == []
+
+
+@pytest.mark.parametrize("status", ["failed", "denied"])
+def test_export_refuses_failed_or_denied_result_while_effect_row_exists(tmp_path, status):
+    """B-F2: a durable effect row for the effect_id contradicts a 'failed' or 'denied' result."""
+    op = operation()
+    envelope = ExecutionEnvelope(EXECUTION_ENVELOPE_VERSION, "decision-1", "effect-1", op)
+    destination = DurableRefundDestination(tmp_path / "state")
+    real = LocalDestinationExecutor(destination, policy(op)).execute_snapshot(snapshot_envelope(envelope))
+    assert real.status == "executed"
+    attempt_id = real.attempt_id if status == "failed" else None
+    forged = ExecutionResult(
+        status, real.decision_id, real.effect_id, attempt_id, status == "failed", False, "unknown", False,
+        error="synthetic",
+    )
+    with pytest.raises(ValueError, match="contradicts a retained destination effect"):
+        export_execution_artifacts(envelope, forged, destination)
