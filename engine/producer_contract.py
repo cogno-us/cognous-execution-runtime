@@ -197,6 +197,10 @@ def _validate_retained_bindings(
             raise ValueError("rejected observation cannot establish observed state")
 
     observed_state = result.observed_state
+    if result.status in {"failed", "denied"} and effects:
+        raise ValueError(
+            f"result {result.status!r} contradicts a retained destination effect for this effect_id"
+        )
     if result.status in {"executed", "reconciled", "partial"} and observed_state in {
         "applied", "partial"
     } and not effects:
