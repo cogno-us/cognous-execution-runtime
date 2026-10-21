@@ -2,7 +2,7 @@
  "contract": "execution-attempt-lifecycle",
  "contract_version": "0.1.0-draft",
  "odes_repository": "cogno-us/open-decision-evidence-standard",
- "odes_commit": "ODES_MERGED_SHA_PLACEHOLDER_REPLACE_AFTER_MERGE",
+ "odes_commit": "59ca4c797b4c0700b581815a53b113a60bda1c67",
  "role": "producer",
  "conformance_level": "P",
  "conformance_level_meaning": "structure, rules and a real producer run",
