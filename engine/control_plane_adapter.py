@@ -344,6 +344,11 @@ class PinnedControlPlaneExecutor:
             clock_tolerance_seconds=self.workflow.clock_tolerance_seconds,
             **workflow_view_profile_kwargs(self.workflow),
         )
+        # The host freshness reaper lives on the workflow the host configured, not in the constructor. Carry it onto the
+        # per-call view so a dead reaper makes `execute` refuse before dispatch, as on the host's own workflow.
+        reaper = getattr(self.workflow, "_reaper", None)
+        if reaper is not None:
+            workflow._reaper = reaper
         kwargs = {
             "proposal": proposal,
             "decision": decision,
