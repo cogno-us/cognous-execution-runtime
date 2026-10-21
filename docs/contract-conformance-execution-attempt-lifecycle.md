@@ -61,6 +61,10 @@ The P3 contract rules also hold for normal runs: normal executions report `execu
 
 Note, not a finding: the export carries no `contract`, `contract_version` or `producer` members; the tests add them when mapping.
 
+## Local divergence from the vendored contract (to be upstreamed)
+
+`validate.py` here differs from ODES `e5fe3822` in one rule: `_executor_rules` no longer returns early when `attempts` is absent. A missing `attempts` member is an empty row list, and the event and result rules run whenever `attempts`, `attempt_events` or `execution_result` is present. This closes the case where an `executed` result naming a nonexistent attempt validated. Three invalid fixtures and the matching `CONTRACT.json` hashes were added (`executor-ghost-result-without-attempts-member`, `executor-events-out-of-order-without-attempts-member`, `control-plane-empty-attempts-ghost-result`). The change must be proposed to ODES; until a refresh adopts it, a plain refresh would drop it (the tests `test_missing_attempts_member_*` then fail, which is the intended reminder).
+
 ## Refresh the vendored copy
 
 From a checkout of the ODES repository at the commit to adopt:

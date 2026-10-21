@@ -309,10 +309,12 @@ def _recovery_rules(obs: dict[str, Any], result: dict[str, Any]) -> list[Violati
 
 def _executor_rules(doc: dict[str, Any]) -> list[Violation]:
     out: list[Violation] = []
-    rows = doc.get("attempts")
-    if rows is None:
+    if all(doc.get(k) is None for k in ("attempts", "attempt_events", "execution_result")):
         return out
-    events = doc.get("attempt_events", [])
+    # A missing ``attempts`` is an empty row list: the result and event rules still run (a result or event
+    # naming an attempt that no row defines is refused, never skipped).
+    rows = doc.get("attempts") or []
+    events = doc.get("attempt_events") or []
     ids = [r["attempt_id"] for r in rows]
     if len(set(ids)) != len(ids):
         out.append(Violation("duplicate_attempt_row", "$.attempts", "attempt rows are unique per attempt_id"))

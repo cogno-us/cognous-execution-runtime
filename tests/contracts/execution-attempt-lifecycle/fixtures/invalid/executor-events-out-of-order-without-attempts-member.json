@@ -1,0 +1,29 @@
+{
+  "fixture_id": "executor-events-out-of-order-without-attempts-member",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "Attempt events with a decreasing event_id and created_at while the attempts member is absent: the event rules still run.",
+  "expected_refusal": "event_order",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "resolution_journal": [],
+    "attempt_events": [
+      {
+        "event_id": 5,
+        "attempt_id": "syn-ghost-attempt",
+        "status": "failed",
+        "error": null,
+        "created_at": 9.0
+      },
+      {
+        "event_id": 2,
+        "attempt_id": "syn-ghost-attempt",
+        "status": "executed",
+        "error": null,
+        "created_at": 1.0
+      }
+    ]
+  }
+}

@@ -99,6 +99,26 @@ def test_vendored_valid_fixtures_are_accepted_by_vendored_validator():
         assert codes(json.loads(path.read_text(encoding="utf-8"))["document"]) == [], path.name
 
 
+_NEW_INVALID_FIXTURES = (
+    "executor-ghost-result-without-attempts-member",
+    "executor-events-out-of-order-without-attempts-member",
+    "control-plane-empty-attempts-ghost-result",
+)
+
+
+@pytest.mark.parametrize("name", _NEW_INVALID_FIXTURES)
+def test_missing_attempts_member_does_not_skip_result_and_event_rules(name):
+    """B-F1: a missing `attempts` member is an empty row list; the result and event rules still run."""
+    fixture = json.loads((CONTRACT_DIR / "fixtures" / "invalid" / f"{name}.json").read_text(encoding="utf-8"))
+    assert set(codes(fixture["document"])) == {fixture["expected_refusal"]}
+
+
+def test_missing_attempts_member_valid_documents_without_rows_stay_valid():
+    doc = {"contract": CONTRACT_NAME, "contract_version": CONTRACT_VERSION, "producer": "runtime-executor",
+           "resolution_journal": []}
+    assert codes(doc) == []
+
+
 # --------------------------------------------------------------------------- mapping helpers
 
 def _table(path, table: str) -> list[dict]:

@@ -1,0 +1,26 @@
+{
+  "fixture_id": "executor-ghost-result-without-attempts-member",
+  "synthetic": true,
+  "expected_outcome": "reject",
+  "reason": "An 'executed' result naming an attempt, with the attempts member absent (only a journal present): the missing member is an empty row list, so the attempt is unresolved.",
+  "expected_refusal": "result_attempt_unresolved",
+  "document": {
+    "contract": "execution-attempt-lifecycle",
+    "contract_version": "0.1.0-draft",
+    "producer": "runtime-executor",
+    "resolution_journal": [],
+    "execution_result": {
+      "status": "executed",
+      "attempt_id": "syn-ghost-attempt",
+      "observed_state": "applied",
+      "observation": {
+        "effect_id": "syn-effect-1",
+        "state": "applied",
+        "observed_at": "2026-01-01T00:00:05Z"
+      },
+      "attempted": true,
+      "acknowledged": true,
+      "newly_executed": true
+    }
+  }
+}
