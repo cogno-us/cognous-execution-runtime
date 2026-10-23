@@ -36,6 +36,7 @@ class PostCommitObservationUnavailable(TimeoutError):
 MARKER_TABLE = "authority_effect_profile_v1"
 # Retained (grant_id, revision) pairs that were revoked on this destination; created on first revocation.
 REVOCATION_TABLE = "authority_grant_revocations_v1"
+APPROVAL_REVOCATION_TABLE = "authority_approval_revocations_v1"
 
 
 # ODES time semantics section 1 (open-decision-evidence-standard docs/engineering/ODES-TIME-SEMANTICS.md): an RFC 3339
@@ -319,6 +320,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                     raise PermissionError("existing authoritative grant state rejects claim provisioning")
 
             for approval in model.approval_state:
+                if self._approval_revoked(conn, approval.approval_ref):
+                    conn.execute("ROLLBACK")
+                    raise PermissionError("existing authoritative approval state rejects claim provisioning")
                 prior = conn.execute(
                     "SELECT * FROM authority_approvals_v1 WHERE approval_ref=?",
                     (approval.approval_ref,),
@@ -495,12 +499,56 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             )
             conn.execute("COMMIT")
 
+    @staticmethod
+    def _approval_revoked(conn: sqlite3.Connection, approval_ref: str) -> bool:
+        """True when this approval_ref was revoked on this destination; revoked is terminal per approval_ref."""
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (APPROVAL_REVOCATION_TABLE,)
+        ).fetchone() is None:
+            return False
+        return conn.execute(
+            f"SELECT 1 FROM {APPROVAL_REVOCATION_TABLE} WHERE approval_ref=?", (approval_ref,)
+        ).fetchone() is not None
+
+    @staticmethod
+    def _record_revoked_approval(conn: sqlite3.Connection, approval_ref: str) -> None:
+        # Created on the first revocation only, so a database that never revokes an approval keeps its schema.
+        conn.execute(f"""CREATE TABLE IF NOT EXISTS {APPROVAL_REVOCATION_TABLE} (
+            approval_ref TEXT PRIMARY KEY
+        )""")
+        conn.execute(
+            f"INSERT OR IGNORE INTO {APPROVAL_REVOCATION_TABLE}(approval_ref) VALUES(?)", (approval_ref,)
+        )
+
     def set_approval_status(self, approval_ref: str, *, status: str) -> None:
+        """Trusted authority writer for the approval row.
+
+        ``revoked`` is terminal for an approval_ref on this destination: once written, no later update may set it
+        to any other status (a new approval with a new approval_ref is the way forward). ``unknown`` stays
+        reversible. Parity with ``set_grant_status``.
+        """
         if status not in {"active", "revoked", "unknown"}:
             raise ValueError("unsupported approval status")
-        self._update_required_row(
-            "authority_approvals_v1", "approval_ref", approval_ref, "status", status
-        )
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT status FROM authority_approvals_v1 WHERE approval_ref=?", (approval_ref,)
+            ).fetchone()
+            if row is None:
+                conn.execute("ROLLBACK")
+                raise KeyError(approval_ref)
+            if status != "revoked" and (
+                row["status"] == "revoked" or self._approval_revoked(conn, approval_ref)
+            ):
+                conn.execute("ROLLBACK")
+                raise PermissionError("approval is revoked; a new approval is required")
+            if status == "revoked" or row["status"] == "revoked":
+                # The second case covers a row revoked before revocations were retained.
+                self._record_revoked_approval(conn, approval_ref)
+            conn.execute(
+                "UPDATE authority_approvals_v1 SET status=? WHERE approval_ref=?", (status, approval_ref)
+            )
+            conn.execute("COMMIT")
 
     def set_policy_state(self, ref: str, *, version: str | None = None, status: str | None = None) -> None:
         if status is not None and status not in {"active", "superseded", "unknown"}:
@@ -685,6 +733,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 raise PermissionError("authoritative approval state unavailable")
             if (
                 row["status"] != "active"
+                or self._approval_revoked(conn, expected.approval_ref)
                 or row["grant_id"] != claim.grant_id
                 or row["grant_revision"] != claim.grant_revision
                 or row["proposal_commitment"] != expected.proposal_commitment
