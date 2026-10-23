@@ -223,6 +223,9 @@ def test_concurrent_processes_cannot_leave_a_revoked_approval_active(tmp_path):
 
 def _effect_time_fixture(tmp_path):
     """Grant row and an active approval row for the producer-contract operation, plus a claim that expects them."""
+    pytest.importorskip(
+        "agent_control_plane.bounded",
+        reason="needs the Control Plane local-authority-effect contract on PYTHONPATH")
     import test_atomic_grant_status_and_envelope_binding as g
     d = g.destination(tmp_path)  # inserts the active grant the operation names
     s = g.snap()
