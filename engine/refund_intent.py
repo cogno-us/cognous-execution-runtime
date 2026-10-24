@@ -231,6 +231,22 @@ class IntentRefundDestination(DurableRefundDestination):
                                   + claim.original_effect_id)
         return super().commit(snapshot, simulate=simulate)
 
+    def observe_bound(self, snapshot: FrozenEnvelope) -> dict:
+        """Observe only for the registered intent and, once reserved, only for the original owner.
+
+        Same ownership validation as the commit path, read-only: another effect or other content for the same intent
+        is refused rather than reported as absent.
+        """
+        with self.registry._connect() as conn:
+            conn.execute("BEGIN")
+            self.registry._registered(conn, self.intent, snapshot)
+            row = conn.execute("SELECT * FROM refund_intent_claims_v1 WHERE intent_key=?",
+                               (self.intent.key,)).fetchone()
+            if row is not None and (row["effect_id"] != snapshot.effect_id
+                                    or row["operation_digest"] != snapshot.operation.digest):
+                raise PermissionError("intent already owned by original effect: " + row["effect_id"])
+        return super().observe_bound(snapshot)
+
     def _check_commit_profile(self, conn, snapshot: FrozenEnvelope) -> None:
         self.registry._registered(conn, self.intent, snapshot)
         row = conn.execute("SELECT * FROM refund_intent_claims_v1 WHERE intent_key=?",
