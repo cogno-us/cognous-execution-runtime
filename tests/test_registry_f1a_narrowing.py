@@ -678,3 +678,76 @@ def test_m1_20_runtime_has_no_registry_copy_or_pyproject_dependency():
     assert not [p for p in tracked if p.startswith("registry_") or "registry_successor" in p]
     src = Path(adapter.__file__).read_text(encoding="utf-8")
     assert "sys.path" not in src and "import registry_successor" not in src.replace("import_module(", "")  # resolved lazily from the host's environment
+
+
+# ------------------------------------------------------------------------------------------------------------------ review follow-ups
+def _patched_decision(monkeypatch, **changes):
+    real = reg_decision.verify_and_decide_v2
+
+    def f(*a, **k):
+        return dataclasses.replace(real(*a, **k), **changes)
+    monkeypatch.setattr(reg_decision, "verify_and_decide_v2", f)
+
+
+def test_review_unknown_kind_operationally_authorized_and_deny_all_flag_are_refused(monkeypatch, built):
+    for changes in (dict(kind="applied_extra"), dict(operationally_authorized=True), dict(deny_all=True)):
+        _patched_decision(monkeypatch, **changes)
+        assert_refused_no_policy(run("u-read"), adapter_refusal="registry_decision_invalid")
+    assert built == []
+
+
+def test_review_str_subclass_tokens_and_policy_subclasses_are_refused(monkeypatch, built):
+    class S(str):
+        pass
+    real = reg_decision.verify_and_decide_v2
+
+    def f(*a, **k):
+        d = real(*a, **k)
+        return dataclasses.replace(d, effective={**d.effective, "allowed_units": (S("u-read"),)})
+    monkeypatch.setattr(reg_decision, "verify_and_decide_v2", f)
+    assert_refused_no_policy(run("u-read"), adapter_refusal="effective_policy_invalid")
+    assert built == []
+
+    class P(LocalExecutionPolicy):
+        pass
+    assert_refused_no_policy(run("u-read", caller=P(**{f_.name: getattr(caller_policy(), f_.name) for f_ in dataclasses.fields(LocalExecutionPolicy)})),
+                             adapter_refusal="input_invalid")
+
+
+def test_review_evaluator_error_is_a_refusal():
+    res = run("u-read", caller=caller_policy(max_amount=float("nan")))
+    assert res.allowed is False and res.adapter_refusal == "evaluator_error" and res.effective_policy_digest
+
+
+def test_review_injected_always_true_verifier_is_not_admitted(built):
+    class Yes:
+        def verify(self, *a, **k):
+            return True
+    rec = reg_record()
+    res = run("u-write", rec=rec, sel=selection(rec, sk=OTHER_SK), verifier=Yes())
+    assert_refused_no_policy(res, adapter_refusal="verifier_not_admitted")
+    assert built == []
+
+
+def test_review_caller_policy_is_snapshotted_before_registry_code_runs(monkeypatch):
+    caller = caller_policy(max_amount=10.0)
+    real = reg_decision.verify_and_decide_v2
+
+    def mutating(*a, **k):
+        object.__setattr__(caller, "max_amount", 1e9)
+        return real(*a, **k)
+    monkeypatch.setattr(reg_decision, "verify_and_decide_v2", mutating)
+    res = run("u-read", caller=caller, op_over={"amount": 50.0})
+    assert res.allowed is False and res.evaluator_refusal == "local amount restriction"
+
+
+def test_review_hostile_participation_object_does_not_raise():
+    class Evil:
+        def __eq__(self, o):
+            raise RuntimeError("boom")
+        __hash__ = None
+    rec = reg_record()
+    res = adapter.evaluate_with_registry_selection(caller_policy(), frozen_op(), participation=Evil(), record_text=r.dumps(rec),
+                                                   selection_text=selection(rec), context=s.CTX, trust=s.trust(pub=PK),
+                                                   verifier=ev.Ed25519Verifier(), now=r.NOW)
+    assert_refused_no_policy(res, adapter_refusal="input_invalid")
