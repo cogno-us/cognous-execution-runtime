@@ -25,6 +25,8 @@ from .safe_executor import (
 )
 
 PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
+#: The successor profile NAME, held only to recognise (and refuse) it where the Control Plane lacks the V02 symbol; it is never used to build a claim.
+SUCCESSOR_PROFILE_NAME = "urn:cognous:profiles:local-authority-effect:0.2.0-proposed"
 
 
 class PostCommitObservationUnavailable(TimeoutError):
@@ -239,7 +241,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             model = LocalExecutionClaim.model_validate(claim)
         if not verify_local_execution_claim(model):
             raise PermissionError("execution claim commitment is invalid")
-        if model.profile != PROFILE or model.authorizing_by_possession is not False:
+        # The successor profile (EXT-S4-4) exists only in Control Plane V02 and later. The symbol is looked up WITHOUT assuming it exists, so the
+        # legacy profile keeps working against a historical Control Plane pin. A successor claim is never downgraded to the legacy profile: where
+        # the Control Plane cannot express it, it is refused here, clearly. Its binding is only ever compared with durable state by the lock-time guard.
+        import importlib
+        _cp_effect = importlib.import_module("agent_control_plane.local_authority_effect")
+        successor = getattr(_cp_effect, "LOCAL_AUTHORITY_EFFECT_PROFILE_V2", None)
+        if model.profile == SUCCESSOR_PROFILE_NAME and successor is None:
+            raise PermissionError("successor claim profile requires Control Plane V02 successor-profile support")
+        if model.profile not in (PROFILE, successor) or model.authorizing_by_possession is not False:
             raise PermissionError("unsupported execution claim profile")
         if model.grant_status != "active":
             raise PermissionError("execution claim grant projection is not active")
@@ -775,6 +785,26 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if positive_required and (now - observed).total_seconds() > int(row["max_age_seconds"]):
                 raise PermissionError("authoritative evidence expired")
 
+    def _selection_guard(self, conn, claim, now, policy_effective_digest):
+        """Lock-time selection guard (V05). Returns bounded evidence, or None when no selection authority applies to this destination at all
+        (no store configured, no selection tables, a claim without a binding): existing behaviour is then byte-for-byte unchanged."""
+        from engine.registry_selection_authority import SelectionRefusal
+        if getattr(claim, "profile", None) == SUCCESSOR_PROFILE_NAME and getattr(claim, "policy_binding", None) is None:
+            # A successor claim that lost its binding (an older claim model drops the undeclared member) must never read as a legacy claim.
+            raise SelectionRefusal("field_invalid", cause="successor_claim_without_binding")
+        store = getattr(self, "_selection_store", None)
+        has_tables = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='selection_store_meta_v1'").fetchone() is not None
+        if store is None:
+            if getattr(claim, "policy_binding", None) is not None or has_tables:
+                # A binding (or an existing store) with no configured, verifiable authority is indeterminate: never a legacy bypass.
+                raise SelectionRefusal("store_unknown", "HOLD", cause="selection_store_not_configured")
+            return None
+        return store.check_effect(conn, claim, now, policy_effective_digest)
+
+    def _selection_receipt_evidence(self, evidence):
+        """Hook for the transaction-critical guard evidence retained in the receipt row. Qualification subclasses may fail it."""
+        return evidence
+
     # --- V04: durable Registry selection authority (delegation only; no effect path, execute_claim_atomic untouched) ---
     def configure_selection_authority(self, anchor_path, reasons_registry=None):
         """Attach the durable selection-authority store (nine tables in THIS database) and the host-held synthetic anchor file."""
@@ -817,6 +847,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         attempt_id: str,
         simulate: str | None = None,
         operation_id: str | None = None,
+        policy_effective_digest: str | None = None,
     ) -> dict[str, Any]:
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
@@ -853,6 +884,14 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             )
             claim = claim_type.model_validate(claim_raw)
             self._validate_claim_state(conn, claim, snapshot, now)
+            # V05: the selection-authority guard runs here, in THIS write transaction, after the lock-time clock and before any effect row is
+            # written. It reads only local rows; a refusal is a typed PermissionError and the transaction is rolled back.
+            try:
+                guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest)
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            self._transaction_stage("after_selection_guard")
             # Same write transaction: no authority writer can interleave here.
             grant_row = dict(conn.execute(
                 "SELECT * FROM authority_grants_v1 WHERE grant_id=?", (claim.grant_id,)
@@ -871,6 +910,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 "checked_at": now.isoformat(),
                 "profile": PROFILE,
             }
+            if guard_evidence is not None:
+                # Transaction-critical evidence: written with the receipt row below. A failure here aborts the transaction (no effect).
+                receipt["selection_guard"] = self._selection_receipt_evidence(guard_evidence)
 
             budget = conn.execute(
                 "SELECT * FROM effect_budgets_v1 WHERE budget_id=?", (claim.budget_id,)

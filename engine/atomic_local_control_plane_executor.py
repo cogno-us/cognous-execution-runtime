@@ -93,6 +93,10 @@ class AtomicLocalControlPlaneExecutor:
                     reason_code="current_authority_rejected",
                 )
         attempt_id = attempt_id or str(uuid.uuid4())
+        if getattr(self.destination, "_selection_store", None) is not None:
+            # The policy this executor will evaluate must be the effective policy the claim binds (compared under the destination lock).
+            from engine.registry_selection_authority import policy_digest_of
+            operation_kwargs["policy_effective_digest"] = policy_digest_of(self.policy)
         try:
             value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, **operation_kwargs)
         except TimeoutError as exc:
@@ -111,6 +115,7 @@ class AtomicLocalControlPlaneExecutor:
                 str(exc),
                 failure_class="authority_hold",
                 reason_code="current_authority_rejected",
+                typed=exc,
             )
         except Exception as exc:
             # An error here may come after the durable commit (the destination cannot always say). Only a
@@ -184,6 +189,7 @@ class AtomicLocalControlPlaneExecutor:
         *,
         failure_class: str,
         reason_code: str,
+        typed: Exception | None = None,
     ) -> ExecutionResult:
         failure_id = self.destination.record_failure(
             snapshot,
@@ -202,8 +208,14 @@ class AtomicLocalControlPlaneExecutor:
             observed_state="unknown",
             newly_executed=False,
             error=error,
-            control_plane_evidence={
-                "failure_record_id": failure_id,
-                "failure_class": failure_class,
-            },
+            control_plane_evidence=self._denied_evidence(failure_id, failure_class, typed),
         )
+
+    @staticmethod
+    def _denied_evidence(failure_id: Any, failure_class: str, typed: Exception | None) -> dict[str, Any]:
+        evidence: dict[str, Any] = {"failure_record_id": failure_id, "failure_class": failure_class}
+        from engine.registry_selection_authority import SelectionRefusal
+        if isinstance(typed, SelectionRefusal):
+            # Typed fields travel as data; no consumer parses message text (ADR 7.4).
+            evidence["selection_refusal"] = {"code": typed.code, "refusal_class": typed.refusal_class, "cause": typed.cause}
+        return evidence
