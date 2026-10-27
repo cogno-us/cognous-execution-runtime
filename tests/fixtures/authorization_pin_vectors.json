@@ -1,0 +1,133 @@
+{
+ "anchor_install_pending": {
+  "anchor_digest": "sha256:3e7fc67a77e9f83bb9a245b00dfcd9a37599c277b05e098b50e55e5963c29bc7",
+  "anchored_at": "2026-10-27T00:00:00Z",
+  "committed_epoch": 0,
+  "committed_head_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "intent": {
+   "action": "install",
+   "decision_id": "dec-1",
+   "epoch": 1,
+   "intent_digest": "sha256:fd071fc65005da437e8adcac27b92b0339a5c6a39566b0e3e283c8d50f31648f",
+   "provenance_ref": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+   "status": "active"
+  },
+  "pin_store_id": "store-1",
+  "profile": "ocs-s4/pin-anchor/1"
+ },
+ "anchor_install_pending_bytes": "{\"anchor_digest\":\"sha256:3e7fc67a77e9f83bb9a245b00dfcd9a37599c277b05e098b50e55e5963c29bc7\",\"anchored_at\":\"2026-10-27T00:00:00Z\",\"committed_epoch\":0,\"committed_head_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"intent\":{\"action\":\"install\",\"decision_id\":\"dec-1\",\"epoch\":1,\"intent_digest\":\"sha256:fd071fc65005da437e8adcac27b92b0339a5c6a39566b0e3e283c8d50f31648f\",\"provenance_ref\":\"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"status\":\"active\"},\"pin_store_id\":\"store-1\",\"profile\":\"ocs-s4/pin-anchor/1\"}\n",
+ "anchor_terminal_pending": {
+  "anchor_digest": "sha256:00624779af46c82b47a8bf0e7f2dec3d464172087f4b88179767c7ccec2fc947",
+  "anchored_at": "2026-10-27T00:00:01Z",
+  "committed_epoch": 1,
+  "committed_head_digest": "sha256:416bb5961d5222b1a537e857d64f83469cccb4c24808a5948ed475e4175d9b93",
+  "intent": {
+   "action": "terminal",
+   "decision_id": "dec-1",
+   "epoch": 2,
+   "intent_digest": "sha256:611f3e9949e60755a46cc5fb32d8123662eac872ee9a89808dfda1bb60c857eb",
+   "provenance_ref": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+   "status": "revoked"
+  },
+  "pin_store_id": "store-1",
+  "profile": "ocs-s4/pin-anchor/1"
+ },
+ "fence_file_dec_1": "b705fe517b3d1594fb4f9ecec7cb216d259ef68a4e3bbe66bf36e80ed73ffea8.fence",
+ "install_intent": {
+  "action": "install",
+  "decision_id": "dec-1",
+  "epoch": 1,
+  "intent_digest": "sha256:fd071fc65005da437e8adcac27b92b0339a5c6a39566b0e3e283c8d50f31648f",
+  "provenance_ref": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "status": "active"
+ },
+ "payload": {
+  "action_id": "act-transfer",
+  "activation_ref": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "approval_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "authority_domain": "payments",
+  "binding_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "consumer_id": "consumer-1",
+  "decision_id": "dec-1",
+  "effect_id": "eff-1",
+  "expires_at": "2026-10-28T00:00:00Z",
+  "grant_id": "grant-1",
+  "grant_revision": "r1",
+  "institution_id": "inst-1",
+  "not_before": "2026-10-27T00:00:00Z",
+  "operation": "op-transfer",
+  "policy_generation": 7,
+  "selection_epoch": 3,
+  "tenant_id": "tenant-a"
+ },
+ "payload_digest": "sha256:e4f067be7f4f1672de5940e8aa64e923dc00eb7db33f9db81b9b75a6193f5c2b",
+ "row_install": {
+  "decision_id": "dec-1",
+  "payload": {
+   "action_id": "act-transfer",
+   "activation_ref": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "approval_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "authority_domain": "payments",
+   "binding_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "consumer_id": "consumer-1",
+   "decision_id": "dec-1",
+   "effect_id": "eff-1",
+   "expires_at": "2026-10-28T00:00:00Z",
+   "grant_id": "grant-1",
+   "grant_revision": "r1",
+   "institution_id": "inst-1",
+   "not_before": "2026-10-27T00:00:00Z",
+   "operation": "op-transfer",
+   "policy_generation": 7,
+   "selection_epoch": 3,
+   "tenant_id": "tenant-a"
+  },
+  "pin_digest": "sha256:416bb5961d5222b1a537e857d64f83469cccb4c24808a5948ed475e4175d9b93",
+  "pin_epoch": 1,
+  "prev_pin_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "provenance": {
+   "intent_digest": "sha256:fd071fc65005da437e8adcac27b92b0339a5c6a39566b0e3e283c8d50f31648f",
+   "reason": "install"
+  },
+  "status": "active"
+ },
+ "row_install_text": "{\"decision_id\":\"dec-1\",\"payload\":{\"action_id\":\"act-transfer\",\"activation_ref\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"approval_commitment\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"authority_domain\":\"payments\",\"binding_digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"consumer_id\":\"consumer-1\",\"decision_id\":\"dec-1\",\"effect_id\":\"eff-1\",\"expires_at\":\"2026-10-28T00:00:00Z\",\"grant_id\":\"grant-1\",\"grant_revision\":\"r1\",\"institution_id\":\"inst-1\",\"not_before\":\"2026-10-27T00:00:00Z\",\"operation\":\"op-transfer\",\"policy_generation\":7,\"selection_epoch\":3,\"tenant_id\":\"tenant-a\"},\"pin_digest\":\"sha256:416bb5961d5222b1a537e857d64f83469cccb4c24808a5948ed475e4175d9b93\",\"pin_epoch\":1,\"prev_pin_digest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"provenance\":{\"intent_digest\":\"sha256:fd071fc65005da437e8adcac27b92b0339a5c6a39566b0e3e283c8d50f31648f\",\"reason\":\"install\"},\"status\":\"active\"}",
+ "row_terminal": {
+  "decision_id": "dec-1",
+  "payload": {
+   "action_id": "act-transfer",
+   "activation_ref": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "approval_commitment": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "authority_domain": "payments",
+   "binding_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "consumer_id": "consumer-1",
+   "decision_id": "dec-1",
+   "effect_id": "eff-1",
+   "expires_at": "2026-10-28T00:00:00Z",
+   "grant_id": "grant-1",
+   "grant_revision": "r1",
+   "institution_id": "inst-1",
+   "not_before": "2026-10-27T00:00:00Z",
+   "operation": "op-transfer",
+   "policy_generation": 7,
+   "selection_epoch": 3,
+   "tenant_id": "tenant-a"
+  },
+  "pin_digest": "sha256:eda01c0478ebf3a088eb763742a5ffdefcfbb09b8d999a2f10fdb7ae0f681da6",
+  "pin_epoch": 2,
+  "prev_pin_digest": "sha256:416bb5961d5222b1a537e857d64f83469cccb4c24808a5948ed475e4175d9b93",
+  "provenance": {
+   "intent_digest": "sha256:611f3e9949e60755a46cc5fb32d8123662eac872ee9a89808dfda1bb60c857eb",
+   "reason": "grant_revoked"
+  },
+  "status": "revoked"
+ },
+ "terminal_intent": {
+  "action": "terminal",
+  "decision_id": "dec-1",
+  "epoch": 2,
+  "intent_digest": "sha256:611f3e9949e60755a46cc5fb32d8123662eac872ee9a89808dfda1bb60c857eb",
+  "provenance_ref": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "status": "revoked"
+ }
+}
