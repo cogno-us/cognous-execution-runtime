@@ -1442,7 +1442,7 @@ class SelectionAuthorityStore:
                 raise SelectionRefusal("selection_missing", cause="scope_required_without_binding")
             if row["state"] == "revoked":
                 raise SelectionRefusal("selection_missing", cause="revoked_scope_without_binding")
-            if row["state"] == "active" and windows[gsd][0] <= now < windows[gsd][1]:
+            if row["state"] == "active" and now < windows[gsd][1]:  # not yet effective or inside the window: only a PAST valid_until may fall back
                 raise SelectionRefusal("selection_missing", cause="active_selection_without_binding")
             reasons.append("withdrawn" if row["state"] == "withdrawn" else "expired")
         reason = "withdrawn" if "withdrawn" in reasons else "expired" if reasons else "never_activated"
