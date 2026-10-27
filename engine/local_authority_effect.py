@@ -73,10 +73,37 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         *,
         clock: Callable[[], datetime],
         database_name: str = "refunds.sqlite3",
+        authorization_pin: Any = None,
     ):
+        """``authorization_pin`` (F-A1, constructor-only host option, default None = pin not required = unchanged behavior) is an
+        ``engine.authorization_pin.AuthorizationPinConfig``. With it, every governed effect needs an installed, active, in-validity pin for its
+        decision (Registry r08-v2 Amendment 4). There is no setter and no method that creates, changes or removes it, and this class implements
+        no function that writes a pin, an anchor or a fence file. Isolation from the claim supplier comes only from the deployment's OS
+        identities and file permissions, not from this Python boundary."""
         self.clock = clock
+        if authorization_pin is not None:
+            from engine.authorization_pin import AuthorizationPinConfig, PinReader
+            if not isinstance(authorization_pin, AuthorizationPinConfig):
+                raise TypeError("authorization_pin must be an AuthorizationPinConfig or None")
+            self._authorization_pin_config = authorization_pin
+            self._pin_reader = PinReader(authorization_pin)
         super().__init__(root, database_name=database_name)
         self._activate_profile()
+
+    _authorization_pin_config = None
+    _pin_reader = None
+    _PIN_FROZEN_ATTRIBUTES = frozenset({"_authorization_pin_config", "_pin_reader"})
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # The pin option is fixed at construction. (Defence in depth only: an in-process caller is not an isolation boundary.)
+        if name in self._PIN_FROZEN_ATTRIBUTES and name in self.__dict__:
+            raise AttributeError("the authorization pin configuration is fixed at construction")
+        super().__setattr__(name, value)
+
+    @property
+    def authorization_pin_required(self) -> bool:
+        """Read-only. True when the destination was constructed with a pin configuration."""
+        return self._authorization_pin_config is not None
 
     def _trusted_now(self) -> datetime:
         value = self.clock()
@@ -785,7 +812,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if positive_required and (now - observed).total_seconds() > int(row["max_age_seconds"]):
                 raise PermissionError("authoritative evidence expired")
 
-    def _selection_guard(self, conn, claim, now, policy_effective_digest, policy_effective_sets=None):
+    def _selection_guard(self, conn, claim, now, policy_effective_digest, policy_effective_sets=None, pin_scope=None):
         """Lock-time selection guard (V05). Returns bounded evidence, or None when no selection authority applies to this destination at all
         (no store configured, no selection tables, a claim without a binding): existing behaviour is then byte-for-byte unchanged."""
         from engine.registry_selection_authority import SelectionRefusal
@@ -799,6 +826,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 # A binding (or an existing store) with no configured, verifiable authority is indeterminate: never a legacy bypass.
                 raise SelectionRefusal("store_unknown", "HOLD", cause="selection_store_not_configured")
             return None
+        if pin_scope is not None:
+            # F-A1: the governed scope comes from the authenticated pin, not from the claim's binding.
+            return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets, pin_scope=pin_scope)
         return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets)
 
     def _selection_receipt_evidence(self, evidence):
@@ -850,6 +880,35 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         policy_effective_digest: str | None = None,
         policy_effective_sets: dict | None = None,
     ) -> dict[str, Any]:
+        if self._pin_reader is None:
+            return self._execute_claim_atomic_body(
+                claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, operation_id=operation_id,
+                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets)
+        # F-A1 (Amendment 4 section 6.2): lock-free precheck, shared per-decision fence, re-read of the anchor under the fence, and only then
+        # BEGIN IMMEDIATE. The fence is held until the effect transaction has committed or rolled back and is released on every path.
+        from engine.authorization_pin import acquire_shared_fence
+        decision_id = snapshot.decision_id
+        self._pin_reader.barrier(decision_id)                                                  # step 0 (liveness only)
+        fence = acquire_shared_fence(self._authorization_pin_config, decision_id)              # step 1
+        try:
+            self._pin_reader.barrier(decision_id)                                              # step 2 (authoritative admission read)
+            return self._execute_claim_atomic_body(
+                claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, operation_id=operation_id,
+                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets)
+        finally:
+            fence.release()                                                                    # step 9
+
+    def _execute_claim_atomic_body(
+        self,
+        claim_id: str,
+        snapshot: FrozenEnvelope,
+        *,
+        attempt_id: str,
+        simulate: str | None = None,
+        operation_id: str | None = None,
+        policy_effective_digest: str | None = None,
+        policy_effective_sets: dict | None = None,
+    ) -> dict[str, Any]:
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
             TenantLocalExecutionClaim,
@@ -885,10 +944,30 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             )
             claim = claim_type.model_validate(claim_raw)
             self._validate_claim_state(conn, claim, snapshot, now)
+            pin_admission = None
+            if self._pin_reader is not None:
+                # F-A1 pin step (Amendment 4 section 5): after the claim-state validation, before the selection guard, in THIS transaction.
+                try:
+                    from engine.authorization_pin import check_claim_against_pin
+                    from engine.registry_selection_authority import SelectionRefusal as _PinRefusal
+                    try:
+                        lookup = self._pin_reader.lookup(snapshot.decision_id)
+                        pin_admission = check_claim_against_pin(lookup, claim, now)
+                    except _PinRefusal:
+                        raise
+                    except Exception as exc:
+                        raise _PinRefusal("store_unknown", "HOLD", cause="pin_store_unreadable") from exc
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
             # V05: the selection-authority guard runs here, in THIS write transaction, after the lock-time clock and before any effect row is
             # written. It reads only local rows; a refusal is a typed PermissionError and the transaction is rolled back.
             try:
-                guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets)
+                if pin_admission is None:
+                    guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets)
+                else:
+                    guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets,
+                                                           pin_scope=pin_admission.pin_scope)
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
@@ -911,6 +990,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 "checked_at": now.isoformat(),
                 "profile": PROFILE,
             }
+            if pin_admission is not None:
+                receipt["authorization_pin"] = dict(pin_admission.receipt)
             if guard_evidence is not None:
                 # Transaction-critical evidence: written with the receipt row below. A failure here aborts the transaction (no effect).
                 receipt["selection_guard"] = self._selection_receipt_evidence(guard_evidence)
