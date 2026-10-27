@@ -647,3 +647,123 @@ def test_c05_an_entry_with_an_unknown_reasons_label_is_rejected_by_replay(env):
     env.rewrite_anchor(head_entry_hash=new_hash)  # isolate the check: only the label itself can now cause the refusal
     status = env.verify()
     assert status.state == "unknown" and "reasons" in status.cause
+
+
+# ================================================================================================================== V04 REMEDIATION (PR #146)
+import subprocess
+import sys
+import textwrap
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize("column,value", [
+    ("valid_until", "2099-01-01T00:00:00Z"), ("valid_from", "2000-01-01T00:00:00Z"), ("record_id", "f1ab-forged"),
+    ("record_digest", "sha256:" + "5" * 64), ("activation_ref", "sha256:" + "6" * 64), ("record_policy_digest", "sha256:" + "7" * 64)])
+def test_p01_corrupted_authority_column_is_unknown_before_use(env, column, value):
+    env.activate(ST1)
+    env.sql(f"UPDATE selection_activation_v1 SET {column}=?", (value,))
+    status = env.verify()
+    assert status.state == "unknown" and status.cause.startswith("table_mismatch")
+    refused(lambda: env.state(), "store_unknown", "HOLD")
+
+
+def test_p02_corrupted_transition_ref_after_withdraw_is_unknown(env):
+    env.activate(ST1)
+    env.withdraw(withdraw_stmt(ST1, 2))
+    env.sql("UPDATE selection_activation_v1 SET transition_ref=?", ("sha256:" + "8" * 64,))
+    assert env.verify().state == "unknown"
+    refused(lambda: env.state(), "store_unknown", "HOLD")
+
+
+def test_p03_intact_history_reads_the_same_verdict_after_restart(env):
+    env.activate(ST1)
+    env.withdraw(withdraw_stmt(ST1, 2))
+    before = env.state()
+    env.open()
+    after = env.state()
+    assert env.verify().state == "known" and after == before and after.status == "withdrawn"
+    assert after.valid_until and after.record_id and after.effective_policy_digest == effective_digest()
+
+
+def _anchor(seq, ev=0, head=None, store="store-x"):
+    return {"anchor_version": sa.ANCHOR_VERSION, "store_id": store, "head_sequence": seq, "head_entry_hash": head or "sha256:" + format(seq, "x").zfill(64),
+            "evidence_head_sequence": ev, "evidence_head_hash": sa.ZERO_HASH}
+
+
+def test_a01_anchor_is_monotonic_stale_and_equal_position_deterministic(tmp_path):
+    host = sa.HostAnchorFile(tmp_path / "anchor.json")
+    assert host.advance(_anchor(1)) == "written" and host.advance(_anchor(3)) == "written"
+    raw = (tmp_path / "anchor.json").read_bytes()
+    assert host.advance(_anchor(2)) == "stale" and (tmp_path / "anchor.json").read_bytes() == raw  # a stale writer cannot overwrite
+    assert host.advance(_anchor(3)) == "unchanged" and (tmp_path / "anchor.json").read_bytes() == raw
+    with pytest.raises(sa.ReplayError):  # equal position, different head: conflict, never a silent replace
+        host.advance(_anchor(3, head="sha256:" + "9" * 64))
+    assert host.advance(_anchor(5, ev=2)) == "written"
+    raw = (tmp_path / "anchor.json").read_bytes()
+    with pytest.raises(sa.ReplayError):  # log ahead but evidence behind is incomparable: refused, nothing written
+        host.advance(_anchor(6, ev=1))
+    assert (tmp_path / "anchor.json").read_bytes() == raw
+
+
+def test_a02_malformed_existing_anchor_is_never_overwritten(tmp_path):
+    path = tmp_path / "anchor.json"
+    path.write_text("{not json")
+    with pytest.raises(sa.ReplayError):
+        sa.HostAnchorFile(path).advance(_anchor(1))
+    assert path.read_text() == "{not json"
+    with pytest.raises(sa.ReplayError):  # absent anchor after genesis is not permission to start over either
+        sa.HostAnchorFile(tmp_path / "other.json").advance(_anchor(7))
+    assert not (tmp_path / "other.json").exists()
+
+
+def test_a03_lock_held_by_another_process_refuses_without_writing(tmp_path):
+    path = tmp_path / "anchor.json"
+    host = sa.HostAnchorFile(path)
+    host.advance(_anchor(1))
+    raw = path.read_bytes()
+    code = textwrap.dedent(f"""
+        import fcntl, sys, time
+        h = open({str(path) + '.lock'!r}, 'a+b'); fcntl.flock(h.fileno(), fcntl.LOCK_EX)
+        print('ready', flush=True); time.sleep(3)
+    """)
+    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        host.LOCK_TIMEOUT_SECONDS = 0.2
+        with pytest.raises(sa.ReplayError) as info:
+            host.advance(_anchor(2))
+        assert "anchor_lock_unavailable" in str(info.value) and path.read_bytes() == raw
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_a04_concurrent_processes_cannot_regress_the_anchor(tmp_path):
+    path = tmp_path / "anchor.json"
+    sa.HostAnchorFile(path).advance(_anchor(1))
+    code = textwrap.dedent("""
+        import sys; sys.path[:0] = [{root!r}, {src!r}]
+        from engine import registry_selection_authority as sa
+        host = sa.HostAnchorFile({path!r}); n = int(sys.argv[1])
+        for seq in ([n, n + 10, n + 20] if n % 2 else [n + 20, n + 10, n]):
+            a = {{"anchor_version": sa.ANCHOR_VERSION, "store_id": "store-x", "head_sequence": seq, "head_entry_hash": "sha256:" + format(seq, "x").zfill(64),
+                  "evidence_head_sequence": 0, "evidence_head_hash": sa.ZERO_HASH}}
+            host.advance(a)
+    """).format(root=str(ROOT), src=str(ROOT / "src"), path=str(path))
+    procs = [subprocess.Popen([sys.executable, "-c", code, str(n)]) for n in (2, 3, 4, 5, 6, 7)]
+    assert all(p.wait(timeout=60) == 0 for p in procs)
+    assert sa.HostAnchorFile(path).read()["head_sequence"] == 27  # the maximum offered; no older head ever landed last
+
+
+def test_a05_interrupted_write_leaves_the_prior_anchor_intact(tmp_path, monkeypatch):
+    path = tmp_path / "anchor.json"
+    host = sa.HostAnchorFile(path)
+    host.advance(_anchor(1))
+    raw = path.read_bytes()
+    monkeypatch.setattr(sa.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("interrupted")))
+    with pytest.raises(OSError):
+        host.advance(_anchor(2))
+    monkeypatch.undo()
+    assert path.read_bytes() == raw and host.read()["head_sequence"] == 1
+    assert not [f for f in tmp_path.iterdir() if f.name.startswith(".anchor-")]

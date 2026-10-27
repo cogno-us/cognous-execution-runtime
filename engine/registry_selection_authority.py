@@ -39,6 +39,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import time
 import types
 import uuid
 from datetime import datetime, timezone
@@ -426,7 +427,8 @@ def apply_entry(d: Derived, e: dict, entry_hash: str) -> None:
         if counter >= INT_MAX or e[_P] != counter + 1:
             _fail("policy_generation")
         d.rows[gsd] = {"state": "active", "scope_key_digest": skd, "selection_id": sid, "selection_epoch": epoch, "selection_digest": e[_D],
-                       "participation": e[_PA], "activation_ref": entry_hash, "transition_ref": None, "generation": e[_P], "issuer_key_id": e[_KI]}
+                       "participation": e[_PA], "activation_ref": entry_hash, "transition_ref": None, "generation": e[_P], "issuer_key_id": e[_KI],
+                       "act_epoch": epoch, "act_digest": e[_D], "act_snapshot": (e[_SV], e[_SF]), "last_sequence": e["activation_sequence"]}
         d.lineage.setdefault(gsd, sid)
         d.highwater[skd] = epoch
         d.generation[gsd] = e[_P]
@@ -451,7 +453,8 @@ def apply_entry(d: Derived, e: dict, entry_hash: str) -> None:
         counter = d.generation.get(gsd, d.baseline_floor)
         if e[_P] != min(counter + 1, INT_MAX):
             _fail("policy_generation")
-        row.update(state="withdrawn", selection_epoch=epoch, selection_digest=e[_D], participation=e[_PA], transition_ref=entry_hash, generation=e[_P])
+        row.update(state="withdrawn", selection_epoch=epoch, selection_digest=e[_D], participation=e[_PA], transition_ref=entry_hash, generation=e[_P],
+                   last_sequence=e["activation_sequence"])
         d.highwater[skd] = epoch
         d.generation[gsd] = e[_P]
         d.history.add(gsd)
@@ -464,6 +467,7 @@ def apply_entry(d: Derived, e: dict, entry_hash: str) -> None:
             _fail("ratchet_after")
         if e[_SB] != row["state"]:
             _fail("state_transition")
+        row["last_sequence"] = e["activation_sequence"]
         current = epoch == row["selection_epoch"]
         if kind == "revoke_row":
             if (sid, epoch) in d.revoked_pairs:
@@ -564,15 +568,81 @@ class HostAnchorFile:
             raise ReplayError("anchor_invalid")
         return anchor
 
-    def write(self, anchor: dict) -> None:
+    LOCK_TIMEOUT_SECONDS = 10.0
+
+    @staticmethod
+    def position(anchor: Mapping[str, Any]) -> tuple:
+        return anchor["head_sequence"], anchor["evidence_head_sequence"]
+
+    @contextlib.contextmanager
+    def _exclusive(self):
+        """Cross-PROCESS exclusive guard: `fcntl.flock` on a sidecar lock file (never the anchor file itself, which is replaced). Bounded wait;
+        failure to acquire raises (conservative) and nothing is written."""
+        try:
+            import fcntl
+        except ImportError as exc:  # no supported cross-process lock on this platform: refuse rather than write unguarded
+            raise ReplayError("anchor_lock_unsupported") from exc
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(str(self.path) + ".lock", "a+b")
+        try:
+            deadline = time.monotonic() + self.LOCK_TIMEOUT_SECONDS
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if time.monotonic() >= deadline:
+                        raise ReplayError("anchor_lock_unavailable") from exc
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+    def advance(self, anchor: dict) -> str:
+        """Monotonic compare-and-write, serialized across processes. Returns "written", "unchanged" (identical head already anchored) or
+        "stale" (a newer anchor exists; NOT overwritten). Raises ReplayError, writing nothing, when the lock cannot be taken, when an existing
+        anchor is unreadable/malformed/for another store, when the positions are incomparable or equal-but-different, or when no anchor exists
+        and `anchor` is not the genesis head."""
+        with self._exclusive():
+            existing = self.read()  # malformed/unreadable raises: never treated as permission to overwrite
+            if existing is None:
+                if anchor["head_sequence"] != 1:
+                    raise ReplayError("anchor_absent_after_genesis")
+                self._write_unlocked(anchor)
+                return "written"
+            for key in ("store_id", "head_sequence", "evidence_head_sequence"):
+                if key not in existing or (key != "store_id" and not _int_ok(existing[key], 0, SEQ_MAX)):
+                    raise ReplayError("anchor_invalid")
+            if existing["store_id"] != anchor["store_id"]:
+                raise ReplayError("anchor_store_mismatch")
+            old, new = self.position(existing), self.position(anchor)
+            if old == new:
+                if (existing["head_entry_hash"], existing["evidence_head_hash"]) != (anchor["head_entry_hash"], anchor["evidence_head_hash"]):
+                    raise ReplayError("anchor_equal_position_conflict")
+                return "unchanged"
+            if old[0] >= new[0] and old[1] >= new[1]:
+                return "stale"
+            if not (new[0] >= old[0] and new[1] >= old[1]):
+                raise ReplayError("anchor_positions_incomparable")
+            self._write_unlocked(anchor)
+            return "written"
+
+    def _write_unlocked(self, anchor: dict) -> None:
         fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), prefix=".anchor-")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps({"anchor": anchor, "anchor_digest": anchor_digest(anchor)}))
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp, self.path)
+            os.replace(tmp, self.path)  # atomic: a reader sees the old or the new anchor, never a partial one
+            dir_fd = os.open(str(self.path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(tmp)
@@ -605,7 +675,7 @@ _SCHEMA = [
         issuer_key_id TEXT NOT NULL, record_id TEXT NOT NULL, record_version INTEGER NOT NULL, record_digest TEXT NOT NULL,
         record_policy_digest TEXT NOT NULL, activation_ref TEXT NOT NULL, transition_ref TEXT, policy_generation INTEGER NOT NULL,
         activation_state TEXT NOT NULL CHECK(activation_state IN ('active','withdrawn','revoked')), snapshot_version INTEGER NOT NULL,
-        snapshot_fingerprint TEXT NOT NULL, last_sequence INTEGER NOT NULL)""",
+        snapshot_fingerprint TEXT NOT NULL, last_sequence INTEGER NOT NULL, statement_json TEXT NOT NULL, record_json TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS selection_highwater_v1 (hw_key TEXT PRIMARY KEY, hw_kind TEXT NOT NULL CHECK(hw_kind IN ('scope','snapshot')),
         high_water_epoch INTEGER, snapshot_version INTEGER, snapshot_fingerprint TEXT, valid_until TEXT, min_epochs_json TEXT,
         min_trust_snapshot_version INTEGER)""",
@@ -711,10 +781,18 @@ class SelectionAuthorityStore:
     def _compare_tables(self, conn: sqlite3.Connection, d: Derived) -> Optional[str]:
         def rows(sql):
             return sorted(tuple(r) for r in conn.execute(sql))
+        # selection_activation_v1 column inventory (every column is authority-relevant; none is excluded as metadata):
+        #   replay-derived from the log ........ governed_scope_digest, scope_key_digest, selection_id, selection_epoch, selection_digest,
+        #                                         participation, activation_state, activation_ref, transition_ref, policy_generation,
+        #                                         issuer_key_id, snapshot_version, snapshot_fingerprint, last_sequence
+        #   pinned by the log's selection_digest  statement_json -> valid_from, valid_until, record_id, record_version, record_digest, scope_json
+        #   pinned by the statement's record pin  record_json -> record_policy_digest (recomputed with the Registry effective-policy function)
         exp_act = sorted((g, r["scope_key_digest"], r["selection_id"], r["selection_epoch"], r["selection_digest"], r["participation"], r["state"],
-                          r["activation_ref"], r["transition_ref"], r["generation"], r["issuer_key_id"]) for g, r in d.rows.items())
+                          r["activation_ref"], r["transition_ref"], r["generation"], r["issuer_key_id"], r["act_snapshot"][0], r["act_snapshot"][1],
+                          r["last_sequence"]) for g, r in d.rows.items())
         got_act = rows("SELECT governed_scope_digest, scope_key_digest, selection_id, selection_epoch, selection_digest, participation, activation_state, "
-                       "activation_ref, transition_ref, policy_generation, issuer_key_id FROM selection_activation_v1")
+                       "activation_ref, transition_ref, policy_generation, issuer_key_id, snapshot_version, snapshot_fingerprint, last_sequence "
+                       "FROM selection_activation_v1")
         checks = (
             ("selection_activation_v1", exp_act, got_act),
             ("selection_lineage_v1", sorted(d.lineage.items()), rows("SELECT governed_scope_digest, selection_id FROM selection_lineage_v1")),
@@ -728,9 +806,49 @@ class SelectionAuthorityStore:
         for name, expected, got in checks:
             if [tuple(x) for x in expected] != got:
                 return f"table_mismatch:{name}"
+        pinned = self._compare_pinned(conn, d)
+        if pinned:
+            return pinned
         snap = self._snapshot_row(conn)
         if (d.snapshot is None) != (snap is None) or (snap is not None and (snap["snapshot_version"], snap["snapshot_fingerprint"]) != d.snapshot):
             return "table_mismatch:selection_highwater_v1"
+        return None
+
+    def _compare_pinned(self, conn: sqlite3.Connection, d: Derived) -> Optional[str]:
+        """The values the log does not carry (validity window, record identity, scope tuple, record policy digest) are authenticated by the stored
+        canonical statement and record: the statement must hash to the activation entry's selection_digest (from the replayed log) and the record
+        to the record pin inside that statement. Anything that does not reconstruct is table_mismatch (UNKNOWN), never silently accepted."""
+        bad = "table_mismatch:selection_activation_v1"
+        for row in conn.execute("SELECT * FROM selection_activation_v1"):
+            r = d.rows.get(row["governed_scope_digest"])
+            if r is None:
+                return bad
+            try:
+                stmt, rec = json.loads(row["statement_json"]), json.loads(row["record_json"])
+                if (canonical_bytes(stmt).decode("ascii") != row["statement_json"] or canonical_bytes(rec).decode("ascii") != row["record_json"]
+                        or "sha256:" + hashlib.sha256(canonical_bytes(stmt)).hexdigest() != r["act_digest"]):
+                    return bad
+                scope = {"consumer_id": stmt["consumer_id"], "tenant": stmt["scope"]["tenant"], "institution": stmt["scope"]["institution"],
+                         "authority_domain": stmt["scope"]["authority_domain"], "operation": stmt["operation"], "family": stmt["family"]}
+                pin, eff = stmt["record"], stmt["effective"]
+                body = {k: v for k, v in rec.items() if k != "record_digest"}
+                if (stmt["disposition"] != "select" or stmt["selection_id"] != r["selection_id"] or stmt["epoch"] != r["act_epoch"]
+                        or governed_scope_digest(scope) != row["governed_scope_digest"] or scope_key_digest(stmt["selection_id"], scope) != r["scope_key_digest"]
+                        or row["scope_json"] != canonical_bytes(list(_scope_tuple(scope))).decode("ascii")
+                        or row["valid_from"] != eff["valid_from"] or row["valid_until"] != eff["valid_until"]
+                        or row["record_id"] != pin["record_id"] or row["record_version"] != pin["record_version"] or row["record_digest"] != pin["record_digest"]
+                        or rec.get("record_digest") != pin["record_digest"] or rec.get("record_id") != pin["record_id"]
+                        or rec.get("record_version") != pin["record_version"]
+                        or "sha256:" + hashlib.sha256(canonical_bytes(body)).hexdigest() != pin["record_digest"]):
+                    return bad
+                reg = _registry()
+                payload = rec["payload"]
+                if row["record_policy_digest"] != reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(payload[k]) for k in sa_fields()}):
+                    return bad
+            except SelectionRefusal:
+                return "registry_unavailable_for_policy_digest"
+            except Exception:
+                return bad
         return None
 
     def _verify(self, conn: sqlite3.Connection) -> tuple:
@@ -829,18 +947,13 @@ class SelectionAuthorityStore:
                 "floor_min_trust_snapshot_version": min_version or 0, "anchored_at": _utc(now)}
 
     def _advance_anchor(self, anchor: Optional[dict]) -> bool:
-        """After the commit: advance the host anchor (never backwards). A failure leaves the store ahead of a stale anchor, which verification accepts."""
+        """After the commit: advance the host anchor through the cross-process monotonic compare-and-write. The commit has already happened, so a
+        failure (lock unavailable, malformed anchor) cannot undo it: it returns False, the anchor is NOT modified, and the next verification either
+        accepts a store that is ahead of an intact older anchor (disclosed limit) or reports UNKNOWN for a malformed one."""
         if anchor is None:
             return False
         try:
-            current = None
-            with contextlib.suppress(ReplayError):
-                current = self._anchor.read()
-            if current is not None and (current.get("head_sequence", 0), current.get("evidence_head_sequence", 0)) > \
-                    (anchor["head_sequence"], anchor["evidence_head_sequence"]):
-                return True
-            self._anchor.write(anchor)
-            return True
+            return self._anchor.advance(anchor) in ("written", "unchanged")
         except Exception:
             return False
 
@@ -1176,17 +1289,18 @@ class SelectionAuthorityStore:
         conn.execute(
             "INSERT INTO selection_activation_v1(governed_scope_digest, scope_key_digest, scope_json, selection_id, selection_epoch, selection_digest, "
             "participation, valid_from, valid_until, issuer_key_id, record_id, record_version, record_digest, record_policy_digest, activation_ref, "
-            "transition_ref, policy_generation, activation_state, snapshot_version, snapshot_fingerprint, last_sequence) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,'active',?,?,?) ON CONFLICT(governed_scope_digest) DO UPDATE SET "
+            "transition_ref, policy_generation, activation_state, snapshot_version, snapshot_fingerprint, last_sequence, statement_json, record_json) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,'active',?,?,?,?,?) ON CONFLICT(governed_scope_digest) DO UPDATE SET "
             "scope_key_digest=excluded.scope_key_digest, selection_id=excluded.selection_id, selection_epoch=excluded.selection_epoch, "
             "selection_digest=excluded.selection_digest, participation=excluded.participation, valid_from=excluded.valid_from, "
             "valid_until=excluded.valid_until, issuer_key_id=excluded.issuer_key_id, record_id=excluded.record_id, record_version=excluded.record_version, "
             "record_digest=excluded.record_digest, record_policy_digest=excluded.record_policy_digest, activation_ref=excluded.activation_ref, "
             "transition_ref=NULL, policy_generation=excluded.policy_generation, activation_state='active', snapshot_version=excluded.snapshot_version, "
-            "snapshot_fingerprint=excluded.snapshot_fingerprint, last_sequence=excluded.last_sequence",
+            "snapshot_fingerprint=excluded.snapshot_fingerprint, last_sequence=excluded.last_sequence, statement_json=excluded.statement_json, "
+            "record_json=excluded.record_json",
             (gsd, skd, canonical_bytes(list(_scope_tuple(scope))).decode("ascii"), sid, epoch, sel.statement_digest, participation, eff["valid_from"],
              eff["valid_until"], key_id, pin["record_id"], pin["record_version"], pin["record_digest"], record_policy_digest, h, gen,
-             d.snapshot[0], d.snapshot[1], entry["activation_sequence"]))
+             d.snapshot[0], d.snapshot[1], entry["activation_sequence"], canonical_bytes(stmt).decode("ascii"), canonical_bytes(rec.record).decode("ascii")))
         conn.execute("INSERT OR IGNORE INTO selection_lineage_v1(governed_scope_digest, selection_id) VALUES(?,?)", (gsd, sid))
         self._upsert_highwater(conn, skd, epoch)
         self._upsert_generation(conn, gsd, gen)
