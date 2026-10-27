@@ -1344,7 +1344,7 @@ class SelectionAuthorityStore:
 
     # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
     def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str],
-                     policy_effective_sets: Optional[dict] = None) -> dict:
+                     policy_effective_sets: Optional[dict] = None, *, pin_scope: Optional[dict] = None) -> dict:
         """The lock-time selection guard (ADR 7, contract 7.4). Called by `execute_claim_atomic` INSIDE its `BEGIN IMMEDIATE`, after the lock-time
         clock and before the effect insert, on the SAME connection. Reads only local rows (and the small local anchor file); no network, registry call
         or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing.
@@ -1357,6 +1357,9 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("store_unknown", "HOLD", cause=status.cause)
         binding = getattr(claim, "policy_binding", None)
         head = {"log_head_sequence": d.head_sequence, "log_head_hash": d.head_hash}
+        if pin_scope is not None and binding is None:
+            # F-A1: a pin-required destination never reaches the legacy (unbound) path.
+            raise SelectionRefusal("policy_identity_mismatch", cause="pin_required_binding_absent")
         if binding is None:
             return self._check_unbound(conn, claim, d, now, head)
         try:
@@ -1369,6 +1372,12 @@ class SelectionAuthorityStore:
         sc = binding["scope"]
         scope = {"consumer_id": binding["consumer_id"], "tenant": sc["tenant"], "institution": sc["institution"],
                  "authority_domain": sc["authority_domain"], "operation": binding["operation"], "family": binding["family"]}
+        if pin_scope is not None:
+            # F-A1 (Amendment 4 section 5 step 6): the governed scope is built from the AUTHENTICATED PIN, not from the claim. Only `family`
+            # (and `selection_id` below) come from the digest-verified binding. Every later check is unchanged.
+            if type(pin_scope) is not dict or set(pin_scope) != {"consumer_id", "tenant", "institution", "authority_domain", "operation"}:
+                raise SelectionRefusal("field_invalid", cause="pin_scope")
+            scope = {**pin_scope, "family": binding["family"]}
         gsd, sid, epoch = governed_scope_digest(scope), binding["selection_id"], binding["selection_epoch"]
         skd = scope_key_digest(sid, scope)
         row = d.rows.get(gsd)
