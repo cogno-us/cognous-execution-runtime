@@ -785,7 +785,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if positive_required and (now - observed).total_seconds() > int(row["max_age_seconds"]):
                 raise PermissionError("authoritative evidence expired")
 
-    def _selection_guard(self, conn, claim, now, policy_effective_digest):
+    def _selection_guard(self, conn, claim, now, policy_effective_digest, policy_effective_sets=None):
         """Lock-time selection guard (V05). Returns bounded evidence, or None when no selection authority applies to this destination at all
         (no store configured, no selection tables, a claim without a binding): existing behaviour is then byte-for-byte unchanged."""
         from engine.registry_selection_authority import SelectionRefusal
@@ -799,7 +799,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
                 # A binding (or an existing store) with no configured, verifiable authority is indeterminate: never a legacy bypass.
                 raise SelectionRefusal("store_unknown", "HOLD", cause="selection_store_not_configured")
             return None
-        return store.check_effect(conn, claim, now, policy_effective_digest)
+        return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets)
 
     def _selection_receipt_evidence(self, evidence):
         """Hook for the transaction-critical guard evidence retained in the receipt row. Qualification subclasses may fail it."""
@@ -848,6 +848,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         simulate: str | None = None,
         operation_id: str | None = None,
         policy_effective_digest: str | None = None,
+        policy_effective_sets: dict | None = None,
     ) -> dict[str, Any]:
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
@@ -887,7 +888,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             # V05: the selection-authority guard runs here, in THIS write transaction, after the lock-time clock and before any effect row is
             # written. It reads only local rows; a refusal is a typed PermissionError and the transaction is rolled back.
             try:
-                guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest)
+                guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets)
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
