@@ -4,6 +4,7 @@ name: Python safety boundary
   push:
     paths:
     - engine/**
+    - host/**
     - examples/openshell/**
     - docs/openshell-adapter.md
     - tests/**
@@ -13,6 +14,7 @@ name: Python safety boundary
   pull_request:
     paths:
     - engine/**
+    - host/**
     - examples/openshell/**
     - docs/openshell-adapter.md
     - tests/**
