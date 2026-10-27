@@ -1555,7 +1555,7 @@ def sa_fields() -> tuple:
 
 
 def _clean_set(value: Any) -> frozenset:
-    """A policy set as a frozenset of non-empty ASCII strings; anything else is malformed (the Registry digest function re-validates the form)."""
+    """A policy set as a frozenset of non-empty strings; anything else is malformed. The Registry digest function applies the full value rules."""
     if not isinstance(value, (set, frozenset, list, tuple)) or any(type(m) is not str or not m for m in value):
         raise ValueError("policy set malformed")
     return frozenset(value)
