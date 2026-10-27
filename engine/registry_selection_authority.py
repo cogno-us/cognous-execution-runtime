@@ -681,7 +681,7 @@ _SCHEMA = [
         min_trust_snapshot_version INTEGER, snapshot_json TEXT)""",
     """CREATE TABLE IF NOT EXISTS selection_revoked_v1 (kind TEXT NOT NULL CHECK(kind IN ('pair','key')), selection_id TEXT NOT NULL DEFAULT '',
         epoch INTEGER NOT NULL DEFAULT 0, key_id TEXT NOT NULL DEFAULT '', log_sequence INTEGER NOT NULL, PRIMARY KEY(kind, selection_id, epoch, key_id))""",
-    "CREATE TABLE IF NOT EXISTS selection_scope_required_v1 (governed_scope_digest TEXT PRIMARY KEY, set_sequence INTEGER NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS selection_scope_required_v1 (governed_scope_digest TEXT PRIMARY KEY, set_sequence INTEGER NOT NULL, scope_json TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS selection_generation_v1 (governed_scope_digest TEXT PRIMARY KEY, policy_generation INTEGER NOT NULL)",
     "CREATE TABLE IF NOT EXISTS selection_lineage_v1 (governed_scope_digest TEXT PRIMARY KEY, selection_id TEXT NOT NULL)",
     """CREATE TABLE IF NOT EXISTS selection_evidence_v1 (evidence_sequence INTEGER PRIMARY KEY CHECK(evidence_sequence>=1),
@@ -806,6 +806,13 @@ class SelectionAuthorityStore:
         for name, expected, got in checks:
             if [tuple(x) for x in expected] != got:
                 return f"table_mismatch:{name}"
+        for gsd, scope_json in conn.execute("SELECT governed_scope_digest, scope_json FROM selection_scope_required_v1"):
+            try:
+                tup = json.loads(scope_json)
+                if (canonical_bytes(tup).decode("ascii") != scope_json or governed_scope_digest(dict(zip(SCOPE_NAMES, tup))) != gsd):
+                    return "table_mismatch:selection_scope_required_v1"
+            except Exception:
+                return "table_mismatch:selection_scope_required_v1"
         pinned = self._compare_pinned(conn, d)
         if pinned:
             return pinned
@@ -1097,7 +1104,8 @@ class SelectionAuthorityStore:
             state = row["state"] if row else "none"
             entry, h = self._append(conn, d, now, entry_type="sync", cause="ratchet_provision", governed_scope_digest=gsd, participation="required",
                                     state_before=state, state_after=state, ratchet_after=True, determination_ref=determination_ref)
-            conn.execute("INSERT INTO selection_scope_required_v1(governed_scope_digest, set_sequence) VALUES(?,?)", (gsd, entry["activation_sequence"]))
+            conn.execute("INSERT INTO selection_scope_required_v1(governed_scope_digest, set_sequence, scope_json) VALUES(?,?,?)",
+                         (gsd, entry["activation_sequence"], canonical_bytes(list(_scope_tuple(governed_scope))).decode("ascii")))
         else:
             if gsd in d.ratchet or gsd in d.rows or gsd in d.lineage or gsd in d.history:
                 raise SelectionRefusal("field_invalid", cause="authority_history_exists")
@@ -1330,8 +1338,136 @@ class SelectionAuthorityStore:
         self._upsert_highwater(conn, skd, epoch)
         self._upsert_generation(conn, gsd, gen)
         if new_ratchet and not ratchet_now:
-            conn.execute("INSERT INTO selection_scope_required_v1(governed_scope_digest, set_sequence) VALUES(?,?)", (gsd, entry["activation_sequence"]))
+            conn.execute("INSERT INTO selection_scope_required_v1(governed_scope_digest, set_sequence, scope_json) VALUES(?,?,?)",
+                         (gsd, entry["activation_sequence"], canonical_bytes(list(_scope_tuple(scope))).decode("ascii")))
         return TransitionResult("activate", entry["activation_sequence"], h, (h,), h, None, gen, False), self._finish(conn, d, now)
+
+    # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
+    def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str]) -> dict:
+        """The lock-time selection guard (ADR 7, contract 7.4). Called by `execute_claim_atomic` INSIDE its `BEGIN IMMEDIATE`, after the lock-time
+        clock and before the effect insert, on the SAME connection. Reads only local rows (and the small local anchor file); no network, registry call
+        or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing."""
+        status, d = self._verify(conn)
+        if status.state != "known":
+            raise SelectionRefusal("store_unknown", "HOLD", cause=status.cause)
+        binding = getattr(claim, "policy_binding", None)
+        head = {"log_head_sequence": d.head_sequence, "log_head_hash": d.head_hash}
+        if binding is None:
+            return self._check_unbound(conn, claim, d, now, head)
+        try:
+            from agent_control_plane import canonical_policy_binding as cpb
+        except Exception as exc:
+            raise SelectionRefusal("verifier_unavailable", cause="binding_validator_unavailable") from exc
+        defect = cpb.binding_defect(binding)
+        if defect is not None:
+            raise SelectionRefusal("field_invalid", cause=f"binding:{defect}")
+        sc = binding["scope"]
+        scope = {"consumer_id": binding["consumer_id"], "tenant": sc["tenant"], "institution": sc["institution"],
+                 "authority_domain": sc["authority_domain"], "operation": binding["operation"], "family": binding["family"]}
+        gsd, sid, epoch = governed_scope_digest(scope), binding["selection_id"], binding["selection_epoch"]
+        skd = scope_key_digest(sid, scope)
+        row = d.rows.get(gsd)
+        if row is None:
+            raise SelectionRefusal("not_activated", cause="no_row_for_scope")
+        if d.lineage.get(gsd) != sid or row["scope_key_digest"] != skd:
+            raise SelectionRefusal("selection_conflict", cause="lineage_binding")
+        act = conn.execute("SELECT valid_from, valid_until, record_id, record_version, record_digest FROM selection_activation_v1 WHERE governed_scope_digest=?",
+                           (gsd,)).fetchone()
+        if row["state"] == "withdrawn":
+            raise SelectionRefusal("selection_withdrawn")
+        if row["state"] == "revoked":
+            raise SelectionRefusal("issuer_key_revoked" if row["issuer_key_id"] in d.revoked_keys else "selection_revoked")
+        # carried activation_ref: the chain gives the digest an order (ADR 9.2)
+        if binding["activation_ref"] != row["activation_ref"]:
+            earlier = {h for _, h in self._chain_refs(conn, gsd)}
+            if binding["activation_ref"] in earlier:
+                raise SelectionRefusal("selection_epoch_stale", "REFUSE_STALE", cause="earlier_activation")
+            raise SelectionRefusal("policy_identity_mismatch", cause="activation_ref")
+        if epoch != row["selection_epoch"]:
+            raise SelectionRefusal("selection_epoch_stale" if epoch < row["selection_epoch"] else "policy_identity_mismatch",
+                                   cause="selection_epoch")
+        if (binding["selection_digest"] != row["selection_digest"]):
+            raise SelectionRefusal("policy_identity_mismatch", cause="selection_digest")
+        if (binding["record_id"], binding["record_version"], binding["record_digest"]) != (act["record_id"], act["record_version"], act["record_digest"]):
+            raise SelectionRefusal("record_identity_mismatch")
+        floors, floor_version = self._floors(conn)
+        if epoch != d.highwater.get(row["scope_key_digest"]) or epoch < floors.get(sid, 0):
+            raise SelectionRefusal("selection_epoch_stale", "REFUSE_STALE", cause="high_water_or_floor")
+        if (sid, epoch) in d.revoked_pairs:
+            raise SelectionRefusal("selection_revoked")
+        if row["issuer_key_id"] in d.revoked_keys:
+            raise SelectionRefusal("issuer_key_revoked")
+        valid_from, valid_until = self._ts(act["valid_from"]), self._ts(act["valid_until"])
+        if now < valid_from:
+            raise SelectionRefusal("selection_not_yet_effective")
+        if now >= valid_until:
+            raise SelectionRefusal("selection_expired")
+        if row["participation"] != "required" and gsd in d.ratchet:
+            raise SelectionRefusal("participation_mismatch", cause="scope_required")
+        snap = self._snapshot_row(conn)
+        if snap is None or d.snapshot is None:
+            raise SelectionRefusal("store_unknown", "HOLD", cause="no_trust_snapshot")
+        version, fingerprint = binding["trust_snapshot_version"], binding["trust_snapshot_fingerprint"]
+        if version > d.snapshot[0]:
+            raise SelectionRefusal("trust_snapshot_version_stale", "HOLD", cause="carried_snapshot_ahead_of_durable")
+        if version < max(floor_version or 0, 1) or dict(self._snapshot_versions(conn)).get(version) != fingerprint:
+            raise SelectionRefusal("trust_snapshot_version_stale", "REFUSE_STALE")
+        if now >= self._ts(snap["valid_until"]):
+            raise SelectionRefusal("trust_snapshot_expired", "HOLD")
+        if policy_effective_digest is None:
+            raise SelectionRefusal("verifier_unavailable", cause="policy_digest_unavailable")
+        if policy_effective_digest != binding["effective_policy_digest"]:
+            raise SelectionRefusal("policy_identity_mismatch", cause="effective_policy_digest")
+        return {"result": "binding_verified", "applied": True, "selection_id": sid, "selection_epoch": epoch, "activation_ref": row["activation_ref"],
+                "policy_generation": d.generation.get(gsd), "participation": row["participation"], "scope_required": gsd in d.ratchet,
+                "trust_snapshot_version": version, "trust_snapshot_fingerprint": fingerprint, "effective_policy_digest": policy_effective_digest,
+                "checked_at": _utc(now), **head, "independent_attestation": False}
+
+    def _check_unbound(self, conn: sqlite3.Connection, claim: Any, d: Derived, now: datetime, head: dict) -> dict:
+        """Contract 7.4 line 8: an omitted binding is never an intentionally absent optional policy."""
+        tenant, institution, domain = getattr(claim, "tenant_id", None), claim.institution_id, claim.authority_domain
+        scopes = {}
+        for gsd, scope_json in conn.execute("SELECT governed_scope_digest, scope_json FROM selection_scope_required_v1"):
+            scopes[gsd] = json.loads(scope_json)
+        windows = {}
+        for r in conn.execute("SELECT governed_scope_digest, scope_json, valid_from, valid_until FROM selection_activation_v1"):
+            scopes.setdefault(r["governed_scope_digest"], json.loads(r["scope_json"]))
+            windows[r["governed_scope_digest"]] = (self._ts(r["valid_from"]), self._ts(r["valid_until"]))
+        reasons = []
+        for gsd, tup in sorted(scopes.items()):
+            if tup[2] != institution or tup[3] != domain or (tenant is not None and tup[1] != tenant):
+                continue  # the claim carries no consumer, operation or family: every scope inside its tenant/institution/domain may apply
+            row = d.rows.get(gsd)
+            if gsd in d.ratchet:
+                raise SelectionRefusal("selection_missing", cause="scope_required_without_binding")
+            if row["state"] == "revoked":
+                raise SelectionRefusal("selection_missing", cause="revoked_scope_without_binding")
+            if row["state"] == "active" and windows[gsd][0] <= now < windows[gsd][1]:
+                raise SelectionRefusal("selection_missing", cause="active_selection_without_binding")
+            reasons.append("withdrawn" if row["state"] == "withdrawn" else "expired")
+        reason = "withdrawn" if "withdrawn" in reasons else "expired" if reasons else "never_activated"
+        return {"result": "fallback_caller_policy", "applied": False, "registry_code": "selection_missing" if reasons else "not_activated",
+                "fallback": "caller_policy", "fallback_reason": reason, "checked_at": _utc(now), **head, "independent_attestation": False}
+
+    @staticmethod
+    def _ts(value: str) -> datetime:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+    def _chain_refs(self, conn: sqlite3.Connection, gsd: str) -> list:
+        out = []
+        for raw, h in conn.execute("SELECT entry_json, entry_hash FROM selection_log_v1 ORDER BY activation_sequence"):
+            e = json.loads(raw)
+            if e["governed_scope_digest"] == gsd and e["entry_type"] in ("activate", "withdraw"):
+                out.append((e["entry_type"], h))
+        return out
+
+    def _snapshot_versions(self, conn: sqlite3.Connection) -> list:
+        out = []
+        for (raw,) in conn.execute("SELECT entry_json FROM selection_log_v1 ORDER BY activation_sequence"):
+            e = json.loads(raw)
+            if e["entry_type"] == "sync" and e["cause"] == "none":
+                out.append((e["snapshot_version"], e["snapshot_fingerprint"]))
+        return out
 
     # -- read interface -------------------------------------------------------------------------------------------------------
     def read_state(self, governed_scope: Any) -> SelectionState:
@@ -1365,3 +1501,13 @@ class SelectionAuthorityStore:
 
 def sa_fields() -> tuple:
     return ("allowed_actions", "allowed_adapters", "allowed_units", "allowed_institutions", "allowed_authority_domains")
+
+
+def policy_digest_of(policy: Any) -> Optional[str]:
+    """Registry effective-policy digest of the five sets an executor policy carries (None when it cannot be computed). Used by the executor to
+    bind the policy it will evaluate to the claim-carried `effective_policy_digest`; it grants nothing."""
+    try:
+        reg = _registry()
+        return reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(getattr(policy, k)) for k in sa_fields()})
+    except Exception:
+        return None

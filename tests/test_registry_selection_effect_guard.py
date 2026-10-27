@@ -92,8 +92,11 @@ def make_claim(env, now, *, binding=None, claim_id="claim-1"):
     tenant = op.tenant_id
     approval_state = [{"approval_ref": flow.APPROVAL, "role_id": "urn:cognous:role:reviewer", "approver": "urn:cognous:principal:human", "status": "active",
                        "grant_id": op.grant_id, "grant_revision": op.grant_revision, "proposal_commitment": op.proposal_commitment,
-                       "policy_versions": [{"ref": flow.POLICY_REF, "version": "1"}], "observed_at": now.isoformat(), "tenant_id": tenant}]
-    policy_state = [{"ref": flow.POLICY_REF, "version": "1", "status": "active", "observed_at": now.isoformat(), "tenant_id": tenant}]
+                       "policy_versions": [{"ref": flow.POLICY_REF, "version": "1"}], "observed_at": now.isoformat()}]
+    policy_state = [{"ref": flow.POLICY_REF, "version": "1", "status": "active", "observed_at": now.isoformat()}]
+    if tenant is not None:
+        approval_state[0]["tenant_id"] = tenant
+        policy_state[0]["tenant_id"] = tenant
     raw = {
         "profile": LOCAL_AUTHORITY_EFFECT_PROFILE_V2 if binding is not None else LOCAL_AUTHORITY_EFFECT_PROFILE, "claim_id": claim_id,
         "decision_id": env.decision_id, "effect_id": env.effect_id, "institution_id": op.institution_id, "authority_domain": op.authority_domain,
@@ -110,10 +113,12 @@ def make_claim(env, now, *, binding=None, claim_id="claim-1"):
                                                      "requirement_commitment": "sha256:" + "3" * 64, "approvals": approval_state,
                                                      "policies": policy_state, "evidence": []}),
         "budget_id": "budget-" + claim_id, "max_effects": op.effective_max_effects,
-        "not_before": (now - timedelta(minutes=1)).isoformat(), "expires_at": (now + timedelta(hours=1)).isoformat(), "issued_at": now.isoformat(),
+        "not_before": (now - timedelta(days=3)).isoformat(), "expires_at": (now + timedelta(days=5)).isoformat(), "issued_at": now.isoformat(),
         "decision_input_commitment": None, "decision_input_profile_version": None, "source": "trusted_control_plane_workflow",
-        "authorizing_by_possession": False, "tenant_id": tenant, "authorization_generation": "bounded-authorization-effect/0.2",
+        "authorizing_by_possession": False,
     }
+    if tenant is not None:
+        raw.update(tenant_id=tenant, authorization_generation="bounded-authorization-effect/0.2")
     if binding is not None:
         raw["policy_binding"] = binding
     raw["claim_commitment"] = cp_commitment(raw)
@@ -123,8 +128,8 @@ def make_claim(env, now, *, binding=None, claim_id="claim-1"):
 class Gov:
     """A governed destination: V04 store baselined and snapshot-synced; optionally one activated selection."""
 
-    def __init__(self, tmp_path, *, activate=True, participation="required", configure=True):
-        self.e = v4.Env(tmp_path).boot()
+    def __init__(self, tmp_path, *, activate=True, participation="required", snapshot_until=None):
+        self.e = v4.Env(tmp_path).boot(**({"valid_until": snapshot_until} if snapshot_until else {}))
         self.dest = self.e.dest
         self.tmp = tmp_path
         self.stmt = v4.select_stmt(v4.REC, participation=participation)
@@ -144,6 +149,8 @@ class Gov:
 
     def claim(self, binding="current", claim_id=None, **env_changes):
         self.n += 1
+        if binding is None:
+            env_changes.setdefault("tenant_id", None)
         env = envelope(**env_changes)
         cid = claim_id or f"claim-{self.n}"
         if binding == "current":
@@ -247,10 +254,11 @@ def test_s04_stale_generation_refuses_after_reactivation(gov):
     refused(gov.executor().execute(envelope=env, claim_id=cid), "selection_epoch_stale", "REFUSE_STALE")
 
 
-def test_s05_expired_current_snapshot_is_a_hold(gov):
-    env, cid = gov.claim()
-    gov.e.now = gov.e.now.replace(day=27, hour=1)  # past the snapshot's valid_until, inside nothing else relevant
-    refused(gov.executor().execute(envelope=env, claim_id=cid), "trust_snapshot_expired", "HOLD")
+def test_s05_expired_current_snapshot_is_a_hold(tmp_path):
+    g = Gov(tmp_path, snapshot_until="2026-10-25T18:00:00Z")
+    env, cid = g.claim()
+    g.e.now = g.e.now.replace(hour=20)  # inside the selection window, past the current snapshot's valid_until
+    refused(g.executor().execute(envelope=env, claim_id=cid), "trust_snapshot_expired", "HOLD")
 
 
 @pytest.mark.parametrize("day,hour,code", [(24, 23, "selection_not_yet_effective"), (26, 1, "selection_expired")])
@@ -435,7 +443,7 @@ def test_e04_failing_failure_record_write_on_a_refusal_still_writes_no_effect(go
 
 # ================================================================================================================== LEGACY / BYPASS
 def test_l01_legacy_claim_without_a_selection_store_is_unchanged(tmp_path):
-    env = envelope()
+    env = envelope(tenant_id=None)
     dest = AtomicAuthorityEffectDestination(tmp_path / "plain", clock=lambda: v4.r.NOW)
     dest.provision_claim(make_claim(env, v4.r.NOW, binding=None, claim_id="legacy-1"))
     result = AtomicLocalControlPlaneExecutor(workflow=None, destination=dest, policy=effect_policy()).execute(envelope=env, claim_id="legacy-1")
@@ -491,14 +499,18 @@ def test_x01_corrupted_activation_row_is_a_hold(gov):
 def test_x02_restored_older_database_is_a_hold(tmp_path):
     g = Gov(tmp_path, activate=False)
     old = tmp_path / "old.sqlite3"
-    shutil.copyfile(g.dest.path, old)
+    with sqlite3.connect(g.dest.path) as src, sqlite3.connect(old) as dst:
+        src.backup(dst)  # a consistent copy (the database is WAL-journalled: a plain file copy would miss committed pages)
     g.e.activate(g.stmt)
-    env, cid = g.claim()
-    shutil.copyfile(old, g.dest.path)  # restore: the anchor now records a later head than the database
+    binding = binding_of(g.state())
+    with sqlite3.connect(old) as src, sqlite3.connect(g.dest.path) as dst:
+        src.backup(dst)  # restore the older copy over the live database; the anchor now records a later head than the database
     restored = AtomicAuthorityEffectDestination(g.e.root, clock=lambda: g.e.now)
     restored.configure_selection_authority(g.e.anchor)
-    result = AtomicLocalControlPlaneExecutor(workflow=None, destination=restored, policy=effect_policy()).execute(envelope=env, claim_id=cid)
-    assert result.status == "denied" and result.attempted is False and g.counts()[0] == 0
+    env = envelope()
+    restored.provision_claim(make_claim(env, g.now, binding=binding, claim_id="restored-1"))
+    result = AtomicLocalControlPlaneExecutor(workflow=None, destination=restored, policy=effect_policy()).execute(envelope=env, claim_id="restored-1")
+    refused(result, "store_unknown", "HOLD")
 
 
 def test_x03_missing_anchor_is_a_hold(gov):
