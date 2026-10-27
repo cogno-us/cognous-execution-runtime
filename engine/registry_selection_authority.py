@@ -405,6 +405,10 @@ def apply_entry(d: Derived, e: dict, entry_hash: str) -> None:
             _fail("revoked_pair")
         if d.lineage.get(gsd, sid) != sid:
             _fail("lineage_replacement")
+        if any(g != gsd and s == sid for g, s in d.lineage.items()):
+            _fail("selection_id_bound_to_other_scope")
+        if gsd in d.non_participation:
+            _fail("non_participation_determined")
         if epoch <= d.highwater.get(skd, 0):
             _fail("epoch_not_above_high_water")
         if row is None:
@@ -502,6 +506,8 @@ def apply_entry(d: Derived, e: dict, entry_hash: str) -> None:
             _fail("snapshot_not_newer")
         d.snapshot = (e[_SV], e[_SF])
     elif kind == "sync_ratchet_provision":
+        if gsd in d.non_participation:
+            _fail("non_participation_determined")
         if e[_SB] != (row["state"] if row else "none"):
             _fail("ratchet_provision_state")
         d.ratchet.add(gsd)
@@ -770,6 +776,8 @@ class SelectionAuthorityStore:
                 return unknown("anchor_invalid", d, meta["store_id"])
             if anchor["store_id"] != meta["store_id"]:
                 return unknown("anchor_store_mismatch", d, meta["store_id"])
+            if not all(_int_ok(anchor.get(k), 0, SEQ_MAX) for k in ("head_sequence", "evidence_head_sequence", "floor_min_trust_snapshot_version", "generation_ceiling")):
+                return unknown("anchor_invalid", d, meta["store_id"])
             if anchor["head_sequence"] > d.head_sequence:
                 return unknown("anchor_ahead", d, meta["store_id"])
             if entries[anchor["head_sequence"] - 1][1] != anchor["head_entry_hash"]:
@@ -948,6 +956,8 @@ class SelectionAuthorityStore:
         if kind == "ratchet_provision":
             if gsd in d.ratchet:
                 raise SelectionRefusal("field_invalid", cause="ratchet_already_set")
+            if gsd in d.non_participation:
+                raise SelectionRefusal("field_invalid", cause="non_participation_determined")
             state = row["state"] if row else "none"
             entry, h = self._append(conn, d, now, entry_type="sync", cause="ratchet_provision", governed_scope_digest=gsd, participation="required",
                                     state_before=state, state_after=state, ratchet_after=True, determination_ref=determination_ref)
@@ -1120,6 +1130,10 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("selection_revoked")
         if d.lineage.get(gsd, sid) != sid:
             raise SelectionRefusal("selection_conflict", cause="lineage_replacement_prohibited")
+        if any(g != gsd and s == sid for g, s in d.lineage.items()):
+            raise SelectionRefusal("selection_conflict", cause="selection_id_bound_to_other_scope")
+        if mode == "activate" and gsd in d.non_participation:
+            raise SelectionRefusal("participation_mismatch", cause="non_participation_determined")
         if mode == "withdraw":
             if row is None:
                 raise SelectionRefusal("not_activated")
