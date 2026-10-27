@@ -1,6 +1,6 @@
 # Authorization pin: F3 requalification and refreeze record
 
-Status: F3 REQUALIFICATION AND REFREEZE RECORDED. F3 RE-REVIEW: PENDING (Architect; not waived, not self-claimed). Non-authorizing record. Release: HOLD. Publication: HOLD. Production: HOLD. This record claims no security clearance, certification or production readiness.
+Status as written at `3873a61b` (SUPERSEDED for the re-review item by the appended section below; original text kept): F3 REQUALIFICATION AND REFREEZE RECORDED. F3 RE-REVIEW: PENDING (Architect; not waived, not self-claimed). Non-authorizing record. Release: HOLD. Publication: HOLD. Production: HOLD. This record claims no security clearance, certification or production readiness.
 
 Runtime CLAUDE.md requires F3 requalification, refreeze and re-review before acceptance of changes to this candidate component. This record covers the first two and states the third as open.
 
@@ -43,3 +43,34 @@ Same-organization evidence on ephemeral hosts; anchor custody on an independent 
 ## Open
 
 F3 re-review by the Architect. No requirement above was waived.
+
+---
+
+## Architect acceptance record (appended 2026-10-27; documentation only)
+
+Appended text. Nothing above was rewritten except the one status line, which now points here. No Runtime code, fixture, test, workflow or security contract is changed by this addition.
+
+### Exact revisions
+| Item | Revision |
+|---|---|
+| Base | `main` `ac247dafbce3aacde37695575d457cf958b22560` |
+| Implementation head qualified | `ad1805e22b1dee4f3201a228f85e1c4599bbebe5` (tree `3c44391138f662d902c65431464af1078dd8edc8`) |
+| PR #149 head, tested by the F-A1 qualification (docs-only F3 record added) | `3873a61b5dd1ca2f8102d355888e59b5cd5a5456` (tree `e0d7003e279cddad50062cfb111d498cb4e714de`) |
+| PR #149 merge commit (merge, not squash; second parent is the PR head) | `b5605f525ae73cbb7adcfef4716c67cdd33a5f7d` (tree `e0d7003e279cddad50062cfb111d498cb4e714de`, equal to the PR head) |
+| Qualification | cognous-stack-qualification #237, merge `bb9b08904192b5f50a49e00ed8de0cab80fd7c19`, F-A1 job run 40555193111 at pins Registry `1a4de326`, Control Plane `d66ae07f`, Runtime `3873a61b` |
+
+The qualification ran at `3873a61b`, not at the merge SHA `b5605f52`; the two have identical trees, so the evidence applies to the merged content. It was not produced at the merge SHA.
+
+### What each F3 element is now
+| F3 element | State | Basis |
+|---|---|---|
+| Requalification | **Completed** (same-organization) | The 30 F-A1 cases and directly affected tests listed above; local record 28 HELD, 1 CHARACTERIZED, 1 INCONCLUSIVE (FA1-13, corrected case passed in CI); CI gate green. |
+| Refreeze | **Completed** | Digests and revisions recorded above in this file at `3873a61b`. |
+| Architect re-review | **Accepted for the bounded candidate** | Recorded on the Architect's statement in the 2026-10-27 post-merge assignment that the F3 re-review was completed and PR #149 accepted. No separate review artifact was located in the PR #149 comments or reviews when this was written; this entry records the Architect's decision and does not create it. |
+| Independent external security qualification | **Not completed** | Independent V07 security review: OPEN. Independent V08 Tier 1: NOT STARTED. Ed25519 #26/#34: SECURITY-HELD. |
+| Production clearance | **Not granted** | Release, publication and production: HOLD. The destination remains synthetic SQLite only. |
+
+"Accepted for the bounded candidate" means the Architect accepted the merge of #149 as non-qualified engineering work for the synthetic vertical slice. It is not a security clearance, certification or production-readiness claim, and it does not replace independent qualification.
+
+### Disclosed limits (unchanged)
+Same-organization evidence on ephemeral hosts; anchor custody on an independent medium and a production-grade OS boundary not demonstrated; consistent restore of both store and anchor undetected (analysis only); revocation propagation delay (FA1-12). See `docs/authorization-pin-integration-record.md` and the V09 register in the Registry repository (`docs/v09/limitations-and-exclusions.md`).
