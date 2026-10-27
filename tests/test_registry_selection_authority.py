@@ -767,3 +767,62 @@ def test_a05_interrupted_write_leaves_the_prior_anchor_intact(tmp_path, monkeypa
     monkeypatch.undo()
     assert path.read_bytes() == raw and host.read()["head_sequence"] == 1
     assert not [f for f in tmp_path.iterdir() if f.name.startswith(".anchor-")]
+
+
+# ================================================================================================================== V04 SNAPSHOT-FLOOR REPAIR (PR #146)
+SID = ST1["selection_id"]
+
+
+def _floor_row(env, **cols):
+    sets = ", ".join(f"{k}=?" for k in cols)
+    env.sql(f"UPDATE selection_highwater_v1 SET {sets} WHERE hw_kind='snapshot'", tuple(cols.values()))
+
+
+def test_f1_lowered_min_epoch_with_stale_valid_anchor_is_unknown(env):
+    env.sync(2, min_epochs=((SID, 1),))
+    stale = env.anchor.read_bytes()
+    env.sync(3, min_epochs=((SID, 2),))
+    env.anchor.write_bytes(stale)  # older, intact, valid anchor; the database is legitimately ahead of it
+    assert env.verify().state == "known"
+    _floor_row(env, min_epochs_json=json.dumps([[SID, 1]]))
+    status = env.verify()
+    assert status.state == "unknown" and status.cause == "table_mismatch:selection_highwater_v1"
+    refused(lambda: env.state(), "store_unknown", "HOLD")
+
+
+def test_f2_lowered_min_trust_snapshot_version_with_stale_anchor_is_unknown(env):
+    t2 = trust(2)
+    env.dest.sync_selection("snapshot", trust=t2, min_trust_snapshot_version=2)
+    stale = env.anchor.read_bytes()
+    env.sync(3)
+    env.anchor.write_bytes(stale)
+    assert env.verify().state == "known"
+    _floor_row(env, min_trust_snapshot_version=1)
+    status = env.verify()
+    assert status.state == "unknown" and status.cause == "anchor_floor_mismatch"
+    refused(lambda: env.state(), "store_unknown", "HOLD")
+
+
+def test_f3_corrupt_snapshot_floor_representation_is_unknown(env):
+    env.sync(2, min_epochs=((SID, 1),))
+    _floor_row(env, snapshot_json='{"version":2}')
+    status = env.verify()
+    assert status.state == "unknown" and status.cause == "table_mismatch:selection_highwater_v1"
+    refused(lambda: env.state(), "store_unknown", "HOLD")
+
+
+def test_f4_legitimate_advance_behind_an_older_intact_anchor_is_known(env):
+    stale = env.anchor.read_bytes()
+    env.sync(2, min_epochs=((SID, 1),))
+    env.sync(3, min_epochs=((SID, 2),))
+    env.anchor.write_bytes(stale)
+    assert env.verify().state == "known"
+    assert env.state().status == "not_activated" and env.state().log_head_sequence == env.head()[0]
+
+
+def test_f5_restart_with_intact_floor_state_and_consistent_anchor_stays_known(env):
+    env.sync(2, min_epochs=((SID, 1),))
+    env.activate(select_stmt(REC, epoch=3))
+    before = env.state()
+    env.open()
+    assert env.verify().state == "known" and env.state() == before

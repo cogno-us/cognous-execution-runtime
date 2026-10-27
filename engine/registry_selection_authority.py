@@ -678,7 +678,7 @@ _SCHEMA = [
         snapshot_fingerprint TEXT NOT NULL, last_sequence INTEGER NOT NULL, statement_json TEXT NOT NULL, record_json TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS selection_highwater_v1 (hw_key TEXT PRIMARY KEY, hw_kind TEXT NOT NULL CHECK(hw_kind IN ('scope','snapshot')),
         high_water_epoch INTEGER, snapshot_version INTEGER, snapshot_fingerprint TEXT, valid_until TEXT, min_epochs_json TEXT,
-        min_trust_snapshot_version INTEGER)""",
+        min_trust_snapshot_version INTEGER, snapshot_json TEXT)""",
     """CREATE TABLE IF NOT EXISTS selection_revoked_v1 (kind TEXT NOT NULL CHECK(kind IN ('pair','key')), selection_id TEXT NOT NULL DEFAULT '',
         epoch INTEGER NOT NULL DEFAULT 0, key_id TEXT NOT NULL DEFAULT '', log_sequence INTEGER NOT NULL, PRIMARY KEY(kind, selection_id, epoch, key_id))""",
     "CREATE TABLE IF NOT EXISTS selection_scope_required_v1 (governed_scope_digest TEXT PRIMARY KEY, set_sequence INTEGER NOT NULL)",
@@ -812,6 +812,29 @@ class SelectionAuthorityStore:
         snap = self._snapshot_row(conn)
         if (d.snapshot is None) != (snap is None) or (snap is not None and (snap["snapshot_version"], snap["snapshot_fingerprint"]) != d.snapshot):
             return "table_mismatch:selection_highwater_v1"
+        return self._compare_snapshot_floor(snap, d) if snap is not None else None
+
+    def _compare_snapshot_floor(self, snap: sqlite3.Row, d: Derived) -> Optional[str]:
+        """Snapshot-floor columns (valid_until, min_epochs_json) are authenticated by the stored canonical normalized snapshot: it must reproduce the
+        fingerprint the replayed log recorded for the current snapshot, and the columns must equal what it contains. min_trust_snapshot_version is the
+        caller-supplied external floor, which the log does not carry: it is bounded (integer or NULL, never above the accepted snapshot version) and
+        checked against the anchor's recorded floor in `_verify`; the log-derived snapshot high-water, not this column, is what refuses an older snapshot."""
+        bad = "table_mismatch:selection_highwater_v1"
+        try:
+            norm = json.loads(snap["snapshot_json"])
+            if canonical_bytes(norm).decode("ascii") != snap["snapshot_json"] or norm["version"] != d.snapshot[0]:
+                return bad
+            if not _int_ok(snap["min_trust_snapshot_version"], 1, d.snapshot[0]) and snap["min_trust_snapshot_version"] is not None:
+                return bad
+            if (snap["valid_until"] != norm["valid_until"]
+                    or snap["min_epochs_json"] != json.dumps(sorted([k, v] for k, v in {p[0]: p[1] for p in norm["min_epochs"]}.items()))):
+                return bad
+            if _registry().ident.trust_snapshot_fingerprint(norm) != d.snapshot[1]:
+                return bad
+        except SelectionRefusal:
+            return "registry_unavailable_for_snapshot_digest"
+        except Exception:
+            return bad
         return None
 
     def _compare_pinned(self, conn: sqlite3.Connection, d: Derived) -> Optional[str]:
@@ -1119,10 +1142,12 @@ class SelectionAuthorityStore:
         entry, h = self._append(conn, d, now, entry_type="sync", snapshot_version=version, snapshot_fingerprint=fingerprint)
         hashes.append(h)
         conn.execute("INSERT INTO selection_highwater_v1(hw_key, hw_kind, snapshot_version, snapshot_fingerprint, valid_until, min_epochs_json, "
-                     "min_trust_snapshot_version) VALUES('snapshot','snapshot',?,?,?,?,?) ON CONFLICT(hw_key) DO UPDATE SET "
+                     "min_trust_snapshot_version, snapshot_json) VALUES('snapshot','snapshot',?,?,?,?,?,?) ON CONFLICT(hw_key) DO UPDATE SET "
                      "snapshot_version=excluded.snapshot_version, snapshot_fingerprint=excluded.snapshot_fingerprint, valid_until=excluded.valid_until, "
-                     "min_epochs_json=excluded.min_epochs_json, min_trust_snapshot_version=excluded.min_trust_snapshot_version",
-                     (version, fingerprint, norm["valid_until"], json.dumps(sorted([k, v] for k, v in new_floors.items())), floor_v))
+                     "min_epochs_json=excluded.min_epochs_json, min_trust_snapshot_version=excluded.min_trust_snapshot_version, "
+                     "snapshot_json=excluded.snapshot_json",
+                     (version, fingerprint, norm["valid_until"], json.dumps(sorted([k, v] for k, v in new_floors.items())), floor_v,
+                      canonical_bytes(norm).decode("ascii")))
         for pair in sorted(new_pairs - d.revoked_pairs):
             hashes.append(self._revoke_pair(conn, d, now, pair))
         for key in sorted(new_keys - d.revoked_keys):
