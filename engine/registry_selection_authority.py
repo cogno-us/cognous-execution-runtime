@@ -1343,10 +1343,15 @@ class SelectionAuthorityStore:
         return TransitionResult("activate", entry["activation_sequence"], h, (h,), h, None, gen, False), self._finish(conn, d, now)
 
     # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
-    def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str]) -> dict:
+    def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str],
+                     policy_effective_sets: Optional[dict] = None) -> dict:
         """The lock-time selection guard (ADR 7, contract 7.4). Called by `execute_claim_atomic` INSIDE its `BEGIN IMMEDIATE`, after the lock-time
         clock and before the effect insert, on the SAME connection. Reads only local rows (and the small local anchor file); no network, registry call
-        or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing."""
+        or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing.
+
+        F-01 (r08-v2 Amendment 3): for a bound claim the five sets of the policy the executor evaluates (`policy_effective_sets`, derived by the
+        executor from the same policy object as `policy_effective_digest`) must each be a subset of the corresponding set of the authenticated
+        activated record payload, so the claim supplier is not the only enforcement point of Registry narrowing."""
         status, d = self._verify(conn)
         if status.state != "known":
             raise SelectionRefusal("store_unknown", "HOLD", cause=status.cause)
@@ -1371,8 +1376,8 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("not_activated", cause="no_row_for_scope")
         if d.lineage.get(gsd) != sid or row["scope_key_digest"] != skd:
             raise SelectionRefusal("selection_conflict", cause="lineage_binding")
-        act = conn.execute("SELECT valid_from, valid_until, record_id, record_version, record_digest FROM selection_activation_v1 WHERE governed_scope_digest=?",
-                           (gsd,)).fetchone()
+        act = conn.execute("SELECT valid_from, valid_until, record_id, record_version, record_digest, record_policy_digest, record_json "
+                           "FROM selection_activation_v1 WHERE governed_scope_digest=?", (gsd,)).fetchone()
         if row["state"] == "withdrawn":
             raise SelectionRefusal("selection_withdrawn")
         if row["state"] == "revoked":
@@ -1428,10 +1433,46 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("verifier_unavailable", cause="policy_digest_unavailable")
         if policy_effective_digest != binding["effective_policy_digest"]:
             raise SelectionRefusal("policy_identity_mismatch", cause="effective_policy_digest")
+        self._check_policy_containment(act, policy_effective_digest, policy_effective_sets)
         return {"result": "binding_verified", "applied": True, "selection_id": sid, "selection_epoch": epoch, "activation_ref": row["activation_ref"],
                 "policy_generation": d.generation.get(gsd), "participation": row["participation"], "scope_required": gsd in d.ratchet,
                 "trust_snapshot_version": version, "trust_snapshot_fingerprint": fingerprint, "effective_policy_digest": policy_effective_digest,
                 "checked_at": _utc(now), **head, "independent_attestation": False}
+
+    def _check_policy_containment(self, act: sqlite3.Row, policy_effective_digest: str, policy_effective_sets: Optional[dict]) -> None:
+        """F-01: every set of the executor's effective policy must be inside the same set of the activated Registry record. Reads only the row the
+        guard just matched (already verified by `_verify` in this transaction); the Registry sets come from that authenticated record payload and
+        never from the claim or the executor. Local data only: no I/O."""
+        if not isinstance(policy_effective_sets, dict) or set(policy_effective_sets) != set(sa_fields()):
+            raise SelectionRefusal("verifier_unavailable", cause="policy_sets_unavailable")
+        try:
+            reg = _registry()
+            executor = {k: _clean_set(policy_effective_sets[k]) for k in sa_fields()}
+            executor_digest = reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(executor[k]) for k in sa_fields()})
+        except SelectionRefusal:
+            raise
+        except Exception as exc:
+            raise SelectionRefusal("policy_identity_mismatch", cause="policy_sets_malformed") from exc
+        if executor_digest != policy_effective_digest:
+            # The sets handed to the guard are not the policy whose digest the executor bound: never accepted.
+            raise SelectionRefusal("policy_identity_mismatch", cause="policy_sets_digest")
+        # The Registry side: re-authenticate the payload of THIS row before using it (defence in depth over `_verify`).
+        try:
+            record_json = act["record_json"]
+            rec = json.loads(record_json)
+            body = {k: v for k, v in rec.items() if k != "record_digest"}
+            if (canonical_bytes(rec).decode("ascii") != record_json or rec.get("record_digest") != act["record_digest"]
+                    or "sha256:" + hashlib.sha256(canonical_bytes(body)).hexdigest() != act["record_digest"]):
+                raise ValueError("record bytes")
+            payload = rec["payload"]
+            registry_sets = {k: _clean_set(payload[k]) for k in sa_fields()}
+            if reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(registry_sets[k]) for k in sa_fields()}) != act["record_policy_digest"]:
+                raise ValueError("record policy digest")
+        except Exception as exc:
+            raise SelectionRefusal("store_unknown", "HOLD", cause="record_payload_unavailable") from exc
+        for field in sa_fields():
+            if not executor[field] <= registry_sets[field]:
+                raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_not_subset:{field}")
 
     def _check_unbound(self, conn: sqlite3.Connection, claim: Any, d: Derived, now: datetime, head: dict) -> dict:
         """Contract 7.4 line 8: an omitted binding is never an intentionally absent optional policy."""
@@ -1511,6 +1552,22 @@ class SelectionAuthorityStore:
 
 def sa_fields() -> tuple:
     return ("allowed_actions", "allowed_adapters", "allowed_units", "allowed_institutions", "allowed_authority_domains")
+
+
+def _clean_set(value: Any) -> frozenset:
+    """A policy set as a frozenset of non-empty ASCII strings; anything else is malformed (the Registry digest function re-validates the form)."""
+    if not isinstance(value, (set, frozenset, list, tuple)) or any(type(m) is not str or not m for m in value):
+        raise ValueError("policy set malformed")
+    return frozenset(value)
+
+
+def policy_sets_of(policy: Any) -> Optional[dict]:
+    """The five sets of the policy an executor will evaluate, as sorted lists (None when they cannot be read). Derived from the same policy
+    object as `policy_digest_of`; the guard checks that the sets reproduce the digest, so the two cannot diverge."""
+    try:
+        return {k: sorted(getattr(policy, k)) for k in sa_fields()}
+    except Exception:
+        return None
 
 
 def policy_digest_of(policy: Any) -> Optional[str]:

@@ -95,8 +95,9 @@ class AtomicLocalControlPlaneExecutor:
         attempt_id = attempt_id or str(uuid.uuid4())
         if getattr(self.destination, "_selection_store", None) is not None:
             # The policy this executor will evaluate must be the effective policy the claim binds (compared under the destination lock).
-            from engine.registry_selection_authority import policy_digest_of
+            from engine.registry_selection_authority import policy_digest_of, policy_sets_of
             operation_kwargs["policy_effective_digest"] = policy_digest_of(self.policy)
+            operation_kwargs["policy_effective_sets"] = policy_sets_of(self.policy)  # F-01: the guard checks containment in the Registry record
         try:
             value = self.destination.execute_claim_atomic(claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, **operation_kwargs)
         except TimeoutError as exc:
