@@ -775,6 +775,36 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if positive_required and (now - observed).total_seconds() > int(row["max_age_seconds"]):
                 raise PermissionError("authoritative evidence expired")
 
+    # --- V04: durable Registry selection authority (delegation only; no effect path, execute_claim_atomic untouched) ---
+    def configure_selection_authority(self, anchor_path, reasons_registry=None):
+        """Attach the durable selection-authority store (nine tables in THIS database) and the host-held synthetic anchor file."""
+        from engine import registry_selection_authority as _sa
+        kwargs = {} if reasons_registry is None else {"reasons_registry": tuple(reasons_registry)}
+        self._selection_store = _sa.SelectionAuthorityStore(self, anchor_path, **kwargs)
+        return self._selection_store
+
+    def _selection(self):
+        store = getattr(self, "_selection_store", None)
+        if store is None:
+            raise PermissionError("selection authority is not configured")
+        return store
+
+    def sync_selection(self, kind, **kwargs):
+        return self._selection().sync_selection(kind, **kwargs)
+
+    def activate_selection(self, *, record_text, selection_text, context, trust, verifier):
+        return self._selection().activate_selection(record_text=record_text, selection_text=selection_text, context=context, trust=trust, verifier=verifier)
+
+    def withdraw_selection(self, *, selection_text, context, trust, verifier):
+        """Withdrawal path through the adopted sync/transition semantics; revocation arrives through `sync_selection("snapshot", ...)`."""
+        return self._selection().withdraw_selection(selection_text=selection_text, context=context, trust=trust, verifier=verifier)
+
+    def read_selection_state(self, governed_scope):
+        return self._selection().read_state(governed_scope)
+
+    def verify_selection_store(self):
+        return self._selection().verify()
+
     def _transaction_stage(self, stage: str) -> None:
         """Internal no-op hook used by deterministic qualification subclasses."""
         return None
