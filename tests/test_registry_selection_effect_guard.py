@@ -42,10 +42,17 @@ import pytest
 import test_registry_selection_authority as v4  # skips the module when the Registry pin / PyNaCl are absent
 import test_atomic_route_valid_flow_identity as flow  # skips when the Control Plane contract is absent
 
-pytest.importorskip("agent_control_plane.local_authority_effect")
+cp_effect = pytest.importorskip("agent_control_plane.local_authority_effect")
 from agent_control_plane.bounded import commitment as cp_commitment  # noqa: E402
-from agent_control_plane.local_authority_effect import (  # noqa: E402
-    LOCAL_AUTHORITY_EFFECT_PROFILE, LOCAL_AUTHORITY_EFFECT_PROFILE_V2)
+import pydantic  # noqa: E402
+
+LOCAL_AUTHORITY_EFFECT_PROFILE = cp_effect.LOCAL_AUTHORITY_EFFECT_PROFILE
+LOCAL_AUTHORITY_EFFECT_PROFILE_V2 = getattr(cp_effect, "LOCAL_AUTHORITY_EFFECT_PROFILE_V2", None)
+# The successor profile needs Control Plane V02 (and its pydantic >= 2.12). Where either is absent this module is reported as skipped (NOT RUN),
+# never as passed; the legacy-profile behaviour on a historical pin is covered by tests/test_local_authority_effect.py in the qualified lane.
+pytestmark = pytest.mark.skipif(
+    LOCAL_AUTHORITY_EFFECT_PROFILE_V2 is None or tuple(int(x) for x in pydantic.VERSION.split(".")[:2]) < (2, 12),
+    reason="NOT RUN: requires Control Plane V02 successor profile and pydantic>=2.12")
 
 from engine import registry_selection_authority as sa  # noqa: E402
 from engine.atomic_local_control_plane_executor import AtomicLocalControlPlaneExecutor  # noqa: E402
@@ -279,7 +286,8 @@ def test_b02_earlier_activation_of_the_same_chain_is_stale(gov):
     gov.e.withdraw(v4.withdraw_stmt(gov.stmt, 2))
     gov.e.activate(v4.select_stmt(v4.REC, epoch=3, supersedes=v4.sup(v4.withdraw_stmt(gov.stmt, 2))))
     _, _, result = gov.run(binding_of(gov.state(), activation_ref=first))
-    refused(result, "selection_epoch_stale", "REFUSE_STALE")
+    assert refused(result, "selection_epoch_stale", "REFUSE_STALE")["cause"] == "stale_policy_generation"
+    assert gov.counts() == (0, 0, 0, 0)  # refused before any effect or receipt
 
 
 def test_b03_substituted_record_triple_refuses(gov):
@@ -441,6 +449,27 @@ def test_e04_failing_failure_record_write_on_a_refusal_still_writes_no_effect(go
     assert gov.counts() == (0, 0, 0, 0)
 
 
+@pytest.mark.parametrize("bad", [None, "2", True])
+def test_g01_missing_or_malformed_lock_time_generation_is_a_hold(gov, monkeypatch, bad):
+    real = sa.SelectionAuthorityStore._chain_refs
+    monkeypatch.setattr(sa.SelectionAuthorityStore, "_chain_refs",
+                        lambda self, conn, gsd: [(k, h, bad if k == "activate" else g) for k, h, g in real(self, conn, gsd)])
+    _, _, result = gov.run()
+    refused(result, "store_unknown", "HOLD")
+    assert gov.counts() == (0, 0, 0, 0)
+
+
+def test_g02_successor_claim_is_refused_where_the_control_plane_lacks_v02(gov, monkeypatch):
+    import sys
+    import types
+    # a Control Plane module as an older pin presents it: every name except the successor profile constant
+    older = types.SimpleNamespace(**{k: v for k, v in vars(cp_effect).items() if k != "LOCAL_AUTHORITY_EFFECT_PROFILE_V2"})
+    monkeypatch.setitem(sys.modules, "agent_control_plane.local_authority_effect", older)
+    with pytest.raises(PermissionError, match="requires Control Plane V02"):  # refused at provisioning: never downgraded to the legacy profile
+        gov.claim()
+    assert gov.counts() == (0, 0, 0, 0)
+
+
 # ================================================================================================================== LEGACY / BYPASS
 def test_l01_legacy_claim_without_a_selection_store_is_unchanged(tmp_path):
     env = envelope(tenant_id=None)
@@ -465,6 +494,13 @@ def test_l03_legacy_claim_in_a_ratcheted_scope_is_refused(gov):
 def test_l04_legacy_claim_over_an_active_optional_row_cannot_bypass_it(tmp_path):
     g = Gov(tmp_path, participation="optional")
     refused(g.run(binding=None)[2], "selection_missing", "REFUSE")
+
+
+def test_l08_legacy_claim_over_an_active_selection_not_yet_effective_is_refused(tmp_path):
+    g = Gov(tmp_path, participation="optional")
+    g.e.now = g.e.now.replace(day=24, hour=23)  # before the selection's valid_from, after the baseline
+    refused(g.run(binding=None)[2], "selection_missing", "REFUSE")
+    assert g.counts() == (0, 0, 0, 0)
 
 
 def test_l05_legacy_claim_over_a_withdrawn_optional_row_falls_back(tmp_path):

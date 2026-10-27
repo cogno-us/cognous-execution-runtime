@@ -25,6 +25,8 @@ from .safe_executor import (
 )
 
 PROFILE = "urn:cognous:profiles:local-authority-effect:0.1.0-proposed"
+#: The successor profile NAME, held only to recognise (and refuse) it where the Control Plane lacks the V02 symbol; it is never used to build a claim.
+SUCCESSOR_PROFILE_NAME = "urn:cognous:profiles:local-authority-effect:0.2.0-proposed"
 
 
 class PostCommitObservationUnavailable(TimeoutError):
@@ -239,9 +241,15 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             model = LocalExecutionClaim.model_validate(claim)
         if not verify_local_execution_claim(model):
             raise PermissionError("execution claim commitment is invalid")
-        from agent_control_plane.local_authority_effect import LOCAL_AUTHORITY_EFFECT_PROFILE_V2
-        # The successor profile (EXT-S4-4) is accepted here; its binding is only ever compared with durable state by the lock-time guard.
-        if model.profile not in (PROFILE, LOCAL_AUTHORITY_EFFECT_PROFILE_V2) or model.authorizing_by_possession is not False:
+        # The successor profile (EXT-S4-4) exists only in Control Plane V02 and later. The symbol is looked up WITHOUT assuming it exists, so the
+        # legacy profile keeps working against a historical Control Plane pin. A successor claim is never downgraded to the legacy profile: where
+        # the Control Plane cannot express it, it is refused here, clearly. Its binding is only ever compared with durable state by the lock-time guard.
+        import importlib
+        _cp_effect = importlib.import_module("agent_control_plane.local_authority_effect")
+        successor = getattr(_cp_effect, "LOCAL_AUTHORITY_EFFECT_PROFILE_V2", None)
+        if model.profile == SUCCESSOR_PROFILE_NAME and successor is None:
+            raise PermissionError("successor claim profile requires Control Plane V02 successor-profile support")
+        if model.profile not in (PROFILE, successor) or model.authorizing_by_possession is not False:
             raise PermissionError("unsupported execution claim profile")
         if model.grant_status != "active":
             raise PermissionError("execution claim grant projection is not active")
@@ -781,6 +789,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         """Lock-time selection guard (V05). Returns bounded evidence, or None when no selection authority applies to this destination at all
         (no store configured, no selection tables, a claim without a binding): existing behaviour is then byte-for-byte unchanged."""
         from engine.registry_selection_authority import SelectionRefusal
+        if getattr(claim, "profile", None) == SUCCESSOR_PROFILE_NAME and getattr(claim, "policy_binding", None) is None:
+            # A successor claim that lost its binding (an older claim model drops the undeclared member) must never read as a legacy claim.
+            raise SelectionRefusal("field_invalid", cause="successor_claim_without_binding")
         store = getattr(self, "_selection_store", None)
         has_tables = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='selection_store_meta_v1'").fetchone() is not None
         if store is None:

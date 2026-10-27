@@ -1378,11 +1378,21 @@ class SelectionAuthorityStore:
         if row["state"] == "revoked":
             raise SelectionRefusal("issuer_key_revoked" if row["issuer_key_id"] in d.revoked_keys else "selection_revoked")
         # carried activation_ref: the chain gives the digest an order (ADR 9.2)
+        # The claim carries NO separate generation member (ADR 7.2): `activation_ref` fixes the policy_generation (ADR 4.2). The comparison is
+        # therefore made on the generation the carried reference fixed, read from the log entry it names, against the Runtime-owned counter,
+        # all inside this transaction. It is never inferred from selection_epoch.
+        chain = {h: (kind, gen) for kind, h, gen in self._chain_refs(conn, gsd)}
+        counter = d.generation.get(gsd)
         if binding["activation_ref"] != row["activation_ref"]:
-            earlier = {h for _, h in self._chain_refs(conn, gsd)}
-            if binding["activation_ref"] in earlier:
+            carried = chain.get(binding["activation_ref"])
+            if carried is not None and carried[0] == "activate" and type(carried[1]) is int and type(counter) is int and carried[1] < counter:
+                raise SelectionRefusal("selection_epoch_stale", "REFUSE_STALE", cause="stale_policy_generation")
+            if carried is not None:
                 raise SelectionRefusal("selection_epoch_stale", "REFUSE_STALE", cause="earlier_activation")
             raise SelectionRefusal("policy_identity_mismatch", cause="activation_ref")
+        fixed = chain.get(row["activation_ref"])
+        if fixed is None or fixed[0] != "activate" or type(fixed[1]) is not int or fixed[1] != counter or fixed[1] != row["generation"]:
+            raise SelectionRefusal("store_unknown", "HOLD", cause="policy_generation_inconsistent")
         if epoch != row["selection_epoch"]:
             raise SelectionRefusal("selection_epoch_stale" if epoch < row["selection_epoch"] else "policy_identity_mismatch",
                                    cause="selection_epoch")
@@ -1458,7 +1468,7 @@ class SelectionAuthorityStore:
         for raw, h in conn.execute("SELECT entry_json, entry_hash FROM selection_log_v1 ORDER BY activation_sequence"):
             e = json.loads(raw)
             if e["governed_scope_digest"] == gsd and e["entry_type"] in ("activate", "withdraw"):
-                out.append((e["entry_type"], h))
+                out.append((e["entry_type"], h, e["policy_generation"]))
         return out
 
     def _snapshot_versions(self, conn: sqlite3.Connection) -> list:
