@@ -812,7 +812,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             if positive_required and (now - observed).total_seconds() > int(row["max_age_seconds"]):
                 raise PermissionError("authoritative evidence expired")
 
-    def _selection_guard(self, conn, claim, now, policy_effective_digest, policy_effective_sets=None, pin_scope=None):
+    def _selection_guard(self, conn, claim, now, policy_effective_digest, policy_effective_sets=None, pin_scope=None, policy_effective_limits=None):
         """Lock-time selection guard (V05). Returns bounded evidence, or None when no selection authority applies to this destination at all
         (no store configured, no selection tables, a claim without a binding): existing behaviour is then byte-for-byte unchanged."""
         from engine.registry_selection_authority import SelectionRefusal
@@ -828,8 +828,9 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             return None
         if pin_scope is not None:
             # F-A1: the governed scope comes from the authenticated pin, not from the claim's binding.
-            return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets, pin_scope=pin_scope)
-        return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets)
+            return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets, pin_scope=pin_scope,
+                                      policy_effective_limits=policy_effective_limits)
+        return store.check_effect(conn, claim, now, policy_effective_digest, policy_effective_sets, policy_effective_limits=policy_effective_limits)
 
     def _selection_receipt_evidence(self, evidence):
         """Hook for the transaction-critical guard evidence retained in the receipt row. Qualification subclasses may fail it."""
@@ -879,11 +880,13 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         operation_id: str | None = None,
         policy_effective_digest: str | None = None,
         policy_effective_sets: dict | None = None,
+        policy_effective_limits: dict | None = None,
     ) -> dict[str, Any]:
         if self._pin_reader is None:
             return self._execute_claim_atomic_body(
                 claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, operation_id=operation_id,
-                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets)
+                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets,
+                policy_effective_limits=policy_effective_limits)
         # F-A1 (Amendment 4 section 6.2): lock-free precheck, shared per-decision fence, re-read of the anchor under the fence, and only then
         # BEGIN IMMEDIATE. The fence is held until the effect transaction has committed or rolled back and is released on every path.
         from engine.authorization_pin import acquire_shared_fence
@@ -894,7 +897,8 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             self._pin_reader.barrier(decision_id)                                              # step 2 (authoritative admission read)
             return self._execute_claim_atomic_body(
                 claim_id, snapshot, attempt_id=attempt_id, simulate=simulate, operation_id=operation_id,
-                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets)
+                policy_effective_digest=policy_effective_digest, policy_effective_sets=policy_effective_sets,
+                policy_effective_limits=policy_effective_limits)
         finally:
             fence.release()                                                                    # step 9
 
@@ -908,6 +912,7 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
         operation_id: str | None = None,
         policy_effective_digest: str | None = None,
         policy_effective_sets: dict | None = None,
+        policy_effective_limits: dict | None = None,
     ) -> dict[str, Any]:
         from agent_control_plane.local_authority_effect import (
             LocalExecutionClaim,
@@ -964,10 +969,11 @@ class AtomicAuthorityEffectDestination(DurableRefundDestination):
             # written. It reads only local rows; a refusal is a typed PermissionError and the transaction is rolled back.
             try:
                 if pin_admission is None:
-                    guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets)
+                    guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets,
+                                                           policy_effective_limits=policy_effective_limits)
                 else:
                     guard_evidence = self._selection_guard(conn, claim, now, policy_effective_digest, policy_effective_sets,
-                                                           pin_scope=pin_admission.pin_scope)
+                                                           pin_scope=pin_admission.pin_scope, policy_effective_limits=policy_effective_limits)
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise

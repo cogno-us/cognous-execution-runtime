@@ -1,7 +1,7 @@
 """M2 PR-2 oracles: governed selection, activation and atomic family transition for the composite Registry family `f1abc` (contract `r08-v3`).
 
-BUILDER_TESTED developer evidence. NOT independently qualified. Selection, activation and transition handling ONLY: f1abc is NOT authorized for
-effect dispatch (the composite effect-time guard is M2 PR-3, not implemented); every f1abc-bound claim is refused with `family_unsupported`.
+BUILDER_TESTED developer evidence. NOT independently qualified. Selection, activation and transition handling. (PR-2 refused every f1abc effect;
+M2 PR-3 replaced that refusal with effect-time enforcement of all seven members: see `test_registry_f1abc_enforcement.py`.)
 
 Environment: `OCS_REGISTRY_PIN_DIR` names a checkout of cogno-us/cognous-ocs-registry at the exact merged r08-v3 commit `REGISTRY_PIN` below, and PyNaCl
 is installed; without them the module is reported NOT RUN (skipped), never passed. The effect-denial tests also need Control Plane V02 + pydantic>=2.12.
@@ -12,7 +12,7 @@ is installed; without them the module is reported NOT RUN (skipped), never passe
   T transition   T-01 f1ab -> f1abc   T-02 f1abc -> f1ab   T-03 simultaneous active families refused, store unchanged   T-04 unbound fallback refused
                  T-05 unbound fallback in the transition gap
   R restart      R-01 restart with an existing activation   R-02 restart with a withdrawn activation
-  E effect       E-01 f1abc effect dispatch denied (PR-3 absent) end to end   E-02 f1abc binding denied at the guard   E-03 f1ab unchanged
+  E effect       E-03 f1ab unchanged next to a withdrawn f1abc
   P pin          P-01 exact Registry pin, v3 modules from the pin   P-02 Runtime constants equal the Registry's
 """
 from __future__ import annotations
@@ -277,7 +277,6 @@ def test_r02_restart_with_a_withdrawn_activation(env):
 
 
 # ================================================================================================================== E effect
-cpb = pytest.importorskip("agent_control_plane.canonical_policy_binding")
 
 
 def f1abc_binding(state):
@@ -287,39 +286,6 @@ def f1abc_binding(state):
             "scope": {"tenant": GS3["tenant"], "institution": GS3["institution"], "authority_domain": GS3["authority_domain"]},
             "operation": GS3["operation"], "effective_policy_digest": state.effective_policy_digest, "activation_ref": state.activation_ref,
             "trust_snapshot_version": state.trust_snapshot_version, "trust_snapshot_fingerprint": state.trust_snapshot_fingerprint}
-
-
-def test_e02_guard_refuses_every_f1abc_binding(env):
-    act3(env)
-    binding = f1abc_binding(env.state(GS3))
-    claim = types.SimpleNamespace(policy_binding=binding, tenant_id="tenant-a", institution_id="inst-a", authority_domain="domain-a")
-    conn = env.store._open()
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        err = refused(lambda: env.store.check_effect(conn, claim, env.now, binding["effective_policy_digest"], {k: v4.PAYLOAD[k] for k in v4.FIELDS}),
-                      "family_unsupported", cause=sa.F1ABC_PR3_REFUSAL_CAUSE)
-        assert err.refusal_class == "REFUSE"
-        pinned = lambda: env.store.check_effect(conn, claim, env.now, binding["effective_policy_digest"], None, pin_scope=dict(
-            {k: GS3[k] for k in ("consumer_id", "tenant", "institution", "authority_domain", "operation")}))
-        refused(pinned, "family_unsupported", cause=sa.F1ABC_PR3_REFUSAL_CAUSE)
-    finally:
-        conn.execute("ROLLBACK")
-        conn.close()
-
-
-def test_e01_f1abc_effect_dispatch_is_denied_end_to_end_while_pr3_is_absent(tmp_path):
-    eg = pytest.importorskip("test_registry_selection_effect_guard")  # NOT RUN (skipped) without Control Plane V02 + pydantic>=2.12
-    g = eg.Gov(tmp_path, activate=False)
-    act3(g.e)
-    state = g.e.state(GS3)
-    assert state.status == "active"
-    env_, cid, result = g.run(binding=f1abc_binding(state))
-    eg.refused(result, "family_unsupported")
-    assert g.counts() == (0, 0, 0, 0)  # no effect, no attempt, no receipt, no budget consumed
-    wd3(g.e, st3(), 2)
-    _, _, again = g.run(binding=f1abc_binding(state))
-    eg.refused(again, "family_unsupported")
-    assert g.counts() == (0, 0, 0, 0)
 
 
 def test_e03_f1ab_behaviour_is_unchanged_next_to_a_withdrawn_f1abc(tmp_path):
