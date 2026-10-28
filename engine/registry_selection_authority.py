@@ -74,6 +74,12 @@ CONTRACT_V3 = "r08-v3"
 F1ABC_CEILINGS = ("max_amount", "max_effects")
 F1ABC_AMOUNT_MAX = 2 ** 53          # Registry r08-v3 max_amount range 0..2^53
 F1ABC_EFFECTS_MAX = 2 ** 53 - 1     # Registry r08-v3 max_effects range 0..2^53-1 (0 = deny-all)
+# M3: the nine-member Registry family (contract `r08-v4`): the seven f1abc members plus `allowed_target_prefixes` and `target_match`. Activation,
+# transition handling and effect-time enforcement of all nine members (targets by accepted-set containment) ship together in this module.
+FAMILY_F1ABCD = "f1abcd-local-execution-limits"
+CONTRACT_V4 = "r08-v4"
+F1ABCD_TARGETS = ("allowed_target_prefixes", "target_match")
+COMPOSITE_FAMILIES = frozenset({FAMILY_F1ABC, FAMILY_F1ABCD})
 
 ENTRY_MEMBERS = (
     "entry_version", "activation_sequence", "prev_entry_hash", "entry_type", "cause", "governed_scope_digest", "scope_key_digest", "selection_id",
@@ -730,6 +736,21 @@ def _registry_v3() -> types.SimpleNamespace:
         raise SelectionRefusal("verifier_unavailable", cause="registry_unavailable") from exc
 
 
+def _registry_v4() -> types.SimpleNamespace:
+    """The `r08-v4` Registry modules, loaded only when a v4 selection is presented (an f1ab/f1abc-only deployment never depends on them)."""
+    try:
+        ns = types.SimpleNamespace(
+            sel=importlib.import_module("registry_successor.v4_selection"), verify=importlib.import_module("registry_successor.v4_verify"),
+            record=importlib.import_module("registry_successor.v4_record"), ident=importlib.import_module("registry_successor.v4_policy_identity"),
+            fam=importlib.import_module("registry_successor.v4_f1abcd"))
+        if (ns.fam.FAMILY_F1ABCD != FAMILY_F1ABCD or ns.sel.V4_CONTRACT != CONTRACT_V4
+                or tuple(ns.fam.F1ABCD_FIELDS) != sa_fields() + F1ABC_CEILINGS + F1ABCD_TARGETS):
+            raise ValueError("registry r08-v4 constants differ from the Runtime's")
+        return ns
+    except Exception as exc:
+        raise SelectionRefusal("verifier_unavailable", cause="registry_unavailable") from exc
+
+
 def _coexistence_violated(active_scope_jsons: Any) -> bool:
     """True when the scope tuples (canonical JSON) of the ACTIVE rows show two different families for one consumer/tenant/institution/domain/operation."""
     seen: dict = {}
@@ -750,8 +771,21 @@ def _declares_v3(selection_text: Any) -> bool:
     return type(env) is dict and type(env.get("contract_version")) is str and env["contract_version"] == CONTRACT_V3
 
 
+def _declares_v4(selection_text: Any) -> bool:
+    """True only when the text parses as a JSON object whose `contract_version` is exactly the string `r08-v4` (same rule as `_declares_v3`)."""
+    try:
+        env = json.loads(selection_text)
+    except Exception:
+        return False
+    return type(env) is dict and type(env.get("contract_version")) is str and env["contract_version"] == CONTRACT_V4
+
+
 def _record_policy_digest(family: Any, payload: Any) -> str:
-    """The Registry effective-policy digest of an authenticated record payload: all seven members for f1abc, the five sets for f1ab."""
+    """The Registry effective-policy digest of an authenticated record payload: all nine members for f1abcd, all seven for f1abc, the five sets for f1ab."""
+    if family == FAMILY_F1ABCD:
+        regv = _registry_v4()
+        return regv.ident.effective_policy_digest(
+            FAMILY_F1ABCD, {k: (sorted(payload[k]) if k in sa_fields() else payload[k]) for k in sa_fields() + F1ABC_CEILINGS + F1ABCD_TARGETS})
     if family == FAMILY_F1ABC:
         regv = _registry_v3()
         return regv.ident.effective_policy_digest(
@@ -928,6 +962,9 @@ class SelectionAuthorityStore:
                 payload = rec["payload"]
                 if stmt["family"] == FAMILY_F1ABC:  # the f1abc row must reconstruct from an r08-v3 record of that family
                     if rec.get("contract_version") != CONTRACT_V3 or rec.get("family") != FAMILY_F1ABC or stmt.get("participation") != "required":
+                        return bad
+                elif stmt["family"] == FAMILY_F1ABCD:  # the f1abcd row must reconstruct from an r08-v4 record of that family
+                    if rec.get("contract_version") != CONTRACT_V4 or rec.get("family") != FAMILY_F1ABCD or stmt.get("participation") != "required":
                         return bad
                 elif stmt["family"] != reg.f1ab.FAMILY_F1AB:
                     return bad
@@ -1282,20 +1319,28 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("field_invalid", cause="input_not_text")
         if type(verifier) is not reg.verifier_cls:
             raise SelectionRefusal("verifier_unavailable", cause="verifier_not_admitted")
-        v3 = _declares_v3(selection_text)  # M2 PR-2: an `r08-v3` envelope takes the r08-v3 Registry entry points; everything else is unchanged r08-v2
-        regv = _registry_v3() if v3 else None
-        want_family = FAMILY_F1ABC if v3 else reg.f1ab.FAMILY_F1AB
-        sel = regv.sel.parse_selection_envelope_v3(selection_text) if v3 else reg.sel.parse_selection_envelope_v2(selection_text)
+        v4 = _declares_v4(selection_text)  # M3: an `r08-v4` envelope takes the r08-v4 Registry entry points
+        v3 = (not v4) and _declares_v3(selection_text)  # M2 PR-2: an `r08-v3` envelope takes the r08-v3 Registry entry points; everything else is unchanged r08-v2
+        composite = v3 or v4
+        regv = _registry_v4() if v4 else (_registry_v3() if v3 else None)
+        want_family = FAMILY_F1ABCD if v4 else (FAMILY_F1ABC if v3 else reg.f1ab.FAMILY_F1AB)
+        if v4:
+            sel = regv.sel.parse_selection_envelope_v4(selection_text)
+        else:
+            sel = regv.sel.parse_selection_envelope_v3(selection_text) if v3 else reg.sel.parse_selection_envelope_v2(selection_text)
         if not sel.ok:
             raise SelectionRefusal(sel.code if sel.code in reg.decision.v2_codes.CODES_V2_REV2 else "field_invalid", cause="selection_parse")
         rec = None
         if mode == "activate":
-            rec = regv.record.validate_record_text_v3(record_text) if v3 else reg.decision.validate_record_text_v2(record_text)
+            if v4:
+                rec = regv.record.validate_record_text_v4(record_text)
+            else:
+                rec = regv.record.validate_record_text_v3(record_text) if v3 else reg.decision.validate_record_text_v2(record_text)
             if not rec.ok:
                 raise SelectionRefusal(rec.code, cause="record")
         floors, stored_min = self._floors(conn)
         last_accepted = d.snapshot if d.snapshot is not None else None
-        verify_fn = regv.verify.verify_selection_v3 if v3 else reg.verify.verify_selection_v2
+        verify_fn = regv.verify.verify_selection_v4 if v4 else (regv.verify.verify_selection_v3 if v3 else reg.verify.verify_selection_v2)
         report = verify_fn(sel, context, trust, verifier, now, rec, None, min_trust_snapshot_version=stored_min, last_accepted_snapshot=last_accepted)
         if mode == "withdraw":
             # Registry reports an authenticated, in-scope, in-time withdrawal as the typed refusal `selection_withdrawn` (never ok=True).
@@ -1355,7 +1400,7 @@ class SelectionAuthorityStore:
         if ratchet_now and participation == "optional":
             raise SelectionRefusal("participation_mismatch", cause="scope_required")
         if mode == "activate":
-            if v3 and participation != "required":  # an optional f1abc selection could leave an unbound claim a caller-policy fallback
+            if composite and participation != "required":  # an optional composite selection could leave an unbound claim a caller-policy fallback
                 raise SelectionRefusal("participation_mismatch", cause="f1abc_requires_required_participation")
             self._refuse_family_coexistence(conn, scope)
         counter = d.generation.get(gsd, d.baseline_floor)
@@ -1424,7 +1469,7 @@ class SelectionAuthorityStore:
     # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
     def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str],
                      policy_effective_sets: Optional[dict] = None, *, pin_scope: Optional[dict] = None,
-                     policy_effective_limits: Optional[dict] = None) -> dict:
+                     policy_effective_limits: Optional[dict] = None, policy_effective_targets: Optional[dict] = None) -> dict:
         """The lock-time selection guard (ADR 7, contract 7.4). Called by `execute_claim_atomic` INSIDE its `BEGIN IMMEDIATE`, after the lock-time
         clock and before the effect insert, on the SAME connection. Reads only local rows (and the small local anchor file); no network, registry call
         or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing.
@@ -1519,7 +1564,12 @@ class SelectionAuthorityStore:
         if now >= self._ts(snap["valid_until"]):
             raise SelectionRefusal("trust_snapshot_expired", "HOLD")
         composite = binding["family"] == FAMILY_F1ABC
-        if composite:
+        composite_d = binding["family"] == FAMILY_F1ABCD
+        if composite_d:
+            # M3: the identity is the nine-member digest of the policy the executor will evaluate (sets, ceilings, target prefixes and match mode),
+            # computed here from the same policy object's values.
+            policy_effective_digest = self._f1abcd_policy_digest(policy_effective_sets, policy_effective_limits, policy_effective_targets)
+        elif composite:
             # M2 PR-3: the identity is the seven-member digest of the policy the executor will evaluate (its five sets AND its two ceilings),
             # computed here from the same policy object's values. The f1ab-shaped `policy_effective_digest` is not used for this family.
             policy_effective_digest = self._f1abc_policy_digest(policy_effective_sets, policy_effective_limits)
@@ -1527,7 +1577,9 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("verifier_unavailable", cause="policy_digest_unavailable")
         if policy_effective_digest != binding["effective_policy_digest"]:
             raise SelectionRefusal("policy_identity_mismatch", cause="effective_policy_digest")
-        if composite:
+        if composite_d:
+            self._check_policy_containment_f1abcd(act, policy_effective_digest, policy_effective_sets, policy_effective_limits, policy_effective_targets)
+        elif composite:
             self._check_policy_containment_f1abc(act, policy_effective_digest, policy_effective_sets, policy_effective_limits)
         else:
             self._check_policy_containment(act, policy_effective_digest, policy_effective_sets)
@@ -1626,6 +1678,74 @@ class SelectionAuthorityStore:
         for field in F1ABC_CEILINGS:
             if lim[field] > ceilings[field]:
                 raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_exceeds_ceiling:{field}")
+
+    @staticmethod
+    def _f1abcd_targets(targets: Any) -> dict:
+        """The executor policy's target members exactly as held: a non-empty tuple/list of non-empty `str` prefixes and an exact `str` mode. Nothing is
+        coerced or defaulted; anything else is refused."""
+        if not isinstance(targets, dict) or set(targets) != set(F1ABCD_TARGETS):
+            raise SelectionRefusal("verifier_unavailable", cause="policy_targets_unavailable")
+        prefixes, mode = targets["allowed_target_prefixes"], targets["target_match"]
+        if type(prefixes) not in (list, tuple) or not prefixes or any(type(x) is not str or not x for x in prefixes) or type(mode) is not str:
+            raise SelectionRefusal("composition_caller_invalid", cause="policy_targets_malformed")
+        return {"allowed_target_prefixes": sorted(set(prefixes)), "target_match": mode}
+
+    def _f1abcd_policy_digest(self, sets: Any, limits: Any, targets: Any) -> str:
+        if not isinstance(sets, dict) or set(sets) != set(sa_fields()):
+            raise SelectionRefusal("verifier_unavailable", cause="policy_sets_unavailable")
+        lim = self._f1abc_limits(limits)
+        tgt = self._f1abcd_targets(targets)
+        try:
+            regv = _registry_v4()
+            return regv.ident.effective_policy_digest(FAMILY_F1ABCD, {**{k: sorted(_clean_set(sets[k])) for k in sa_fields()}, **lim, **tgt})
+        except SelectionRefusal:
+            raise
+        except Exception as exc:
+            raise SelectionRefusal("policy_identity_mismatch", cause="policy_targets_malformed") from exc
+
+    def _check_policy_containment_f1abcd(self, act: sqlite3.Row, policy_effective_digest: str, sets: dict, limits: dict, targets: dict) -> None:
+        """M3: all nine members of the executor's effective policy must be inside the authenticated activated r08-v4 record: the five sets by subset,
+        the two ceilings by `<=`, and the accepted target set by CONTAINMENT: every executor prefix, under the executor's mode, must lie inside the
+        accepted set of some record prefix under the record's mode (Registry `v4_f1abcd.contained`, the exact predicate verified exhaustively against
+        the evaluator rule). An executor mode weaker than the record's can only pass when each prefix is still contained. The Registry side is
+        re-authenticated from THIS row and never taken from the claim or the executor; a record with no prefixes admits nothing (deny-all)."""
+        lim = self._f1abc_limits(limits)
+        tgt = self._f1abcd_targets(targets)
+        executor = {k: _clean_set(sets[k]) for k in sa_fields()}
+        try:
+            record_json = act["record_json"]
+            rec = json.loads(record_json)
+            body = {k: v for k, v in rec.items() if k != "record_digest"}
+            if (canonical_bytes(rec).decode("ascii") != record_json or rec.get("record_digest") != act["record_digest"]
+                    or "sha256:" + hashlib.sha256(canonical_bytes(body)).hexdigest() != act["record_digest"]
+                    or rec.get("contract_version") != CONTRACT_V4 or rec.get("family") != FAMILY_F1ABCD):
+                raise ValueError("record bytes")
+            payload = rec["payload"]
+            if _record_policy_digest(FAMILY_F1ABCD, payload) != act["record_policy_digest"]:
+                raise ValueError("record policy digest")
+            registry_sets = {k: _clean_set(payload[k]) for k in sa_fields()}
+            ceilings = {k: payload[k] for k in F1ABC_CEILINGS}
+            if any(type(v) is not int for v in ceilings.values()):
+                raise ValueError("record ceilings")
+            record_prefixes, record_mode = payload["allowed_target_prefixes"], payload["target_match"]
+            if type(record_prefixes) is not list or type(record_mode) is not str:
+                raise ValueError("record targets")
+            contained = _registry_v4().fam.contained
+            if record_mode not in _registry_v4().fam.MODES:
+                raise ValueError("record mode")
+        except Exception as exc:
+            raise SelectionRefusal("store_unknown", "HOLD", cause="record_payload_unavailable") from exc
+        for field in sa_fields():
+            if not executor[field] <= registry_sets[field]:
+                raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_not_subset:{field}")
+        for field in F1ABC_CEILINGS:
+            if lim[field] > ceilings[field]:
+                raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_exceeds_ceiling:{field}")
+        if tgt["target_match"] not in _registry_v4().fam.MODES:
+            raise SelectionRefusal("composition_caller_invalid", cause="policy_target_mode_invalid")
+        for entry in tgt["allowed_target_prefixes"]:
+            if not any(contained(tgt["target_match"], entry, record_mode, r) for r in record_prefixes):
+                raise SelectionRefusal("policy_identity_mismatch", cause="policy_targets_not_contained")
 
     def _check_unbound(self, conn: sqlite3.Connection, claim: Any, d: Derived, now: datetime, head: dict) -> dict:
         """Contract 7.4 line 8: an omitted binding is never an intentionally absent optional policy."""
@@ -1728,6 +1848,15 @@ def policy_limits_of(policy: Any) -> Optional[dict]:
     not an exact in-range integer). None when they cannot be read. Grants nothing."""
     try:
         return {"max_amount": policy.max_amount, "max_effects": policy.max_effects}
+    except Exception:
+        return None
+
+
+def policy_targets_of(policy: Any) -> Optional[dict]:
+    """The target members of the policy an executor will evaluate, EXACTLY as held (None when they cannot be read). The f1abcd guard refuses
+    anything that is not a non-empty prefix tuple and an exact mode `str`. Grants nothing."""
+    try:
+        return {"allowed_target_prefixes": policy.allowed_target_prefixes, "target_match": policy.target_match}
     except Exception:
         return None
 

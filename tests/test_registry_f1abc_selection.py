@@ -32,7 +32,7 @@ from registry_successor import common as c  # noqa: E402
 
 from engine import registry_selection_authority as sa  # noqa: E402
 
-REGISTRY_PIN = "ba98dd2689e402a855cacc2c7dc3a108c9144eb1"  # cogno-us/cognous-ocs-registry PR #54 merge commit (r08-v3)
+REGISTRY_PIN = "7cd8042696ac1d692c2f325095e194ed4f23c72c"  # M3: head of UNMERGED cogno-us/cognous-ocs-registry PR #56 (r08-v4); includes the merged r08-v3 (PR #54, ba98dd26)
 FAMILY = sa.FAMILY_F1ABC
 GS3 = dict(v4.GS, family=FAMILY)
 SID3 = "sel-f1abc-1"
@@ -120,11 +120,11 @@ def test_b01_wrong_family(env):
     unchanged(env, lambda: act3(env, record_text=r.dumps(f1ab_record)), "contract_unsupported")  # an f1ab record never activates an f1abc selection
 
 
-@pytest.mark.parametrize("contract,code", [("r08-v2", "family_unsupported"), ("r08-v1", "contract_unsupported"), ("r08-v4", "contract_unsupported"),
+@pytest.mark.parametrize("contract,code", [("r08-v2", "family_unsupported"), ("r08-v1", "contract_unsupported"), ("r08-v5", "contract_unsupported"), ("r08-v4", "family_unsupported"),
                                            ("", "contract_unsupported")])
 def test_b02_wrong_contract_version(env, contract, code):
     stmt = st3()
-    text = r.dumps(t3.envelope(stmt, contract=contract))  # an r08-v2 label is routed to the v2 path, which does not know the f1abc family
+    text = r.dumps(t3.envelope(stmt, contract=contract))  # an r08-v2 label is routed to the v2 path, which does not know the f1abc family; r08-v4 (M3) routes to the v4 path, which does not know f1abc
     unchanged(env, lambda: act3(env, stmt, text=text), code)
 
 
