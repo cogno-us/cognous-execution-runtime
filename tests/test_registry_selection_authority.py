@@ -51,7 +51,7 @@ PREDECLARED INVENTORY (written and committed BEFORE `engine/registry_selection_a
     C-04 a deleted ratchet row: `unknown` (never "optional")
     C-05 an entry carrying an unknown reasons label (valid hash) is rejected by replay
 
-Environment: `OCS_REGISTRY_PIN_DIR` names a Registry checkout at the accepted pin (943ab183...) and PyNaCl is installed (Registry
+Environment: `OCS_REGISTRY_PIN_DIR` names a Registry checkout at the pinned Registry commit (ba98dd26..., M2 PR-1 merge) and PyNaCl is installed (Registry
 requirements-ed25519.lock.txt); without them this module is reported NOT RUN (skipped with a reason), never passed with a double.
 """
 from __future__ import annotations
