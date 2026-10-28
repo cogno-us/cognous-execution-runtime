@@ -67,6 +67,12 @@ INT_MAX = 2147483647
 SEQ_MAX = 2 ** 53 - 1
 ZERO_HASH = "sha256:" + "0" * 64
 SCOPE_NAMES = ("consumer_id", "tenant", "institution", "authority_domain", "operation", "family")
+# M2 PR-2: the composite Registry family (contract `r08-v3`). Selection, activation and transition handling ONLY. Effect-time enforcement of the
+# two numeric members is PR-3 (not implemented): `check_effect` refuses every f1abc binding until then, so f1abc never reaches an effect.
+FAMILY_F1ABC = "f1abc-local-execution-limits"
+CONTRACT_V3 = "r08-v3"
+F1ABC_CEILINGS = ("max_amount", "max_effects")
+F1ABC_PR3_REFUSAL_CAUSE = "f1abc_effect_guard_not_implemented"
 
 ENTRY_MEMBERS = (
     "entry_version", "activation_sequence", "prev_entry_hash", "entry_type", "cause", "governed_scope_digest", "scope_key_digest", "selection_id",
@@ -709,6 +715,50 @@ def _registry() -> types.SimpleNamespace:
         raise SelectionRefusal("verifier_unavailable", cause="registry_unavailable") from exc
 
 
+def _registry_v3() -> types.SimpleNamespace:
+    """The `r08-v3` Registry modules, loaded only when a v3 selection is presented (so an f1ab-only deployment never depends on them)."""
+    try:
+        ns = types.SimpleNamespace(
+            sel=importlib.import_module("registry_successor.v3_selection"), verify=importlib.import_module("registry_successor.v3_verify"),
+            record=importlib.import_module("registry_successor.v3_record"), ident=importlib.import_module("registry_successor.v3_policy_identity"),
+            fam=importlib.import_module("registry_successor.v3_f1abc"))
+        if ns.fam.FAMILY_F1ABC != FAMILY_F1ABC or ns.sel.V3_CONTRACT != CONTRACT_V3 or tuple(ns.fam.F1ABC_FIELDS) != sa_fields() + F1ABC_CEILINGS:
+            raise ValueError("registry r08-v3 constants differ from the Runtime's")
+        return ns
+    except Exception as exc:
+        raise SelectionRefusal("verifier_unavailable", cause="registry_unavailable") from exc
+
+
+def _coexistence_violated(active_scope_jsons: Any) -> bool:
+    """True when the scope tuples (canonical JSON) of the ACTIVE rows show two different families for one consumer/tenant/institution/domain/operation."""
+    seen: dict = {}
+    for raw in active_scope_jsons:
+        tup = json.loads(raw)
+        if seen.setdefault(tuple(tup[:5]), tup[5]) != tup[5]:
+            return True
+    return False
+
+
+def _declares_v3(selection_text: Any) -> bool:
+    """True only when the text parses as a JSON object whose `contract_version` is exactly the string `r08-v3`. Anything else takes the unchanged
+    r08-v2 path (which refuses a foreign contract), so no input can reach the v3 path by accident."""
+    try:
+        env = json.loads(selection_text)
+    except Exception:
+        return False
+    return type(env) is dict and type(env.get("contract_version")) is str and env["contract_version"] == CONTRACT_V3
+
+
+def _record_policy_digest(family: Any, payload: Any) -> str:
+    """The Registry effective-policy digest of an authenticated record payload: all seven members for f1abc, the five sets for f1ab."""
+    if family == FAMILY_F1ABC:
+        regv = _registry_v3()
+        return regv.ident.effective_policy_digest(
+            FAMILY_F1ABC, {k: (sorted(payload[k]) if k in sa_fields() else payload[k]) for k in sa_fields() + F1ABC_CEILINGS})
+    reg = _registry()
+    return reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(payload[k]) for k in sa_fields()})
+
+
 # ---------------------------------------------------------------------------------------------------------------------------------
 # The store
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -816,6 +866,8 @@ class SelectionAuthorityStore:
         pinned = self._compare_pinned(conn, d)
         if pinned:
             return pinned
+        if _coexistence_violated(r[0] for r in conn.execute("SELECT scope_json FROM selection_activation_v1 WHERE activation_state='active'")):
+            return "table_mismatch:family_coexistence"  # two families active for one governed tuple is never a known store
         snap = self._snapshot_row(conn)
         if (d.snapshot is None) != (snap is None) or (snap is not None and (snap["snapshot_version"], snap["snapshot_fingerprint"]) != d.snapshot):
             return "table_mismatch:selection_highwater_v1"
@@ -873,7 +925,12 @@ class SelectionAuthorityStore:
                     return bad
                 reg = _registry()
                 payload = rec["payload"]
-                if row["record_policy_digest"] != reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(payload[k]) for k in sa_fields()}):
+                if stmt["family"] == FAMILY_F1ABC:  # the f1abc row must reconstruct from an r08-v3 record of that family
+                    if rec.get("contract_version") != CONTRACT_V3 or rec.get("family") != FAMILY_F1ABC or stmt.get("participation") != "required":
+                        return bad
+                elif stmt["family"] != reg.f1ab.FAMILY_F1AB:
+                    return bad
+                if row["record_policy_digest"] != _record_policy_digest(stmt["family"], payload):
                     return bad
             except SelectionRefusal:
                 return "registry_unavailable_for_policy_digest"
@@ -1224,18 +1281,21 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("field_invalid", cause="input_not_text")
         if type(verifier) is not reg.verifier_cls:
             raise SelectionRefusal("verifier_unavailable", cause="verifier_not_admitted")
-        sel = reg.sel.parse_selection_envelope_v2(selection_text)
+        v3 = _declares_v3(selection_text)  # M2 PR-2: an `r08-v3` envelope takes the r08-v3 Registry entry points; everything else is unchanged r08-v2
+        regv = _registry_v3() if v3 else None
+        want_family = FAMILY_F1ABC if v3 else reg.f1ab.FAMILY_F1AB
+        sel = regv.sel.parse_selection_envelope_v3(selection_text) if v3 else reg.sel.parse_selection_envelope_v2(selection_text)
         if not sel.ok:
             raise SelectionRefusal(sel.code if sel.code in reg.decision.v2_codes.CODES_V2_REV2 else "field_invalid", cause="selection_parse")
         rec = None
         if mode == "activate":
-            rec = reg.decision.validate_record_text_v2(record_text)
+            rec = regv.record.validate_record_text_v3(record_text) if v3 else reg.decision.validate_record_text_v2(record_text)
             if not rec.ok:
                 raise SelectionRefusal(rec.code, cause="record")
         floors, stored_min = self._floors(conn)
         last_accepted = d.snapshot if d.snapshot is not None else None
-        report = reg.verify.verify_selection_v2(sel, context, trust, verifier, now, rec, None, min_trust_snapshot_version=stored_min,
-                                                last_accepted_snapshot=last_accepted)
+        verify_fn = regv.verify.verify_selection_v3 if v3 else reg.verify.verify_selection_v2
+        report = verify_fn(sel, context, trust, verifier, now, rec, None, min_trust_snapshot_version=stored_min, last_accepted_snapshot=last_accepted)
         if mode == "withdraw":
             # Registry reports an authenticated, in-scope, in-time withdrawal as the typed refusal `selection_withdrawn` (never ok=True).
             # Any other layer failing is a real refusal. A withdrawal that verified ok=True is inconsistent and refused.
@@ -1255,7 +1315,7 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("field_invalid", cause="report_inconsistent")
         want = "select" if mode == "activate" else "withdraw"
         sigs = sel.signatures
-        if (stmt.get("disposition") != want or stmt.get("family") != reg.f1ab.FAMILY_F1AB or not isinstance(sigs, (list, tuple)) or len(sigs) != 1
+        if (stmt.get("disposition") != want or stmt.get("family") != want_family or not isinstance(sigs, (list, tuple)) or len(sigs) != 1
                 or not isinstance(sigs[0], dict) or not _identifier_ok(sigs[0].get("key_id"))):
             raise SelectionRefusal("field_invalid", cause="statement_form")
         scope = dict(zip(SCOPE_NAMES, (stmt["consumer_id"], stmt["scope"]["tenant"], stmt["scope"]["institution"], stmt["scope"]["authority_domain"],
@@ -1293,6 +1353,10 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("selection_supersession_invalid", cause="not_the_current_row")
         if ratchet_now and participation == "optional":
             raise SelectionRefusal("participation_mismatch", cause="scope_required")
+        if mode == "activate":
+            if v3 and participation != "required":  # an optional f1abc selection could leave an unbound claim a caller-policy fallback
+                raise SelectionRefusal("participation_mismatch", cause="f1abc_requires_required_participation")
+            self._refuse_family_coexistence(conn, scope)
         counter = d.generation.get(gsd, d.baseline_floor)
         supersedes = None if current is None else {"selection_id": current["selection_id"], "epoch": current["epoch"], "selection_digest": current["statement_digest"]}
         if mode == "withdraw":
@@ -1309,7 +1373,9 @@ class SelectionAuthorityStore:
             return TransitionResult("withdraw", entry["activation_sequence"], h, (h,), None, h, gen, False), self._finish(conn, d, now)
         payload = rec.record["payload"]
         try:
-            record_policy_digest = reg.ident.effective_policy_digest(reg.f1ab.FAMILY_F1AB, {k: sorted(payload[k]) for k in sa_fields()})
+            record_policy_digest = _record_policy_digest(want_family, payload)
+        except SelectionRefusal:
+            raise
         except Exception as exc:
             raise SelectionRefusal("composition_record_invalid", cause="record_payload") from exc
         gen = next_generation(counter, saturating=False)
@@ -1342,6 +1408,18 @@ class SelectionAuthorityStore:
                          (gsd, entry["activation_sequence"], canonical_bytes(list(_scope_tuple(scope))).decode("ascii")))
         return TransitionResult("activate", entry["activation_sequence"], h, (h,), h, None, gen, False), self._finish(conn, d, now)
 
+    @staticmethod
+    def _refuse_family_coexistence(conn: sqlite3.Connection, scope: Mapping[str, str]) -> None:
+        """M2 PR-2 coexistence rule: two Registry families must never independently authorize the same consumer, tenant, institution, authority
+        domain and operation. An activation is refused (`selection_conflict`) while an `active` row of ANOTHER family holds that tuple, so the older
+        family must be withdrawn (or revoked) first. The gap between the withdrawal and the new activation fails closed (the withdrawn row is
+        terminal and, for f1abc, the durable ratchet refuses unbound claims). Expiry does not release a family: only `withdrawn`/`revoked` does."""
+        mine = tuple(scope[n] for n in SCOPE_NAMES[:5])
+        for (scope_json,) in conn.execute("SELECT scope_json FROM selection_activation_v1 WHERE activation_state='active'"):
+            tup = json.loads(scope_json)
+            if tuple(tup[:5]) == mine and tup[5] != scope["family"]:
+                raise SelectionRefusal("selection_conflict", cause="family_coexistence")
+
     # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
     def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str],
                      policy_effective_sets: Optional[dict] = None, *, pin_scope: Optional[dict] = None) -> dict:
@@ -1369,6 +1447,10 @@ class SelectionAuthorityStore:
         defect = cpb.binding_defect(binding)
         if defect is not None:
             raise SelectionRefusal("field_invalid", cause=f"binding:{defect}")
+        if binding.get("family") == FAMILY_F1ABC:
+            # M2 PR-2 security boundary: activation of f1abc does NOT authorize effect dispatch. The composite effect-time guard (numeric ceilings,
+            # seven-member containment) is PR-3. Until it exists every f1abc-bound claim is refused here, before any row is consulted.
+            raise SelectionRefusal("family_unsupported", cause=F1ABC_PR3_REFUSAL_CAUSE)
         sc = binding["scope"]
         scope = {"consumer_id": binding["consumer_id"], "tenant": sc["tenant"], "institution": sc["institution"],
                  "authority_domain": sc["authority_domain"], "operation": binding["operation"], "family": binding["family"]}
