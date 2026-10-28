@@ -47,7 +47,7 @@ from pathlib import Path
 
 import pytest
 
-PIN = "ba98dd2689e402a855cacc2c7dc3a108c9144eb1"  # M2 PR-2: merged r08-v3 commit (v2 files byte-identical to the previous pin)
+PIN = "b7e6a173877c731273858b01b26214147dd0736c"  # M3: merge commit of Registry PR #56 (r08-v4); r08-v1/v2/v3 files byte-identical to the merged r08-v3 commit ba98dd26
 PIN_DIR = os.environ.get("OCS_REGISTRY_PIN_DIR")
 if not PIN_DIR or not (Path(PIN_DIR) / "registry_successor").is_dir():
     pytest.skip("NOT RUN: OCS_REGISTRY_PIN_DIR is not set to a Registry checkout at the pin", allow_module_level=True)
