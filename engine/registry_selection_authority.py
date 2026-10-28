@@ -67,12 +67,13 @@ INT_MAX = 2147483647
 SEQ_MAX = 2 ** 53 - 1
 ZERO_HASH = "sha256:" + "0" * 64
 SCOPE_NAMES = ("consumer_id", "tenant", "institution", "authority_domain", "operation", "family")
-# M2 PR-2: the composite Registry family (contract `r08-v3`). Selection, activation and transition handling ONLY. Effect-time enforcement of the
-# two numeric members is PR-3 (not implemented): `check_effect` refuses every f1abc binding until then, so f1abc never reaches an effect.
+# M2: the composite Registry family (contract `r08-v3`). PR-2 added selection, activation and transition handling; PR-3 adds effect-time
+# enforcement of all seven members in `check_effect` (the five sets by subset, the two ceilings by `<=`).
 FAMILY_F1ABC = "f1abc-local-execution-limits"
 CONTRACT_V3 = "r08-v3"
 F1ABC_CEILINGS = ("max_amount", "max_effects")
-F1ABC_PR3_REFUSAL_CAUSE = "f1abc_effect_guard_not_implemented"
+F1ABC_AMOUNT_MAX = 2 ** 53          # Registry r08-v3 max_amount range 0..2^53
+F1ABC_EFFECTS_MAX = 2 ** 53 - 1     # Registry r08-v3 max_effects range 0..2^53-1 (0 = deny-all)
 
 ENTRY_MEMBERS = (
     "entry_version", "activation_sequence", "prev_entry_hash", "entry_type", "cause", "governed_scope_digest", "scope_key_digest", "selection_id",
@@ -1422,7 +1423,8 @@ class SelectionAuthorityStore:
 
     # -- effect-time guard (V05) -----------------------------------------------------------------------------------------------
     def check_effect(self, conn: sqlite3.Connection, claim: Any, now: datetime, policy_effective_digest: Optional[str],
-                     policy_effective_sets: Optional[dict] = None, *, pin_scope: Optional[dict] = None) -> dict:
+                     policy_effective_sets: Optional[dict] = None, *, pin_scope: Optional[dict] = None,
+                     policy_effective_limits: Optional[dict] = None) -> dict:
         """The lock-time selection guard (ADR 7, contract 7.4). Called by `execute_claim_atomic` INSIDE its `BEGIN IMMEDIATE`, after the lock-time
         clock and before the effect insert, on the SAME connection. Reads only local rows (and the small local anchor file); no network, registry call
         or subprocess. Returns bounded evidence on success, raises a typed `SelectionRefusal` (a `PermissionError`) otherwise. It writes nothing.
@@ -1447,10 +1449,6 @@ class SelectionAuthorityStore:
         defect = cpb.binding_defect(binding)
         if defect is not None:
             raise SelectionRefusal("field_invalid", cause=f"binding:{defect}")
-        if binding.get("family") == FAMILY_F1ABC:
-            # M2 PR-2 security boundary: activation of f1abc does NOT authorize effect dispatch. The composite effect-time guard (numeric ceilings,
-            # seven-member containment) is PR-3. Until it exists every f1abc-bound claim is refused here, before any row is consulted.
-            raise SelectionRefusal("family_unsupported", cause=F1ABC_PR3_REFUSAL_CAUSE)
         sc = binding["scope"]
         scope = {"consumer_id": binding["consumer_id"], "tenant": sc["tenant"], "institution": sc["institution"],
                  "authority_domain": sc["authority_domain"], "operation": binding["operation"], "family": binding["family"]}
@@ -1520,11 +1518,19 @@ class SelectionAuthorityStore:
             raise SelectionRefusal("trust_snapshot_version_stale", "REFUSE_STALE")
         if now >= self._ts(snap["valid_until"]):
             raise SelectionRefusal("trust_snapshot_expired", "HOLD")
+        composite = binding["family"] == FAMILY_F1ABC
+        if composite:
+            # M2 PR-3: the identity is the seven-member digest of the policy the executor will evaluate (its five sets AND its two ceilings),
+            # computed here from the same policy object's values. The f1ab-shaped `policy_effective_digest` is not used for this family.
+            policy_effective_digest = self._f1abc_policy_digest(policy_effective_sets, policy_effective_limits)
         if policy_effective_digest is None:
             raise SelectionRefusal("verifier_unavailable", cause="policy_digest_unavailable")
         if policy_effective_digest != binding["effective_policy_digest"]:
             raise SelectionRefusal("policy_identity_mismatch", cause="effective_policy_digest")
-        self._check_policy_containment(act, policy_effective_digest, policy_effective_sets)
+        if composite:
+            self._check_policy_containment_f1abc(act, policy_effective_digest, policy_effective_sets, policy_effective_limits)
+        else:
+            self._check_policy_containment(act, policy_effective_digest, policy_effective_sets)
         return {"result": "binding_verified", "applied": True, "selection_id": sid, "selection_epoch": epoch, "activation_ref": row["activation_ref"],
                 "policy_generation": d.generation.get(gsd), "participation": row["participation"], "scope_required": gsd in d.ratchet,
                 "trust_snapshot_version": version, "trust_snapshot_fingerprint": fingerprint, "effective_policy_digest": policy_effective_digest,
@@ -1564,6 +1570,62 @@ class SelectionAuthorityStore:
         for field in sa_fields():
             if not executor[field] <= registry_sets[field]:
                 raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_not_subset:{field}")
+
+    @staticmethod
+    def _f1abc_limits(limits: Any) -> dict:
+        """The executor policy's two ceilings, exactly as held: an exact `int` (never a float, bool or subclass) inside the Registry range. No coercion,
+        rounding or clamping: anything else is refused. `max_effects` of the executor policy is at least 1 (a policy cannot be built for deny-all)."""
+        if not isinstance(limits, dict) or set(limits) != set(F1ABC_CEILINGS):
+            raise SelectionRefusal("verifier_unavailable", cause="policy_limits_unavailable")
+        amount, effects = limits["max_amount"], limits["max_effects"]
+        if type(amount) is not int or type(effects) is not int:
+            raise SelectionRefusal("composition_caller_invalid", cause="policy_limits_not_exact_integers")
+        if not 0 <= amount <= F1ABC_AMOUNT_MAX or not 1 <= effects <= F1ABC_EFFECTS_MAX:
+            raise SelectionRefusal("composition_caller_invalid", cause="policy_limits_out_of_range")
+        return {"max_amount": amount, "max_effects": effects}
+
+    def _f1abc_policy_digest(self, sets: Any, limits: Any) -> str:
+        if not isinstance(sets, dict) or set(sets) != set(sa_fields()):
+            raise SelectionRefusal("verifier_unavailable", cause="policy_sets_unavailable")
+        lim = self._f1abc_limits(limits)
+        try:
+            regv = _registry_v3()
+            return regv.ident.effective_policy_digest(
+                FAMILY_F1ABC, {**{k: sorted(_clean_set(sets[k])) for k in sa_fields()}, **lim})
+        except SelectionRefusal:
+            raise
+        except Exception as exc:
+            raise SelectionRefusal("policy_identity_mismatch", cause="policy_sets_malformed") from exc
+
+    def _check_policy_containment_f1abc(self, act: sqlite3.Row, policy_effective_digest: str, sets: dict, limits: dict) -> None:
+        """M2 PR-3: all seven members of the executor's effective policy must be inside the authenticated activated r08-v3 record: each of the five
+        sets a subset, `max_amount <= record max_amount`, `max_effects <= record max_effects` (record `max_effects` of 0 admits nothing: deny-all).
+        The Registry side is re-authenticated from THIS row (defence in depth over `_verify`) and never taken from the claim or the executor."""
+        lim = self._f1abc_limits(limits)
+        executor = {k: _clean_set(sets[k]) for k in sa_fields()}
+        try:
+            record_json = act["record_json"]
+            rec = json.loads(record_json)
+            body = {k: v for k, v in rec.items() if k != "record_digest"}
+            if (canonical_bytes(rec).decode("ascii") != record_json or rec.get("record_digest") != act["record_digest"]
+                    or "sha256:" + hashlib.sha256(canonical_bytes(body)).hexdigest() != act["record_digest"]
+                    or rec.get("contract_version") != CONTRACT_V3 or rec.get("family") != FAMILY_F1ABC):
+                raise ValueError("record bytes")
+            payload = rec["payload"]
+            if _record_policy_digest(FAMILY_F1ABC, payload) != act["record_policy_digest"]:
+                raise ValueError("record policy digest")
+            registry_sets = {k: _clean_set(payload[k]) for k in sa_fields()}
+            ceilings = {k: payload[k] for k in F1ABC_CEILINGS}
+            if any(type(v) is not int for v in ceilings.values()):
+                raise ValueError("record ceilings")
+        except Exception as exc:
+            raise SelectionRefusal("store_unknown", "HOLD", cause="record_payload_unavailable") from exc
+        for field in sa_fields():
+            if not executor[field] <= registry_sets[field]:
+                raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_not_subset:{field}")
+        for field in F1ABC_CEILINGS:
+            if lim[field] > ceilings[field]:
+                raise SelectionRefusal("policy_identity_mismatch", cause=f"policy_exceeds_ceiling:{field}")
 
     def _check_unbound(self, conn: sqlite3.Connection, claim: Any, d: Derived, now: datetime, head: dict) -> dict:
         """Contract 7.4 line 8: an omitted binding is never an intentionally absent optional policy."""
@@ -1657,6 +1719,15 @@ def policy_sets_of(policy: Any) -> Optional[dict]:
     object as `policy_digest_of`; the guard checks that the sets reproduce the digest, so the two cannot diverge."""
     try:
         return {k: sorted(getattr(policy, k)) for k in sa_fields()}
+    except Exception:
+        return None
+
+
+def policy_limits_of(policy: Any) -> Optional[dict]:
+    """The two numeric ceilings of the policy an executor will evaluate, EXACTLY as held (no coercion; the f1abc guard refuses anything that is
+    not an exact in-range integer). None when they cannot be read. Grants nothing."""
+    try:
+        return {"max_amount": policy.max_amount, "max_effects": policy.max_effects}
     except Exception:
         return None
 
