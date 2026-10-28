@@ -2,7 +2,7 @@
 (contract `r08-v4`): selection, activation, coexistence, composition, and effect-time enforcement. BUILDER_TESTED developer evidence. NOT independently
 qualified. Reuses the PR-2/PR-3 and V05 fixtures by import (no new framework). The `engine/safe_executor.py` target evaluator is not modified.
 
-Needs `OCS_REGISTRY_PIN_DIR` at the pinned Registry commit (head of UNMERGED Registry PR #56, r08-v4) and PyNaCl; the effect-time group also needs Control
+Needs `OCS_REGISTRY_PIN_DIR` at the pinned Registry commit (merge commit of Registry PR #56, r08-v4) and PyNaCl; the effect-time group also needs Control
 Plane V02 + pydantic>=2.12 (otherwise that group is reported NOT RUN).
 
   A activation  A-01 valid f1abcd   A-02 optional refused   A-03 identity is the nine-member digest

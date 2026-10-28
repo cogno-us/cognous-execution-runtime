@@ -32,7 +32,7 @@ from registry_successor import common as c  # noqa: E402
 
 from engine import registry_selection_authority as sa  # noqa: E402
 
-REGISTRY_PIN = "7cd8042696ac1d692c2f325095e194ed4f23c72c"  # M3: head of UNMERGED cogno-us/cognous-ocs-registry PR #56 (r08-v4); includes the merged r08-v3 (PR #54, ba98dd26)
+REGISTRY_PIN = "b7e6a173877c731273858b01b26214147dd0736c"  # M3: merge commit of cogno-us/cognous-ocs-registry PR #56 (r08-v4); includes the merged r08-v3 (PR #54, ba98dd26)
 FAMILY = sa.FAMILY_F1ABC
 GS3 = dict(v4.GS, family=FAMILY)
 SID3 = "sel-f1abc-1"
